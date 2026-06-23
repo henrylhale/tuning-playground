@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Barbershop Septimal Tuning Playground</title>
+<style>
+  :root {
+    --bg: #14161c;
+    --panel: #1d212b;
+    --panel2: #262c39;
+    --ink: #e8ebf2;
+    --muted: #9aa3b5;
+    --accent: #ffcf5c;
+    --accent2: #5cc8ff;
+    --rel: #6ee7a0;
+    --line: #333b4c;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 14px;
+  }
+
+  #viewport { height: 100vh; display: flex; flex-direction: column; }
+
+  header {
+    padding: 14px 18px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    display: flex; flex-wrap: wrap; gap: 14px 26px; align-items: flex-end;
+    flex: 0 0 auto;
+  }
+  .ctl { display: flex; flex-direction: column; gap: 4px; }
+  .ctl label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  select {
+    background: var(--panel2); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 7px; padding: 7px 9px; font-size: 14px; min-width: 90px;
+  }
+  input[type="range"] { width: 150px; accent-color: var(--accent2); }
+  .range-row { display: flex; align-items: center; gap: 8px; }
+  .range-row output { font-variant-numeric: tabular-nums; color: var(--ink); min-width: 28px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+  .seg button {
+    background: var(--panel2); color: var(--muted); border: 0; padding: 8px 12px; cursor: pointer; font-size: 13px;
+  }
+  .seg button.active { background: var(--accent); color: #1c1607; font-weight: 600; }
+
+  .stage { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; padding: 16px 18px; }
+  .pitchfield {
+    flex: 1 1 auto; min-width: 0; height: 50%;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    overflow-x: auto; overflow-y: hidden;
+  }
+  .keys { position: relative; height: 100%; margin: 0 auto; }
+
+  .pbtn {
+    position: absolute;
+    background: var(--panel2); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 0 0 5px 5px;
+    cursor: pointer; padding: 2px 2px 6px;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 1px;
+    text-align: center; line-height: 1.04; overflow: hidden; white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    transition: background .08s, border-color .08s;
+  }
+  .pbtn:hover { border-color: var(--accent2); }
+  .pbtn.active { background: var(--accent); color: #1c1607; border-color: var(--accent); font-weight: 700; }
+  .pbtn.root { outline: 2px solid var(--rel); outline-offset: -2px; z-index: 6; }
+  .pbtn .he-acc { color: var(--accent2); }
+  .pbtn.active .he-acc { color: #6a3d00; }
+  .pbtn .rel { color: var(--rel); font-size: .82em; font-weight: 600; }
+  .pbtn.active .rel { color: #0a5c33; }
+
+  .legend {
+    margin: 18px; padding: 12px 14px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; color: var(--muted); font-size: 12.5px; line-height: 1.6;
+  }
+  .legend b { color: var(--ink); }
+  .legend .sym { color: var(--accent2); font-weight: 700; }
+  .legend .rk { color: var(--rel); font-weight: 700; }
+  .count { color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="viewport">
+  <header>
+    <div class="ctl">
+      <label for="fund">Fundamental (12-TET, A440)</label>
+      <select id="fund"></select>
+    </div>
+    <div class="ctl">
+      <label for="osc">Oscillator</label>
+      <select id="osc">
+        <option value="sine">sine</option>
+        <option value="triangle">triangle</option>
+        <option value="sawtooth">sawtooth</option>
+        <option value="square">square</option>
+      </select>
+    </div>
+    <div class="ctl">
+      <label>Button labels</label>
+      <div class="seg" id="labelmode">
+        <button data-mode="ratio" class="active">ratio</button>
+        <button data-mode="he">HE degree</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <label for="vol">Master volume</label>
+      <div class="range-row"><input id="vol" type="range" min="0" max="3" step="0.01" value="0.7" /><output id="volout">0.70</output></div>
+    </div>
+    <div class="ctl">
+      <label for="bw">Max button width</label>
+      <div class="range-row"><input id="bw" type="range" min="34" max="120" step="2" value="74" /><output id="bwout">74</output></div>
+    </div>
+    <div class="ctl">
+      <label>&nbsp;</label>
+      <button class="seg" id="alloff" style="padding:8px 12px;cursor:pointer">all off</button>
+    </div>
+    <div class="ctl">
+      <label>&nbsp;</label>
+      <span class="count" id="count"></span>
+    </div>
+  </header>
+
+  <div class="stage">
+    <div class="pitchfield" id="field"></div>
+  </div>
+</div>
+
+<div class="legend">
+  <div><b>How it works.</b> The top bar sets the key-center note (12-TET, A440 reference). The keyboard is a single polyphonic strip of the just-intonation pitches needed to spell barbershop vocabulary in the home key, spanning 1/2 (an octave below) to 5/2. Click a key to start/stop its pitch — any number can sound at once. Key sizes: <b>big</b> = the home major scale, <b>medium</b> = the default chromatic accidentals, <b>small</b> = temporary keys added for a selected chord root.</div>
+  <div style="margin-top:8px"><b>Chord roots.</b> <span class="rk">⌘/Ctrl-click</span> a key to make it the root of the chord you're spelling — it sounds, and (unless it's the key center) small temporary keys appear for every new pitch needed to spell barbershop chords on that root. While a root is active, every chord-tone key shows its name <span class="rk">relative to the root</span> (in the current label mode) in green above its home name. ⌘/Ctrl-click the root again to clear it; the temporary keys disappear.</div>
+  <div style="margin-top:8px"><b>Helmholtz–Ellis notation (text rendering).</b> Note names are <b>scale-degree numbers</b> (1–7) relative to the reference, with a Pythagorean accidental (♯/♭) and comma marks:
+    <span class="sym">↑ / ↓</span> = syntonic comma (5-limit, 81/80) &nbsp;·&nbsp;
+    <span class="sym">↟ / ↡</span> = septimal comma (7-limit, 64/63). Diatonic 3/5/7 (5/4, 5/3, 15/8) are kept full-size despite their commas; the just 5/3 is the canonical 6th.</div>
+</div>
+
+<script>
+"use strict";
+
+/* ---------- math helpers ---------- */
+function gcd(a, b){ a=Math.abs(a); b=Math.abs(b); while(b){ [a,b]=[b,a%b]; } return a || 1; }
+function reduce(num, den){ const g = gcd(num, den); return [num/g, den/g]; }
+function ipow(base, exp){ let r = 1; for(let i=0;i<exp;i++) r*=base; return r; }
+function octaveReduceFrac(num, den){
+  [num,den] = reduce(num,den);
+  let v = num/den;
+  while(v >= 2){ den *= 2; [num,den]=reduce(num,den); v=num/den; }
+  while(v < 1){ num *= 2; [num,den]=reduce(num,den); v=num/den; }
+  return [num,den];
+}
+function classOf(num, den){ const [n,d] = octaveReduceFrac(num,den); return n + "/" + d; }
+/* 7-limit prime factorisation -> exponents of 2,3,5,7 */
+function factor7(num, den){
+  function cnt(x, p){ let e=0; while(x % p === 0){ x/=p; e++; } return [e, x]; }
+  let a=0,b=0,c=0,d=0, e;
+  [e,num]=cnt(num,2); a+=e; [e,den]=cnt(den,2); a-=e;
+  [e,num]=cnt(num,3); b+=e; [e,den]=cnt(den,3); b-=e;
+  [e,num]=cnt(num,5); c+=e; [e,den]=cnt(den,5); c-=e;
+  [e,num]=cnt(num,7); d+=e; [e,den]=cnt(den,7); d-=e;
+  return { a,b,c,d };
+}
+
+/* Helmholtz-Ellis: scale-degree + Pythagorean accidental + comma marks, from (b,c,d) */
+const DEGREE_MAP = {"-1":4, "0":1, "1":5, "2":2, "3":6, "4":3, "5":7};
+function heLabel(b,c,d){
+  const P3 = b + 4*c - 2*d;
+  const sharps = Math.floor((P3 + 1) / 7);
+  const reduced = P3 - 7*sharps;
+  const degree = DEGREE_MAP[String(reduced)];
+  let acc = "";
+  if(sharps > 0) acc = "♯".repeat(sharps);
+  else if(sharps < 0) acc = "♭".repeat(-sharps);
+  let commas = "";
+  if(c > 0) commas += "↓".repeat(c); else if(c < 0) commas += "↑".repeat(-c);
+  if(d > 0) commas += "↡".repeat(d); else if(d < 0) commas += "↟".repeat(-d);
+  return { acc, degree, commas };
+}
+
+/* ---------- range: 1/2 .. 5/2 ---------- */
+const RANGE_LO = 0.5, RANGE_HI = 2.5;
+
+/* ---------- the barbershop vocabulary ---------- */
+// default board pitch classes, by size tier
+const MAJOR_SCALE   = ["1/1","9/8","5/4","4/3","3/2","5/3","15/8"];        // big
+const DEFAULT_ACC   = ["16/15","6/5","7/5","8/5","7/4","9/5"];             // medium
+const TIER_OF = {};
+MAJOR_SCALE.forEach(c => TIER_OF[c] = "big");
+DEFAULT_ACC.forEach(c => TIER_OF[c] = "med");
+const DEFAULT_CLASSES = [...MAJOR_SCALE, ...DEFAULT_ACC];
+const SCALE = { big: 1.0, med: 0.8, small: 0.6 };
+
+// chord tones, relative to a chord root, used across all barbershop vocab
+const BARBERSHOP_TONES = ["1/1","9/8","6/5","5/4","7/5","3/2","8/5","5/3","7/4","9/5","15/8"];
+const toneInfo = {}; // cls -> {num,den,b,c,d}
+const toneSet = new Set(BARBERSHOP_TONES);
+BARBERSHOP_TONES.forEach(cls => {
+  const [n,d] = cls.split("/").map(Number);
+  const f = factor7(n,d);
+  toneInfo[cls] = { num:n, den:d, b:f.b, c:f.c, d:f.d };
+});
+
+/* expand a pitch class into all octave copies within the visible range */
+function expandClass(cls, tier){
+  const [cn, cd] = cls.split("/").map(Number);
+  const { b, c, d } = factor7(cn, cd);
+  const out = [];
+  for(let k = -2; k <= 2; k++){
+    const [num, den] = (k >= 0) ? reduce(cn*ipow(2,k), cd) : reduce(cn, cd*ipow(2,-k));
+    const val = num/den;
+    if(val < RANGE_LO - 1e-9 || val > RANGE_HI + 1e-9) continue;
+    out.push({ num, den, val, cents: 1200*Math.log2(val), cls, b, c, d, tier });
+  }
+  return out;
+}
+
+/* ---------- audio: one oscillator per sounding pitch ---------- */
+let actx = null, master = null;
+const activeVoices = new Map(); // key -> {osc, g, p}
+const VOICE_GAIN = 0.16;
+
+function ensureAudio(){
+  if(actx) return;
+  actx = new (window.AudioContext || window.webkitAudioContext)();
+  master = actx.createGain();
+  master.gain.value = parseFloat(volEl.value);
+  master.connect(actx.destination);
+}
+function startVoice(key, p){
+  const osc = actx.createOscillator(), g = actx.createGain();
+  osc.type = oscEl.value;
+  osc.frequency.value = state.fundamental * p.val;
+  g.gain.value = 0;
+  osc.connect(g); g.connect(master);
+  osc.start();
+  g.gain.setTargetAtTime(VOICE_GAIN, actx.currentTime, 0.02);
+  activeVoices.set(key, { osc, g, p });
+}
+function stopVoice(v){
+  v.g.gain.setTargetAtTime(0, actx.currentTime, 0.03);
+  v.osc.stop(actx.currentTime + 0.25);
+}
+function syncVoices(){
+  if(!actx) return;
+  for(const [key, v] of activeVoices){ if(!state.activeKeys.has(key)){ stopVoice(v); activeVoices.delete(key); } }
+  for(const key of state.activeKeys){ if(!activeVoices.has(key)){ const p = pitchMap.get(key); if(p) startVoice(key, p); } }
+}
+function refreshFreqs(){
+  for(const v of activeVoices.values()){ v.osc.frequency.setTargetAtTime(state.fundamental * v.p.val, actx.currentTime, 0.012); }
+}
+
+/* ---------- state ---------- */
+const state = {
+  fundamental: 220,
+  labelMode: "ratio",
+  activeKeys: new Set(["1/1"]),
+  root: null,                 // {num,den,val,cls,b,c,d}  (octave-reduced)
+  maxW: 74,
+  pitches: []
+};
+let pitchMap = new Map();
+
+function keyScale(p){ return SCALE[p.tier]; }
+
+/* ---------- DOM ---------- */
+const fundEl = document.getElementById("fund");
+const oscEl = document.getElementById("osc");
+const volEl = document.getElementById("vol");
+const volOut = document.getElementById("volout");
+const bwEl = document.getElementById("bw");
+const bwOut = document.getElementById("bwout");
+const countEl = document.getElementById("count");
+const fieldEl = document.getElementById("field");
+
+/* ---------- fundamental dropdown (12-TET, A440) ---------- */
+function buildFundamentalOptions(){
+  const names = ["C","C♯","D","D♯","E","F","F♯","G","G♯","A","A♯","B"];
+  for(let midi = 36; midi <= 84; midi++){ // C2 .. C6
+    const freq = 440 * Math.pow(2, (midi - 69)/12);
+    const name = names[midi % 12] + (Math.floor(midi/12) - 1);
+    const opt = document.createElement("option");
+    opt.value = String(freq);
+    opt.textContent = `${name} · ${freq.toFixed(2)} Hz`;
+    if(midi === 57) opt.selected = true; // A3 = 220 Hz
+    fundEl.appendChild(opt);
+  }
+}
+
+/* ---------- label rendering ---------- */
+function ratioText(o){ return o.num + "/" + o.den; }
+function heHTML(o){
+  const { acc, degree, commas } = heLabel(o.b, o.c, o.d);
+  return `<span class="he-acc">${acc}</span>${degree}<span class="he-acc">${commas}</span>`;
+}
+function nameHTML(o){ return state.labelMode === "ratio" ? ratioText(o) : heHTML(o); }
+function pitchTitle(p){
+  const he = heLabel(p.b,p.c,p.d);
+  const f = state.fundamental * p.val;
+  return `${p.num}/${p.den}  ·  ${f.toFixed(2)} Hz  ·  ${p.cents.toFixed(1)}¢  ·  HE: ${he.acc}${he.degree}${he.commas}`;
+}
+/* relative-to-root tone info for a key, or null */
+function relToneFor(p){
+  if(!state.root) return null;
+  const relClass = classOf(p.num * state.root.den, p.den * state.root.num);
+  return toneSet.has(relClass) ? toneInfo[relClass] : null;
+}
+
+/* ---------- build the board (defaults + temporary root keys) ---------- */
+function buildBoard(){
+  const tiers = new Map();
+  for(const c of DEFAULT_CLASSES) tiers.set(c, TIER_OF[c]);
+  if(state.root && state.root.cls !== "1/1"){
+    for(const tcls of BARBERSHOP_TONES){
+      const t = toneInfo[tcls];
+      const target = classOf(state.root.num * t.num, state.root.den * t.den);
+      if(!tiers.has(target)) tiers.set(target, "small");
+    }
+  }
+  const pitches = [];
+  for(const [cls, tier] of tiers) pitches.push(...expandClass(cls, tier));
+  pitches.sort((a,b)=> a.val - b.val);
+  state.pitches = pitches;
+  pitchMap = new Map(pitches.map(p => [p.num + "/" + p.den, p]));
+  for(const k of [...state.activeKeys]){ if(!pitchMap.has(k)) state.activeKeys.delete(k); }
+  syncVoices();
+  updateCount();
+  layout();
+}
+function updateCount(){
+  let s = state.pitches.length + " keys";
+  if(state.root) s += `  ·  root ${state.root.num}/${state.root.den}`;
+  countEl.textContent = s;
+}
+
+/* ---------- layout: pitch-ordered keys, three sizes ---------- */
+function layout(){
+  const prevScroll = fieldEl.scrollLeft;
+  fieldEl.innerHTML = "";
+  const H = fieldEl.clientHeight;
+  if(H === 0) return;
+  const Wbase = state.maxW;
+  const gap = 1;
+  const keys = document.createElement("div");
+  keys.className = "keys";
+
+  let xoff = 0;
+  for(const p of state.pitches){
+    const s = keyScale(p);
+    const w = Math.max(12, Math.round(Wbase * s));
+    const key = p.num + "/" + p.den;
+    const b = document.createElement("button");
+    b.className = "pbtn";
+    if(state.activeKeys.has(key)) b.classList.add("active");
+    if(state.root && state.root.cls === p.cls) b.classList.add("root");
+    b.style.left = xoff + "px";
+    b.style.top = "0px";
+    b.style.width = w + "px";
+    b.style.height = Math.round(H * s) + "px";
+    b.style.fontSize = (s >= 1 ? 11.5 : s >= 0.8 ? 10.5 : 9.5) + "px";
+
+    const tone = relToneFor(p);
+    const relHTML = tone ? `<span class="rel">${nameHTML(tone)}</span>` : "";
+    b.innerHTML = relHTML + `<span class="base">${nameHTML(p)}</span>`;
+    b.title = pitchTitle(p);
+    b.addEventListener("click", (e) => {
+      if(e.metaKey || e.ctrlKey) setRoot(p);
+      else toggle(p);
+    });
+    keys.appendChild(b);
+    xoff += w + gap;
+  }
+  keys.style.width = Math.max(0, xoff - gap) + "px";
+  fieldEl.appendChild(keys);
+  fieldEl.scrollLeft = prevScroll;
+}
+
+/* ---------- interactions ---------- */
+function resumeCtx(){ ensureAudio(); if(actx.state === "suspended") actx.resume(); syncVoices(); }
+
+function toggle(p){
+  const key = p.num + "/" + p.den;
+  if(state.activeKeys.has(key)) state.activeKeys.delete(key);
+  else state.activeKeys.add(key);
+  resumeCtx();
+  layout();
+}
+function setRoot(p){
+  const [rn, rd] = octaveReduceFrac(p.num, p.den);
+  const cls = rn + "/" + rd;
+  if(state.root && state.root.cls === cls){
+    state.root = null;            // clicking the current root clears it
+  } else {
+    state.root = { num: rn, den: rd, val: rn/rd, cls, b: p.b, c: p.c, d: p.d };
+    state.activeKeys.add(p.num + "/" + p.den);   // sound the root
+  }
+  resumeCtx();
+  buildBoard();
+}
+
+fundEl.addEventListener("change", () => {
+  const v = parseFloat(fundEl.value);
+  if(isFinite(v) && v > 0){ state.fundamental = v; if(actx) refreshFreqs(); }
+});
+oscEl.addEventListener("change", () => { for(const v of activeVoices.values()) v.osc.type = oscEl.value; });
+volEl.addEventListener("input", () => {
+  volOut.textContent = parseFloat(volEl.value).toFixed(2);
+  if(master) master.gain.setTargetAtTime(parseFloat(volEl.value), actx.currentTime, 0.02);
+});
+document.getElementById("labelmode").addEventListener("click", e => {
+  const btn = e.target.closest("button"); if(!btn) return;
+  state.labelMode = btn.dataset.mode;
+  [...e.currentTarget.children].forEach(c => c.classList.toggle("active", c===btn));
+  layout();
+});
+document.getElementById("alloff").addEventListener("click", () => { state.activeKeys.clear(); syncVoices(); layout(); });
+bwEl.addEventListener("input", () => { bwOut.textContent = bwEl.value; state.maxW = parseInt(bwEl.value,10); layout(); });
+
+let rT;
+window.addEventListener("resize", () => { clearTimeout(rT); rT = setTimeout(layout, 80); });
+document.body.addEventListener("pointerdown", () => { if(actx && actx.state === "suspended") actx.resume(); });
+
+/* ---------- init ---------- */
+buildFundamentalOptions();
+state.fundamental = parseFloat(fundEl.value);
+buildBoard();
+requestAnimationFrame(layout);
+</script>
+</body>
+</html>

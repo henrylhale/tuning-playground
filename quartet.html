@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Barbershop Quartet — JI Voice Synth</title>
+<style>
+  :root{
+    --bg:#15171c; --panel:#1d2027; --ink:#e8eaf0; --muted:#9aa0ac;
+    --accent:#ffcf5c; --line:#2a2e38;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg); color:var(--ink);
+    font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    padding:14px; display:flex; flex-direction:column; gap:14px;
+  }
+  h3{font-size:11px;font-weight:600;color:var(--muted);margin:0 0 6px;text-transform:uppercase;letter-spacing:.5px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+  label{color:var(--muted);font-size:12px}
+  select{background:#13151a;color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:6px 8px;font-size:13px}
+  input[type=range]{width:120px;vertical-align:middle}
+
+  .bar{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  .ctl{display:flex;align-items:center;gap:8px}
+  .val{color:var(--ink);font-size:12px;min-width:30px}
+  button.play{appearance:none;border:1px solid var(--line);cursor:pointer;background:#23262f;color:var(--ink);
+    border-radius:9px;padding:9px 18px;font-size:14px;font-weight:600;transition:.12s}
+  button.play:hover{background:#2a2e38}
+  button.play.on{background:var(--accent);color:#241c00;border-color:var(--accent)}
+
+  .selector{display:grid;grid-template-columns:auto auto 1fr auto;gap:14px;align-items:start}
+  .sp{min-width:0}
+  .btnrow{display:flex;flex-wrap:wrap;gap:4px;max-width:230px}
+  .chip{appearance:none;cursor:pointer;border:1px solid var(--line);background:#23262f;color:var(--ink);
+    border-radius:6px;padding:5px 8px;font-size:12px;min-width:30px;text-align:center}
+  .chip.sel{background:var(--accent);color:#241c00;border-color:var(--accent);font-weight:700}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+  .grid .chip{font-size:11px;padding:6px 4px}
+
+  .vrow{display:flex;gap:10px}
+  .vbox{flex:1;background:#13151a;border:1px solid var(--line);border-radius:9px;padding:8px;
+    display:flex;flex-direction:column;align-items:center;gap:4px;cursor:grab;min-width:0}
+  .vbox.drag{opacity:.4}
+  .vbox .vnum{font-size:10px;color:var(--muted)}
+  .vbox .itv{font-size:18px;font-weight:700}
+  .vbox .note{font-size:11px;color:var(--accent)}
+  .vbox .hz{font-size:10px;color:var(--muted)}
+  .octbtns{display:flex;gap:4px;margin-top:2px}
+  .octbtns button{appearance:none;cursor:pointer;border:1px solid var(--line);background:#23262f;color:var(--ink);
+    border-radius:5px;width:24px;height:20px;font-size:11px;line-height:1}
+  .octbtns button:hover{background:#2a2e38}
+
+  .voices{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px}
+  .voice{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px}
+  .vhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+  .vhead .name{font-weight:600}
+  .vhead .pitch{color:var(--accent);font-size:12px}
+  .vhead .f12{color:var(--muted);font-size:11px}
+  .mute{appearance:none;cursor:pointer;border:1px solid var(--line);background:#23262f;color:var(--muted);
+    border-radius:6px;padding:4px 9px;font-size:11px}
+  .mute.on{background:#5a2330;color:#ffb4be;border-color:#7a3140}
+  svg{display:block;width:100%;height:auto;touch-action:none;user-select:none}
+</style>
+</head>
+<body>
+
+  <div class="panel bar">
+    <button id="play" class="play">▶ Play quartet</button>
+    <div class="ctl"><label>Volume</label><input id="vol" type="range" min="0" max="1" step="0.01" value="0.45"></div>
+    <div class="ctl"><label>Vibrato</label><input id="vib" type="range" min="0" max="8" step="0.5" value="3"><span id="vibval" class="val"></span></div>
+    <div class="ctl"><label>Breath</label><input id="breath" type="range" min="0" max="1" step="0.01" value="0.15"><span id="breathval" class="val"></span></div>
+    <div class="ctl"><label>Falloff</label><input id="tilt" type="range" min="0" max="3" step="0.05" value="1.2"><span id="tiltval" class="val"></span></div>
+    <div class="ctl"><label>Bandwidth</label><input id="bw" type="range" min="0.02" max="0.22" step="0.005" value="0.06"><span id="bwval" class="val"></span></div>
+    <div class="ctl"><label>Low-pass</label><input id="lpf" type="range" min="0" max="100" step="1" value="65"><span id="lpfval" class="val"></span></div>
+  </div>
+
+  <div class="panel selector">
+    <div class="sp">
+      <h3>Key center</h3>
+      <select id="key"></select>
+    </div>
+    <div class="sp">
+      <h3>Chord root</h3>
+      <div id="roots" class="btnrow"></div>
+    </div>
+    <div class="sp">
+      <h3>Chord (omnichord)</h3>
+      <div id="chords" class="grid"></div>
+    </div>
+    <div class="sp" style="min-width:380px">
+      <h3>Voicing &nbsp;·&nbsp; drag to reorder (L→R = voices) &nbsp;·&nbsp; ▲▼ octave</h3>
+      <div id="voicing" class="vrow"></div>
+    </div>
+  </div>
+
+  <div class="panel" style="display:flex;flex-direction:column;align-items:center">
+    <h3 style="align-self:flex-start">Vowels — drag each voice's dot (bigger = lower pitch)</h3>
+    <svg id="chart" viewBox="0 0 380 300" preserveAspectRatio="xMidYMid meet" style="max-width:480px"></svg>
+  </div>
+
+  <div id="voices" class="voices"></div>
+
+<script>
+(() => {
+  // ============================================================ shared helpers
+  const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+  const rval = s => { const [n,d]=s.split("/").map(Number); return n/d; };
+  const octRed = v => { while(v>=2)v/=2; while(v<1)v*=2; return v; };
+  const NOTE_NAMES = ["C","C♯","D","D♯","E","F","F♯","G","G♯","A","A♯","B"];
+  const midiToFreq = m => 440*Math.pow(2,(m-69)/12);
+  function noteName(f){
+    const m = Math.round(69+12*Math.log2(f/440));
+    const cents = Math.round(100*(12*Math.log2(f/440) - (m-69)));
+    const nm = NOTE_NAMES[((m%12)+12)%12] + (Math.floor(m/12)-1);
+    return nm + (cents>=0?"+":"") + cents + "¢";
+  }
+
+  // ============================================================ music data
+  // chord ratios relative to chord root (4 voices; triads double the root)
+  const CHORDS = [
+    {name:"Maj",       r:["1/1","5/4","3/2","1/1"]},
+    {name:"Dom7 bbs",  r:["1/1","5/4","3/2","7/4"]},
+    {name:"Maj add9",  r:["1/1","9/8","5/4","3/2"]},
+    {name:"Min",       r:["1/1","6/5","3/2","1/1"]},
+    {name:"Min7",      r:["1/1","6/5","3/2","9/5"]},
+    {name:"Maj6",      r:["1/1","5/4","3/2","5/3"]},
+    {name:"Min6",      r:["1/1","6/5","3/2","5/3"]},
+    {name:"Half-dim7", r:["1/1","6/5","7/5","9/5"]},
+    {name:"Dim7",      r:["1/1","6/5","7/5","8/5"]},
+    {name:"Maj7",      r:["1/1","5/4","3/2","15/8"]},
+    {name:"Dom7 ♭5",   r:["1/1","5/4","7/5","7/4"]},
+    {name:"Aug",       r:["1/1","5/4","8/5","1/1"]},
+  ];
+  // chord-root scale degrees relative to key center
+  const DEGREES = [
+    {lab:"1",r:"1/1"},{lab:"♭2",r:"16/15"},{lab:"2",r:"9/8"},{lab:"♭3",r:"6/5"},
+    {lab:"3",r:"5/4"},{lab:"4",r:"4/3"},{lab:"♯4",r:"7/5"},{lab:"5",r:"3/2"},
+    {lab:"♭6",r:"8/5"},{lab:"6",r:"5/3"},{lab:"♭7",r:"9/5"},{lab:"7",r:"15/8"},
+  ];
+  const ITV = {"1/1":"R","9/8":"9","6/5":"♭3","5/4":"3","4/3":"11","7/5":"♯4","3/2":"5",
+               "8/5":"♭6","5/3":"6","7/4":"♭7","9/5":"♭7","15/8":"7","16/15":"♭9","25/16":"♯5"};
+
+  // ============================================================ formant / chart constants
+  const COLORS = ["#e5484d","#f2870a","#f5cf3d","#5dd28f","#5b9cf2"];
+  const VOICE_COLORS = ["#ff6f91","#ffd166","#06d6a0","#4d96ff"]; // voices 1..4
+  const GRAY="#5b606b", GRAY_TXT="#7c828e";
+  const DEFAULT_FORMANTS = [
+    {F:500, min:250, max:900, fixed:false, on:true},
+    {F:1500,min:700, max:2300,fixed:false, on:true},
+    {F:2500,min:1800,max:3000,fixed:false, on:true},
+    {F:3500,min:3500,max:3500,fixed:true,  on:true},
+    {F:4500,min:4500,max:4500,fixed:true,  on:true},
+  ];
+  const VBW=760, X0=70, X1=730, FMIN=55, FMAX=9000;
+  const RAIL_CY={0:244,1:194,2:144,3:94,4:44}, AXIS_Y=300, LABEL_Y=318;
+  const logR=Math.log(FMAX/FMIN);
+  const freqToX=f=>X0+Math.log(clamp(f,FMIN,FMAX)/FMIN)/logR*(X1-X0);
+  const xToFreq=x=>FMIN*Math.exp((clamp(x,X0,X1)-X0)/(X1-X0)*logR);
+  const fmtHz=v=>v>=1000?(v/1000).toFixed(v%1000===0?0:1)+"k":String(Math.round(v));
+
+  const CVBW=380,CVBH=300,CX0=46,CX1=356,CY0=18,CY1=250;
+  const F1LO=250,F1HI=900,F2HI=2400,F2LO=700;
+  const cxOfF2=f2=>CX0+(F2HI-clamp(f2,F2LO,F2HI))/(F2HI-F2LO)*(CX1-CX0);
+  const cyOfF1=f1=>CY0+(clamp(f1,F1LO,F1HI)-F1LO)/(F1HI-F1LO)*(CY1-CY0);
+  const VOWELS=[
+    {ipa:"i",f1:342,f2:2322},{ipa:"ɪ",f1:427,f2:2034},{ipa:"eɪ",f1:476,f2:2089},
+    {ipa:"ɛ",f1:580,f2:1799},{ipa:"æ",f1:588,f2:1952},{ipa:"ɑ",f1:768,f2:1333},
+    {ipa:"ɔ",f1:652,f2:997},{ipa:"oʊ",f1:497,f2:910},{ipa:"ʊ",f1:469,f2:1122},
+    {ipa:"u",f1:378,f2:997},{ipa:"ʌ",f1:623,f2:1200},{ipa:"ɝ",f1:474,f2:1379},
+    {ipa:"ə",f1:500,f2:1500},
+  ];
+
+  // ============================================================ global state
+  const state = {
+    keyFreq: 220,            // A3
+    rootIdx: 0,              // degree index
+    chordIdx: 1,             // Dom7 bbs
+    voicing: [],             // [{tone, octave}] left->right
+    absPcs: [],              // pitch classes (rel key center) per chord tone
+    // shared timbre
+    srcExp:1.2, bwFrac:0.06, lpfHz:4000, vibCents:3, breath:0.15, volume:0.45,
+    playing:false,
+  };
+  const bwOf = fm => Math.max(60, fm.F*state.bwFrac);
+  const HEARING_TOP=20000;
+  const VIB_RATE=5.5, JITTER_CENTS=4, SHIMMER=0.04, FORMANT_LEVEL=0.8;
+
+  // ============================================================ audio
+  let ctx=null, masterOut=null, masterBus=null, globalLP=null, humanTimer=null;
+  const voices=[];   // each: {formants, freq, muted, nodes..., railsSvg, els...}
+
+  function computeWave(f0){
+    const top=Math.min(HEARING_TOP, ctx.sampleRate/2);
+    const N=Math.max(1,Math.floor(top/f0));
+    const real=new Float32Array(N+1), imag=new Float32Array(N+1);
+    for(let n=1;n<=N;n++) imag[n]=Math.pow(n,-state.srcExp);
+    return ctx.createPeriodicWave(real,imag);
+  }
+  function makeNoiseBuffer(){
+    const len=Math.floor(ctx.sampleRate*2);
+    const buf=ctx.createBuffer(1,len,ctx.sampleRate);
+    const d=buf.getChannelData(0);
+    for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
+    return buf;
+  }
+
+  function ensureAudio(){
+    if(!ctx){
+      ctx=new (window.AudioContext||window.webkitAudioContext)();
+      masterOut=ctx.createGain(); masterOut.gain.value=0; masterOut.connect(ctx.destination);
+      globalLP=ctx.createBiquadFilter(); globalLP.type="lowpass"; globalLP.frequency.value=state.lpfHz;
+      globalLP.connect(masterOut);
+      masterBus=ctx.createGain(); masterBus.gain.value=1; masterBus.connect(globalLP);
+
+      voices.forEach(v=>{
+        v.sourceBus=ctx.createGain(); v.sourceBus.gain.value=1;
+        v.formantMix=ctx.createGain(); v.formantMix.gain.value=1;
+        v.voiceGain=ctx.createGain(); v.voiceGain.gain.value=0;
+        v.formantMix.connect(v.voiceGain); v.voiceGain.connect(masterBus);
+        v.bp=[]; v.fg=[];
+        for(let i=0;i<v.formants.length;i++){
+          const f=ctx.createBiquadFilter(); f.type="bandpass";
+          const g=ctx.createGain(); g.gain.value=0;
+          v.sourceBus.connect(f); f.connect(g); g.connect(v.formantMix);
+          v.bp[i]=f; v.fg[i]=g;
+        }
+        v.noiseGain=ctx.createGain(); v.noiseGain.gain.value=state.breath;
+        v.noiseGain.connect(v.sourceBus);
+        v.noiseSrc=ctx.createBufferSource(); v.noiseSrc.buffer=makeNoiseBuffer();
+        v.noiseSrc.loop=true; v.noiseSrc.connect(v.noiseGain); v.noiseSrc.start();
+        v.vibLFO=ctx.createOscillator(); v.vibLFO.type="sine";
+        v.vibLFO.frequency.value=VIB_RATE*(0.96+0.08*Math.random()); // slight per-voice detune of vibrato
+        v.vibDepth=ctx.createGain(); v.vibDepth.gain.value=state.vibCents;
+        v.vibLFO.connect(v.vibDepth); v.vibLFO.start();
+        syncFormants(v);
+      });
+    }
+    if(ctx.state==="suspended") ctx.resume();
+  }
+
+  function syncFormants(v){
+    if(!ctx||!v.bp) return;
+    const now=ctx.currentTime;
+    for(let i=0;i<v.formants.length;i++){
+      const fm=v.formants[i], B=bwOf(fm);
+      v.bp[i].frequency.setTargetAtTime(fm.F,now,0.02);
+      v.bp[i].Q.setTargetAtTime(fm.F/B,now,0.02);
+      const sign=(i%2===0)?1:-1;
+      v.fg[i].gain.setTargetAtTime(fm.on?sign*FORMANT_LEVEL:0,now,0.02);
+    }
+  }
+
+  function tickHuman(){
+    if(!state.playing||!ctx) return;
+    const now=ctx.currentTime;
+    voices.forEach(v=>{
+      if(!v.osc) return;
+      v.osc.detune.setTargetAtTime((Math.random()*2-1)*JITTER_CENTS, now, 0.05);
+      const target = v.muted?0:v.level*(1+(Math.random()*2-1)*SHIMMER);
+      v.voiceGain.gain.setTargetAtTime(Math.max(0,target), now, 0.06);
+    });
+  }
+
+  function playAll(){
+    ensureAudio();
+    const now=ctx.currentTime;
+    voices.forEach(v=>{
+      v.osc=ctx.createOscillator();
+      v.osc.setPeriodicWave(computeWave(v.freq));
+      v.osc.frequency.value=v.freq;
+      v.osc.connect(v.sourceBus);
+      v.vibDepth.disconnect(); v.vibDepth.connect(v.osc.detune);
+      v.osc.detune.setValueAtTime(-40,now);
+      v.osc.detune.linearRampToValueAtTime(0,now+0.12);
+      v.osc.start();
+      v.voiceGain.gain.cancelScheduledValues(now);
+      v.voiceGain.gain.setValueAtTime(0,now);
+      v.voiceGain.gain.linearRampToValueAtTime(v.muted?0:v.level, now+0.07);
+      syncFormants(v);
+    });
+    masterOut.gain.cancelScheduledValues(now);
+    masterOut.gain.setValueAtTime(masterOut.gain.value,now);
+    masterOut.gain.linearRampToValueAtTime(state.volume, now+0.07);
+    state.playing=true;
+    humanTimer=setInterval(tickHuman,110);
+    playBtn.classList.add("on"); playBtn.textContent="■ Stop";
+  }
+  function stopAll(){
+    if(!state.playing) return;
+    clearInterval(humanTimer); humanTimer=null;
+    const now=ctx.currentTime;
+    masterOut.gain.cancelScheduledValues(now);
+    masterOut.gain.setValueAtTime(masterOut.gain.value,now);
+    masterOut.gain.linearRampToValueAtTime(0, now+0.1);
+    voices.forEach(v=>{ const d=v.osc; if(d){ setTimeout(()=>{try{d.stop();d.disconnect();}catch(e){}},160);} v.osc=null; });
+    state.playing=false;
+    playBtn.classList.remove("on"); playBtn.textContent="▶ Play quartet";
+  }
+
+  // ============================================================ pitch logic
+  function recomputeChord(){
+    const root=rval(DEGREES[state.rootIdx].r);
+    const tones=CHORDS[state.chordIdx].r;
+    state.absPcs = tones.map(t => octRed(root*rval(t)));
+    state.voicing = defaultVoicing(state.absPcs);
+    renderVoicing();
+    applyFreqs();
+  }
+  function defaultVoicing(pcs){
+    const idx=[0,1,2,3].sort((a,b)=>pcs[a]-pcs[b]);
+    const slots=[]; let prev=0;
+    for(const i of idx){
+      let o=0; while(pcs[i]*Math.pow(2,o)<=prev+1e-9) o++;
+      slots.push({tone:i,octave:o}); prev=pcs[i]*Math.pow(2,o);
+    }
+    const meanLog=slots.reduce((s,sl)=>s+Math.log2(pcs[sl.tone])+sl.octave,0)/slots.length;
+    const sh=-Math.round(meanLog); slots.forEach(sl=>sl.octave+=sh);
+    return slots;
+  }
+  function slotFreq(slot){ return state.keyFreq * state.absPcs[slot.tone] * Math.pow(2,slot.octave); }
+  function applyFreqs(){
+    state.voicing.forEach((slot,k)=>{
+      const v=voices[k]; v.freq=slotFreq(slot);
+      if(state.playing && v.osc){
+        v.osc.frequency.setTargetAtTime(v.freq, ctx.currentTime, 0.04);
+        v.osc.setPeriodicWave(computeWave(v.freq));
+      }
+      drawRails(v); updateVoiceHead(v);
+    });
+    drawSharedChart();
+  }
+
+  // ============================================================ selector UI
+  const playBtn=document.getElementById("play");
+  const keyEl=document.getElementById("key");
+  for(let m=36;m<=84;m++){
+    const o=document.createElement("option");
+    o.value=String(midiToFreq(m));
+    o.textContent=`${NOTE_NAMES[m%12]+(Math.floor(m/12)-1)}  (${midiToFreq(m).toFixed(1)} Hz)`;
+    if(m===57)o.selected=true;
+    keyEl.appendChild(o);
+  }
+  keyEl.addEventListener("change",()=>{ state.keyFreq=parseFloat(keyEl.value); applyFreqs(); });
+
+  const rootsEl=document.getElementById("roots");
+  DEGREES.forEach((d,i)=>{
+    const b=document.createElement("button"); b.className="chip"; b.textContent=d.lab;
+    b.addEventListener("click",()=>{ state.rootIdx=i; markSel(rootsEl,i); recomputeChord(); });
+    rootsEl.appendChild(b);
+  });
+  const chordsEl=document.getElementById("chords");
+  CHORDS.forEach((c,i)=>{
+    const b=document.createElement("button"); b.className="chip"; b.textContent=c.name;
+    b.addEventListener("click",()=>{ state.chordIdx=i; markSel(chordsEl,i); recomputeChord(); });
+    chordsEl.appendChild(b);
+  });
+  function markSel(container,i){ [...container.children].forEach((c,j)=>c.classList.toggle("sel",j===i)); }
+
+  const voicingEl=document.getElementById("voicing");
+  let dragFrom=null;
+  function renderVoicing(){
+    voicingEl.innerHTML="";
+    state.voicing.forEach((slot,k)=>{
+      const tone=CHORDS[state.chordIdx].r[slot.tone];
+      const box=document.createElement("div"); box.className="vbox"; box.draggable=true;
+      box.innerHTML =
+        `<div class="vnum">voice ${k+1}</div>`+
+        `<div class="itv">${ITV[tone]||tone}</div>`+
+        `<div class="note">${noteName(slotFreq(slot))}</div>`+
+        `<div class="hz">${Math.round(slotFreq(slot))} Hz · oct ${slot.octave>=0?"+":""}${slot.octave}</div>`;
+      const ob=document.createElement("div"); ob.className="octbtns";
+      const up=document.createElement("button"); up.textContent="▲";
+      const dn=document.createElement("button"); dn.textContent="▼";
+      up.addEventListener("click",e=>{e.stopPropagation(); slot.octave++; applyFreqs(); renderVoicing();});
+      dn.addEventListener("click",e=>{e.stopPropagation(); slot.octave--; applyFreqs(); renderVoicing();});
+      ob.appendChild(dn); ob.appendChild(up); box.appendChild(ob);
+
+      box.addEventListener("dragstart",()=>{ dragFrom=k; box.classList.add("drag"); });
+      box.addEventListener("dragend",()=>box.classList.remove("drag"));
+      box.addEventListener("dragover",e=>e.preventDefault());
+      box.addEventListener("drop",e=>{
+        e.preventDefault();
+        if(dragFrom===null||dragFrom===k) return;
+        const [m]=state.voicing.splice(dragFrom,1);
+        state.voicing.splice(k,0,m);
+        dragFrom=null; applyFreqs(); renderVoicing();
+      });
+      voicingEl.appendChild(box);
+    });
+  }
+
+  // ============================================================ per-voice synth panels
+  const voicesEl=document.getElementById("voices");
+  const chartSvg=document.getElementById("chart");
+  function buildVoice(k){
+    const v={ formants: JSON.parse(JSON.stringify(DEFAULT_FORMANTS)), freq:state.keyFreq, muted:false, level:1 };
+    const panel=document.createElement("div"); panel.className="voice";
+    panel.innerHTML=
+      `<div class="vhead">`+
+        `<div><span class="name" style="color:${VOICE_COLORS[k]}">●</span> <span class="name">Voice ${k+1}</span> <span class="pitch"></span></div>`+
+        `<div style="display:flex;align-items:center;gap:10px"><span class="f12"></span>`+
+        `<label style="font-size:11px">vol</label><input class="vlevel" type="range" min="0" max="1.5" step="0.01" value="1" style="width:80px">`+
+        `<button class="mute">mute</button></div>`+
+      `</div>`+
+      `<svg class="rails" viewBox="0 0 760 345" preserveAspectRatio="xMidYMid meet"></svg>`;
+    voicesEl.appendChild(panel);
+    v.railsSvg=panel.querySelector(".rails");
+    v.pitchEl=panel.querySelector(".pitch");
+    v.f12El=panel.querySelector(".f12");
+    const muteBtn=panel.querySelector(".mute");
+    muteBtn.addEventListener("click",()=>{
+      v.muted=!v.muted; muteBtn.classList.toggle("on",v.muted);
+      muteBtn.textContent=v.muted?"muted":"mute";
+      if(ctx) v.voiceGain.gain.setTargetAtTime(v.muted?0:v.level, ctx.currentTime, 0.03);
+    });
+    panel.querySelector(".vlevel").addEventListener("input",e=>{
+      v.level=parseFloat(e.target.value);
+      if(ctx) v.voiceGain.gain.setTargetAtTime(v.muted?0:v.level, ctx.currentTime, 0.03);
+    });
+    attachRailInteraction(v);
+    voices.push(v);
+  }
+  function updateVoiceHead(v){
+    v.pitchEl.textContent = `${Math.round(v.freq)} Hz · ${noteName(v.freq)}`;
+    v.f12El.textContent = `F1 ${Math.round(v.formants[0].F)} · F2 ${Math.round(v.formants[1].F)}`;
+  }
+
+  function drawRails(v){
+    let s="";
+    s+=`<line x1="${X0}" y1="${AXIS_Y}" x2="${X1}" y2="${AXIS_Y}" stroke="#3a3f4b" stroke-width="1.5"/>`;
+    for(const t of [100,200,300,500,700,1000,2000,3000,5000,8000]){
+      const x=freqToX(t);
+      s+=`<line x1="${x}" y1="${AXIS_Y-4}" x2="${x}" y2="${AXIS_Y+4}" stroke="#4a505d" stroke-width="1"/>`;
+      s+=`<text x="${x}" y="${LABEL_Y}" fill="${GRAY_TXT}" font-size="10" text-anchor="middle">${fmtHz(t)}</text>`;
+    }
+    const xf=freqToX(v.freq);
+    s+=`<line x1="${xf}" y1="34" x2="${xf}" y2="${AXIS_Y}" stroke="#ffcf5c" stroke-opacity="0.18" stroke-width="1" stroke-dasharray="3 4"/>`;
+    s+=`<circle cx="${xf}" cy="${AXIS_Y}" r="5" fill="#ffcf5c" stroke="#241c00" stroke-width="1"/>`;
+    s+=`<text x="${xf}" y="${AXIS_Y-9}" fill="#ffcf5c" font-size="10" text-anchor="middle">f₀</text>`;
+    for(let i=v.formants.length-1;i>=0;i--){
+      const fm=v.formants[i], cy=RAIL_CY[i], B=bwOf(fm);
+      const col=fm.on?COLORS[i]:GRAY, txt=fm.on?COLORS[i]:GRAY_TXT;
+      const lx=freqToX(fm.F-B/2), mx=freqToX(fm.F), rx=freqToX(fm.F+B/2);
+      if(!fm.fixed)
+        s+=`<line x1="${freqToX(fm.min)}" y1="${cy+17}" x2="${freqToX(fm.max)}" y2="${cy+17}" stroke="${col}" stroke-opacity="0.25" stroke-width="1.5" stroke-dasharray="2 3"/>`;
+      s+=`<g data-toggle="1" data-i="${i}" style="cursor:pointer">`;
+      s+=`<rect x="8" y="${cy-15}" width="44" height="30" rx="8" fill="${fm.on?col:'#23262f'}" stroke="${col}" stroke-width="1.5"/>`;
+      s+=`<text x="30" y="${cy+4}" fill="${fm.on?'#15171c':txt}" font-size="12" font-weight="700" text-anchor="middle">F${i+1}</text></g>`;
+      s+=`<line x1="${lx}" y1="${cy}" x2="${rx}" y2="${cy}" stroke="${col}" stroke-opacity="0.45" stroke-width="7" stroke-linecap="round"/>`;
+      s+=`<line x1="${lx}" y1="${cy-12}" x2="${lx}" y2="${cy+12}" stroke="${col}" stroke-width="2"/>`;
+      s+=`<line x1="${rx}" y1="${cy-12}" x2="${rx}" y2="${cy+12}" stroke="${col}" stroke-width="2"/>`;
+      s+=`<line x1="${mx}" y1="${cy-20}" x2="${mx}" y2="${cy+20}" stroke="${col}" stroke-width="2.5"/>`;
+      s+= fm.fixed
+        ? `<circle cx="${mx}" cy="${cy-22}" r="6" fill="none" stroke="${col}" stroke-width="2"/>`
+        : `<circle cx="${mx}" cy="${cy-22}" r="7" fill="${col}" stroke="#15171c" stroke-width="1.5"/>`;
+      s+=`<text x="${X1}" y="${cy-22}" fill="${txt}" font-size="10.5" text-anchor="end">F=${Math.round(fm.F)}${fm.fixed?" (fixed)":""}  B=${Math.round(B)}</text>`;
+      if(!fm.fixed)
+        s+=`<rect data-handle="1" data-i="${i}" data-type="median" x="${mx-10}" y="${cy-32}" width="20" height="56" fill="transparent" style="cursor:ew-resize"/>`;
+    }
+    v.railsSvg.innerHTML=s;
+  }
+
+  function drawSharedChart(){
+    let s="";
+    s+=`<rect x="${CX0}" y="${CY0}" width="${CX1-CX0}" height="${CY1-CY0}" fill="#13151a" stroke="#3a3f4b" stroke-width="1"/>`;
+    for(const t of [2200,1800,1400,1000]){
+      const x=cxOfF2(t);
+      s+=`<line x1="${x}" y1="${CY0}" x2="${x}" y2="${CY1}" stroke="#262b34" stroke-width="1"/>`;
+      s+=`<text x="${x}" y="${CY1+14}" fill="${GRAY_TXT}" font-size="9.5" text-anchor="middle">${t}</text>`;
+    }
+    for(const t of [300,400,500,600,700,800]){
+      const y=cyOfF1(t);
+      s+=`<line x1="${CX0}" y1="${y}" x2="${CX1}" y2="${y}" stroke="#262b34" stroke-width="1"/>`;
+      s+=`<text x="${CX0-6}" y="${y+3}" fill="${GRAY_TXT}" font-size="9.5" text-anchor="end">${t}</text>`;
+    }
+    s+=`<text x="${(CX0+CX1)/2}" y="${CY0-6}" fill="#9aa0ac" font-size="10.5" text-anchor="middle">F2 — front ← → back</text>`;
+    s+=`<text transform="translate(13,${(CY0+CY1)/2}) rotate(-90)" fill="#9aa0ac" font-size="10.5" text-anchor="middle">F1 — close ↑ open ↓</text>`;
+    // static reference vowels
+    for(const vw of VOWELS){
+      const cx=cxOfF2(vw.f2), cy=cyOfF1(vw.f1);
+      s+=`<circle cx="${cx}" cy="${cy}" r="3" fill="#6b7280"/>`;
+      s+=`<text x="${cx+5}" y="${cy+4}" fill="#aab0bb" font-size="11">${vw.ipa}</text>`;
+    }
+    // voice dots: size locked to voice index (voice 1 biggest), drawn back-to-front so every dot stays grabbable
+    for(let k=0;k<voices.length;k++){
+      const v=voices[k];
+      const cx=cxOfF2(v.formants[1].F), cy=cyOfF1(v.formants[0].F);
+      const r=12-k*2.2, col=VOICE_COLORS[k];
+      s+=`<g data-vdot="${k}" style="cursor:grab">`;
+      s+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${col}" fill-opacity="0.5" stroke="${col}" stroke-width="2"/>`;
+      s+=`<text x="${cx}" y="${cy+3.5}" fill="#10131a" font-size="${Math.max(8,Math.round(r-1))}" font-weight="700" text-anchor="middle">${k+1}</text></g>`;
+    }
+    chartSvg.innerHTML=s;
+  }
+
+  function drawVoice(v){ drawRails(v); updateVoiceHead(v); }
+
+  // ---- interaction ----
+  let activeDrag=null; // {kind:'rail'|'chart', v}
+  function attachRailInteraction(v){
+    v.railsSvg.addEventListener("pointerdown",e=>{
+      const tog=e.target.closest("[data-toggle]");
+      if(tog){ const i=+tog.dataset.i; v.formants[i].on=!v.formants[i].on; drawVoice(v); syncFormants(v); return; }
+      const h=e.target.closest("[data-handle]");
+      if(!h) return;
+      activeDrag={kind:"rail", v, i:+h.dataset.i};
+      e.preventDefault();
+    });
+  }
+  function chartToF(clientX,clientY){
+    const r=chartSvg.getBoundingClientRect();
+    const x=(clientX-r.left)/r.width*CVBW, y=(clientY-r.top)/r.height*CVBH;
+    return {
+      f1: F1LO+(y-CY0)/(CY1-CY0)*(F1HI-F1LO),
+      f2: F2HI-(x-CX0)/(CX1-CX0)*(F2HI-F2LO),
+    };
+  }
+  function setFromChart(v,clientX,clientY){
+    const {f1,f2}=chartToF(clientX,clientY);
+    v.formants[0].F=clamp(f1, v.formants[0].min, v.formants[0].max);
+    v.formants[1].F=clamp(f2, v.formants[1].min, v.formants[1].max);
+    drawRails(v); updateVoiceHead(v); drawSharedChart(); syncFormants(v);
+  }
+  chartSvg.addEventListener("pointerdown",e=>{
+    const dot=e.target.closest("[data-vdot]");
+    if(!dot) return;
+    if(e.metaKey||e.ctrlKey){
+      // ⌘/Ctrl-click: the following drag shifts all four voices together (preserving their spread)
+      const st=chartToF(e.clientX,e.clientY);
+      activeDrag={kind:"chartAll", startF1:st.f1, startF2:st.f2,
+        base:voices.map(v=>({f1:v.formants[0].F, f2:v.formants[1].F}))};
+    } else {
+      activeDrag={kind:"chart", v:voices[+dot.dataset.vdot]};
+    }
+    e.preventDefault();
+  });
+  window.addEventListener("pointermove",e=>{
+    if(!activeDrag) return;
+    if(activeDrag.kind==="rail"){
+      const v=activeDrag.v;
+      const r=v.railsSvg.getBoundingClientRect();
+      const f=xToFreq((e.clientX-r.left)/r.width*VBW);
+      const fm=v.formants[activeDrag.i];
+      fm.F=clamp(f, fm.min, fm.max);
+      drawVoice(v); drawSharedChart(); syncFormants(v);
+    } else if(activeDrag.kind==="chartAll"){
+      const cur=chartToF(e.clientX,e.clientY);
+      const d1=cur.f1-activeDrag.startF1, d2=cur.f2-activeDrag.startF2;
+      voices.forEach((v,k)=>{
+        v.formants[0].F=clamp(activeDrag.base[k].f1+d1, v.formants[0].min, v.formants[0].max);
+        v.formants[1].F=clamp(activeDrag.base[k].f2+d2, v.formants[1].min, v.formants[1].max);
+        drawRails(v); updateVoiceHead(v); syncFormants(v);
+      });
+      drawSharedChart();
+    } else {
+      setFromChart(activeDrag.v, e.clientX, e.clientY);
+    }
+  });
+  window.addEventListener("pointerup",()=>{ activeDrag=null; });
+
+  // ============================================================ global timbre controls
+  const volEl=document.getElementById("vol");
+  const vibEl=document.getElementById("vib"), vibVal=document.getElementById("vibval");
+  const breathEl=document.getElementById("breath"), breathVal=document.getElementById("breathval");
+  const tiltEl=document.getElementById("tilt"), tiltVal=document.getElementById("tiltval");
+  const bwEl=document.getElementById("bw"), bwVal=document.getElementById("bwval");
+  const lpfEl=document.getElementById("lpf"), lpfVal=document.getElementById("lpfval");
+  const lpfFromPos=pos=>200*Math.pow(100,pos/100);
+
+  function lab(){
+    vibVal.textContent=state.vibCents<=0?"off":`±${state.vibCents}¢`;
+    breathVal.textContent=`${Math.round(state.breath*100)}%`;
+    tiltVal.textContent=`${(-6*state.srcExp).toFixed(1)}dB/oct`;
+    bwVal.textContent=`${Math.round(state.bwFrac*100)}%`;
+    lpfVal.textContent=state.lpfHz>=1000?(state.lpfHz/1000).toFixed(1)+"k":Math.round(state.lpfHz)+"Hz";
+  }
+  volEl.addEventListener("input",()=>{ state.volume=parseFloat(volEl.value);
+    if(ctx&&state.playing) masterOut.gain.setTargetAtTime(state.volume,ctx.currentTime,0.02); });
+  vibEl.addEventListener("input",()=>{ state.vibCents=parseFloat(vibEl.value); lab();
+    if(ctx) voices.forEach(v=>v.vibDepth&&v.vibDepth.gain.setTargetAtTime(state.vibCents,ctx.currentTime,0.02)); });
+  breathEl.addEventListener("input",()=>{ state.breath=parseFloat(breathEl.value); lab();
+    if(ctx) voices.forEach(v=>v.noiseGain&&v.noiseGain.gain.setTargetAtTime(state.breath,ctx.currentTime,0.02)); });
+  tiltEl.addEventListener("input",()=>{ state.srcExp=parseFloat(tiltEl.value); lab();
+    if(ctx&&state.playing) voices.forEach(v=>{ if(v.osc) v.osc.setPeriodicWave(computeWave(v.freq)); }); });
+  bwEl.addEventListener("input",()=>{ state.bwFrac=parseFloat(bwEl.value); lab();
+    voices.forEach(v=>{ drawVoice(v); syncFormants(v); }); });
+  lpfEl.addEventListener("input",()=>{ state.lpfHz=lpfFromPos(parseFloat(lpfEl.value)); lab();
+    if(ctx) globalLP.frequency.setTargetAtTime(state.lpfHz,ctx.currentTime,0.02); });
+
+  playBtn.addEventListener("click",()=> state.playing?stopAll():playAll());
+
+  // ============================================================ init
+  for(let k=0;k<4;k++) buildVoice(k);
+  markSel(rootsEl,state.rootIdx);
+  markSel(chordsEl,state.chordIdx);
+  state.lpfHz=lpfFromPos(parseFloat(lpfEl.value));
+  lab();
+  recomputeChord();
+  voices.forEach(drawVoice);
+  drawSharedChart();
+})();
+</script>
+</body>
+</html>
