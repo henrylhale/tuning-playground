@@ -10,11 +10,12 @@
     --accent:#ffcf5c; --line:#2a2e38;
   }
   *{box-sizing:border-box}
-  html,body{height:100%;margin:0}
+  html{height:100%}
   body{
+    min-height:100%; margin:0;
     background:var(--bg); color:var(--ink);
     font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
     gap:22px; padding:24px;
   }
   h1{font-size:18px;font-weight:600;margin:0;letter-spacing:.2px}
@@ -40,6 +41,15 @@
   }
   button.play:hover{background:#2a2e38}
   button.play.on{background:var(--accent);color:#241c00;border-color:var(--accent)}
+  .waves{display:flex;gap:6px}
+  button.wave{
+    appearance:none; border:1px solid var(--line); cursor:pointer;
+    background:#13151a; color:var(--muted); border-radius:8px;
+    padding:7px 11px; font-size:12.5px; font-weight:600;
+    transition:background .12s,border-color .12s,color .12s;
+  }
+  button.wave:hover{background:#23262f;color:var(--ink)}
+  button.wave.on{background:#2f3340;color:var(--ink);border-color:var(--accent)}
   svg{display:block;width:100%;height:auto;touch-action:none;user-select:none}
   .meta{color:var(--muted);font-size:12px;text-align:center}
   .meta b{color:var(--ink);font-weight:600}
@@ -57,22 +67,7 @@
       </div>
       <div class="ctl">
         <label for="vol">Volume</label>
-        <input id="vol" type="range" min="0" max="1" step="0.01" value="0.5">
-      </div>
-      <div class="ctl">
-        <label for="tilt">Source falloff</label>
-        <input id="tilt" type="range" min="0" max="3" step="0.05" value="1.2">
-        <span id="tiltval" style="color:var(--ink);font-size:12px;min-width:118px"></span>
-      </div>
-      <div class="ctl">
-        <label for="bw">Bandwidth</label>
-        <input id="bw" type="range" min="0.02" max="0.22" step="0.005" value="0.06">
-        <span id="bwval" style="color:var(--ink);font-size:12px;min-width:42px"></span>
-      </div>
-      <div class="ctl">
-        <label for="lpf">Low-pass</label>
-        <input id="lpf" type="range" min="0" max="100" step="1" value="100">
-        <span id="lpfval" style="color:var(--ink);font-size:12px;min-width:58px"></span>
+        <input id="vol" type="range" min="0" max="1" step="0.01" value="0.45">
       </div>
       <button id="play" class="play">▶ Start</button>
     </div>
@@ -80,13 +75,18 @@
     <div class="toprow">
       <div class="ctl">
         <label for="vib">Vibrato</label>
-        <input id="vib" type="range" min="0" max="80" step="1" value="28">
+        <input id="vib" type="range" min="0" max="8" step="0.5" value="3">
         <span id="vibval" style="color:var(--ink);font-size:12px;min-width:78px"></span>
       </div>
       <div class="ctl">
-        <label for="breath">Breath</label>
-        <input id="breath" type="range" min="0" max="1" step="0.01" value="0.06">
-        <span id="breathval" style="color:var(--ink);font-size:12px;min-width:34px"></span>
+        <label>Source</label>
+        <div class="waves" id="waves">
+          <button class="wave on" data-mode="voice">Voice</button>
+          <button class="wave" data-mode="sine">Sine</button>
+          <button class="wave" data-mode="sawtooth">Saw</button>
+          <button class="wave" data-mode="triangle">Triangle</button>
+          <button class="wave" data-mode="square">Square</button>
+        </div>
       </div>
     </div>
 
@@ -102,6 +102,30 @@
     </div>
     <svg id="chart" viewBox="0 0 380 300" preserveAspectRatio="xMidYMid meet"></svg>
     <div class="meta" id="vmeta"></div>
+  </div>
+
+  <div class="panel" style="width:440px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <div style="font-weight:600">Falloff × bandwidth</div>
+      <div id="padval" style="color:var(--ink);font-size:12px">—</div>
+    </div>
+    <svg id="pad" viewBox="0 0 360 270" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="meta">Drag to explore pairs · shaded box ≈ typical sung voice</div>
+  </div>
+
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <div style="font-weight:600">Output <span style="color:var(--muted);font-weight:400;font-size:12px">— measured from the final mix</span></div>
+      <div id="cliplbl" style="font-size:12px;color:var(--muted)">level —</div>
+    </div>
+    <div>
+      <canvas id="scope" width="760" height="150" style="width:100%;height:auto;display:block;background:#13151a;border-radius:8px"></canvas>
+      <div class="meta" style="margin-top:6px">Waveform — peaks flattening at the dashed ±1 lines (and turning red) is clipping</div>
+    </div>
+    <div>
+      <canvas id="spectrum" width="760" height="150" style="width:100%;height:auto;display:block;background:#13151a;border-radius:8px"></canvas>
+      <div class="meta" style="margin-top:6px">Spectrum (log frequency) — peaks are overtones; amber marks show the formant centers</div>
+    </div>
   </div>
 
 <script>
@@ -133,6 +157,7 @@
   let bwFrac = 0.06;                                   // bandwidth as fraction of center F
   const BW_FLOOR = 60;                                 // min formant bandwidth (Hz) — keeps low formants from going razor-sharp
   const bwOf = fm => Math.max(BW_FLOOR, fm.F * bwFrac); // formant bandwidth in Hz
+  const REF_FORMANTS = formants.map(f => f.F);          // default centers = the loudness-reference vowel
 
   // ---------- geometry / frequency scale (log) ----------
   const VBW = 760, X0 = 70, X1 = 730;
@@ -286,9 +311,11 @@
 
   // ---------- audio ----------
   const HEARING_TOP = 20000;
-  let ctx = null, osc = null, master = null, lowpass = null, playing = false;
+  let ctx = null, osc = null, master = null, playing = false;
+  let analyser = null, scopeRAF = null, timeBuf = null, freqBuf = null;
   // source-filter graph nodes
-  let sourceBus = null, formantMix = null, noiseGain = null, noiseSrc = null;
+  let sourceBus = null, formantMix = null, dryGain = null;
+  let oscMode = "voice";  // "voice" = glottal source+formants; else a plain "sine"/"sawtooth"/"triangle"/"square" (formants bypassed)
   let vibLFO = null, vibDepth = null, humanTimer = null;
   const bp = [], fg = [];                 // per-formant bandpass + gain nodes
   // humanization constants
@@ -298,50 +325,22 @@
   const FORMANT_LEVEL = 0.8;             // per-formant output level
   const playBtn = document.getElementById("play");
   const volEl = document.getElementById("vol");
-  const tiltEl = document.getElementById("tilt");
-  const tiltValEl = document.getElementById("tiltval");
   const metaEl = document.getElementById("meta");
-
-  const bwEl = document.getElementById("bw");
-  const bwValEl = document.getElementById("bwval");
-  const lpfEl = document.getElementById("lpf");
-  const lpfValEl = document.getElementById("lpfval");
+  const padSvg = document.getElementById("pad");
+  const padValEl = document.getElementById("padval");
   const vibEl = document.getElementById("vib");
   const vibValEl = document.getElementById("vibval");
-  const breathEl = document.getElementById("breath");
-  const breathValEl = document.getElementById("breathval");
 
   let vibCents = parseFloat(vibEl.value);
-  let breath = parseFloat(breathEl.value);
   function updateVibLabel() {
     vibValEl.textContent = vibCents <= 0 ? "off" : `±${vibCents}¢ @ ${VIB_RATE}Hz`;
   }
-  function updateBreathLabel() {
-    breathValEl.textContent = `${Math.round(breath * 100)}%`;
-  }
   updateVibLabel();
-  updateBreathLabel();
 
-  // low-pass cutoff: slider position 0..100 -> 200 Hz .. 20 kHz (log)
-  const lpfFromPos = pos => 200 * Math.pow(100, pos / 100);
-  let lpfHz = lpfFromPos(parseFloat(lpfEl.value));
-  function updateLpfLabel() {
-    lpfValEl.textContent = lpfHz >= 1000 ? (lpfHz / 1000).toFixed(1) + " kHz" : Math.round(lpfHz) + " Hz";
-  }
-  updateLpfLabel();
+  let srcExp = 1.2;     // source spectral falloff exponent (bwFrac declared up top)
 
-  let srcExp = parseFloat(tiltEl.value);
-  function updateTiltLabel() {
-    tiltValEl.textContent = `1/n^${srcExp.toFixed(2)}  (${(-6 * srcExp).toFixed(1)} dB/oct)`;
-  }
-  updateTiltLabel();
-  function updateBwLabel() {
-    bwValEl.textContent = `${Math.round(bwFrac * 100)}%`;
-  }
-  updateBwLabel();
-
-  // The glottal source is now just a plain harmonic spectrum (1/n^e); the formants
-  // are real biquad filters downstream, so noise can flow through them too.
+  // The glottal source is a plain harmonic spectrum (1/n^e); the formants
+  // are real biquad filters downstream.
   function computeWave(f0) {
     const nyquist = ctx.sampleRate / 2;
     const top = Math.min(HEARING_TOP, nyquist);
@@ -352,14 +351,6 @@
     return { wave: ctx.createPeriodicWave(real, imag), N };
   }
 
-  function makeNoiseBuffer() {
-    const len = Math.floor(ctx.sampleRate * 2);
-    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-    return buf;
-  }
-
   function ensureCtx() {
     if (!ctx) {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -367,15 +358,14 @@
       master = ctx.createGain();
       master.gain.value = 0;
       master.connect(ctx.destination);
-
-      lowpass = ctx.createBiquadFilter();
-      lowpass.type = "lowpass";
-      lowpass.frequency.value = lpfHz;
-      lowpass.connect(master);
+      analyser = ctx.createAnalyser();      // taps the final mix (before the hardware ±1 clamp)
+      analyser.fftSize = 4096;
+      analyser.smoothingTimeConstant = 0.5;
+      master.connect(analyser);
 
       formantMix = ctx.createGain();
       formantMix.gain.value = 1;
-      formantMix.connect(lowpass);
+      formantMix.connect(master);
 
       // shared input bus -> parallel formant bandpass bank -> mix
       sourceBus = ctx.createGain();
@@ -391,15 +381,12 @@
         bp[i] = f; fg[i] = filterGain;
       }
 
-      // breath: white noise into the same formant bank
-      noiseGain = ctx.createGain();
-      noiseGain.gain.value = breath;
-      noiseGain.connect(sourceBus);
-      noiseSrc = ctx.createBufferSource();
-      noiseSrc.buffer = makeNoiseBuffer();
-      noiseSrc.loop = true;
-      noiseSrc.connect(noiseGain);
-      noiseSrc.start();
+      // dry bypass: lets the raw buzz through when no formant is active,
+      // so "all formants off" passes the source rather than muting it.
+      dryGain = ctx.createGain();
+      dryGain.gain.value = 0;
+      sourceBus.connect(dryGain);
+      dryGain.connect(formantMix);
 
       // vibrato LFO (continuous); connected to the oscillator's detune at start()
       vibLFO = ctx.createOscillator();
@@ -425,16 +412,71 @@
       bp[i].frequency.setTargetAtTime(fm.F, now, 0.02);
       bp[i].Q.setTargetAtTime(fm.F / B, now, 0.02);
       const sign = (i % 2 === 0) ? 1 : -1;
-      fg[i].gain.setTargetAtTime(fm.on ? sign * FORMANT_LEVEL : 0, now, 0.02);
+      const active = oscMode === "voice" && fm.on;          // basic waveforms bypass the formant bank
+      fg[i].gain.setTargetAtTime(active ? sign * FORMANT_LEVEL : 0, now, 0.02);
     }
+    // dry bypass: always on for basic waveforms, and for the voice when every formant is off
+    const anyOn = oscMode === "voice" && formants.some(f => f.on);
+    dryGain.gain.setTargetAtTime(anyOn ? 0 : 1, now, 0.02);
+    formantMix.gain.setTargetAtTime(normGain(), now, 0.03);  // keep loudness steady across vowels
+  }
+
+  // Estimated RMS power of the filtered glottal source for a formant config.
+  // Sums the bandpass magnitude responses across harmonics (phase ignored — fine
+  // for a level estimate). |H_bp(f)| for a unity-peak bandpass with Q = F/B.
+  function spectralPower(fms, f0) {
+    const top = Math.min(HEARING_TOP, (ctx ? ctx.sampleRate : 48000) / 2);
+    const N = Math.max(1, Math.floor(top / f0));
+    let P = 0;
+    for (let n = 1; n <= N; n++) {
+      const f = n * f0, A = Math.pow(n, -srcExp);
+      let H = 0, any = false;
+      for (const fm of fms) {
+        if (!fm.on) continue;
+        any = true;
+        const B = Math.max(BW_FLOOR, fm.F * bwFrac), Q = fm.F / B, r = f / fm.F;
+        const d = 1 - r * r, e = r / Q;
+        H += FORMANT_LEVEL * e / Math.sqrt(d * d + e * e);
+      }
+      if (!any) H = 1;                       // dry bypass passes the source flat
+      const val = A * H;
+      P += val * val;
+    }
+    return P;
+  }
+
+  // intrinsic power (Σ of squared harmonic amplitudes) of each built-in waveform,
+  // so a plain oscillator can be matched to the voice's level.
+  const WAVE_POWER = { sine: 1, sawtooth: 2/3, square: 2, triangle: 2/3 };
+
+  // Compensating gain so the output stays ~constant as the vowel (formant config)
+  // changes, normalized to the default formant centers as the reference vowel.
+  // Plain waveforms are matched to that same reference-vowel level too.
+  function normGain() {
+    const f0 = parseFloat(fundEl.value);
+    const ref = spectralPower(formants.map((f, i) => ({ F: REF_FORMANTS[i], on: true })), f0);
+    const src = oscMode === "voice" ? spectralPower(formants, f0) : (WAVE_POWER[oscMode] || 1);
+    if (src <= 0) return 1;
+    return Math.max(0.1, Math.min(8, Math.sqrt(ref / src)));
+  }
+
+  // apply the current source type to the live oscillator
+  function applyOscType() {
+    if (!osc) return;
+    if (oscMode === "voice") osc.setPeriodicWave(computeWave(parseFloat(fundEl.value)).wave);
+    else osc.type = oscMode;
   }
 
   function updateMeta() {
     const f0 = parseFloat(fundEl.value);
     const on = formants.filter(f => f.on).length;
     if (playing) {
-      const N = Math.floor(Math.min(HEARING_TOP, (ctx?.sampleRate || 48000) / 2) / f0);
-      metaEl.innerHTML = `<b>${N}</b> harmonics · fundamental <b>${f0.toFixed(1)} Hz</b> · <b>${on}</b>/5 formants active`;
+      if (oscMode !== "voice") {
+        metaEl.innerHTML = `<b>${oscMode}</b> oscillator · fundamental <b>${f0.toFixed(1)} Hz</b> · formants bypassed`;
+      } else {
+        const N = Math.floor(Math.min(HEARING_TOP, (ctx?.sampleRate || 48000) / 2) / f0);
+        metaEl.innerHTML = `<b>${N}</b> harmonics · fundamental <b>${f0.toFixed(1)} Hz</b> · <b>${on}</b>/5 formants active`;
+      }
     } else {
       metaEl.textContent = "Press Start to hear the buzz.";
     }
@@ -443,8 +485,9 @@
   function rebuildSource() {
     if (!playing || !osc) return;
     const f0 = parseFloat(fundEl.value);
-    osc.setPeriodicWave(computeWave(f0).wave);
+    if (oscMode === "voice") osc.setPeriodicWave(computeWave(f0).wave);
     osc.frequency.setTargetAtTime(f0, ctx.currentTime, 0.02);
+    if (formantMix) formantMix.gain.setTargetAtTime(normGain(), ctx.currentTime, 0.03);  // f0/falloff shift the level too
     updateMeta();
   }
 
@@ -470,8 +513,8 @@
     ensureCtx();
     const f0 = parseFloat(fundEl.value);
     osc = ctx.createOscillator();
-    osc.setPeriodicWave(computeWave(f0).wave);
     osc.frequency.value = f0;
+    applyOscType();
     osc.connect(sourceBus);
 
     // vibrato (re)connection to this oscillator's detune
@@ -491,6 +534,7 @@
 
     playing = true;
     humanTimer = setInterval(tickHuman, 110);
+    startScope();
     playBtn.classList.add("on");
     playBtn.textContent = "■ Stop";
     updateMeta();
@@ -499,6 +543,7 @@
   function stop() {
     if (!playing) return;
     clearInterval(humanTimer); humanTimer = null;
+    stopScope();
     const now = ctx.currentTime;
     master.gain.cancelScheduledValues(now);
     master.gain.setValueAtTime(master.gain.value, now);
@@ -510,6 +555,77 @@
     playBtn.classList.remove("on");
     playBtn.textContent = "▶ Start";
     updateMeta();
+  }
+
+  // ---------- output visualization (live, from the analyser tap) ----------
+  const scopeCv = document.getElementById("scope"), spectrumCv = document.getElementById("spectrum");
+  const clipLbl = document.getElementById("cliplbl");
+  function startScope() {
+    if (!analyser || scopeRAF) return;
+    timeBuf = new Float32Array(analyser.fftSize);
+    freqBuf = new Uint8Array(analyser.frequencyBinCount);
+    const frame = () => { scopeRAF = requestAnimationFrame(frame); drawWave(); drawSpectrum(); };
+    frame();
+  }
+  function stopScope() {
+    if (scopeRAF) cancelAnimationFrame(scopeRAF);
+    scopeRAF = null;
+    scopeCv.getContext("2d").clearRect(0, 0, scopeCv.width, scopeCv.height);
+    spectrumCv.getContext("2d").clearRect(0, 0, spectrumCv.width, spectrumCv.height);
+    clipLbl.textContent = "level —"; clipLbl.style.color = "var(--muted)";
+  }
+  function drawWave() {
+    const g = scopeCv.getContext("2d"), W = scopeCv.width, H = scopeCv.height, mid = H / 2, amp = (H / 2) * 0.82;
+    analyser.getFloatTimeDomainData(timeBuf);
+    g.clearRect(0, 0, W, H);
+    g.strokeStyle = "#2a2e38"; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(0, mid); g.lineTo(W, mid); g.stroke();           // zero line
+    g.strokeStyle = "#4a505d"; g.setLineDash([4, 4]);                        // ±1 (clip threshold)
+    g.beginPath(); g.moveTo(0, mid - amp); g.lineTo(W, mid - amp); g.moveTo(0, mid + amp); g.lineTo(W, mid + amp); g.stroke();
+    g.setLineDash([]);
+    const N = timeBuf.length, step = N / W;
+    let peak = 0;
+    g.beginPath();
+    for (let x = 0; x < W; x++) {
+      const v = timeBuf[Math.floor(x * step)];
+      if (Math.abs(v) > peak) peak = Math.abs(v);
+      let y = mid - v * amp; if (y < 0) y = 0; else if (y > H) y = H;
+      x ? g.lineTo(x, y) : g.moveTo(x, y);
+    }
+    const clipped = peak >= 1.0;
+    g.strokeStyle = clipped ? "#ff5a5a" : "#5dd28f"; g.lineWidth = 1.5; g.stroke();
+    clipLbl.textContent = clipped ? `peak ${peak.toFixed(2)} · CLIPPING` : `peak ${peak.toFixed(2)}`;
+    clipLbl.style.color = clipped ? "#ff5a5a" : (peak > 0.85 ? "#f2cf3d" : "var(--muted)");
+  }
+  function drawSpectrum() {
+    const g = spectrumCv.getContext("2d"), W = spectrumCv.width, H = spectrumCv.height, base = H - 12;
+    analyser.getByteFrequencyData(freqBuf);
+    g.clearRect(0, 0, W, H);
+    const bins = freqBuf.length, nyq = ctx.sampleRate / 2;
+    const fmin = 50, fmax = Math.min(20000, nyq);
+    const lmin = Math.log10(fmin), lspan = Math.log10(fmax) - lmin;
+    const xOf = f => (Math.log10(f) - lmin) / lspan * W;
+    g.strokeStyle = "#23272f"; g.fillStyle = "#6b7280"; g.font = "9px sans-serif"; g.textAlign = "center"; g.lineWidth = 1;
+    for (const f of [100, 200, 500, 1000, 2000, 5000, 10000]) {
+      if (f > fmax) continue;
+      const x = xOf(f);
+      g.beginPath(); g.moveTo(x, 0); g.lineTo(x, base); g.stroke();
+      g.fillText(f >= 1000 ? (f / 1000) + "k" : f, x, H - 2);
+    }
+    if (oscMode === "voice") for (const fm of formants) {            // formant centers
+      if (!fm.on) continue;
+      const x = xOf(fm.F);
+      g.strokeStyle = "rgba(255,207,92,0.55)"; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, base); g.stroke();
+    }
+    g.beginPath();
+    for (let x = 0; x < W; x++) {
+      const f = Math.pow(10, lmin + x / W * lspan);
+      const v = freqBuf[Math.min(bins - 1, Math.round(f / nyq * bins))] / 255;
+      const y = base - v * (base - 4);
+      x ? g.lineTo(x, y) : g.moveTo(x, y);
+    }
+    g.strokeStyle = "#5b9cf2"; g.lineWidth = 1.5; g.stroke();
+    g.lineTo(W, base); g.lineTo(0, base); g.closePath(); g.fillStyle = "rgba(91,156,242,0.15)"; g.fill();
   }
 
   // ---------- interaction ----------
@@ -535,9 +651,11 @@
       redraw(); syncFormants();
     } else if (chartDrag) {
       setFromChart(e.clientX, e.clientY);
+    } else if (padDrag) {
+      setFromPad(e.clientX, e.clientY);
     }
   });
-  window.addEventListener("pointerup", () => { drag = null; chartDrag = false; });
+  window.addEventListener("pointerup", () => { drag = null; chartDrag = false; padDrag = false; });
 
   // ---------- vowel-chart interaction ----------
   let chartDrag = false;
@@ -564,39 +682,72 @@
     e.preventDefault();
   });
 
+  // ---------- falloff × bandwidth pad ----------
+  const PAD = { VBW: 360, VBH: 270, X0: 50, X1: 340, Y0: 20, Y1: 224, SMAX: 3, BLO: 0.02, BHI: 0.10 };
+  const padX = s => PAD.X0 + (s / PAD.SMAX) * (PAD.X1 - PAD.X0);
+  const padY = b => PAD.Y1 - ((b - PAD.BLO) / (PAD.BHI - PAD.BLO)) * (PAD.Y1 - PAD.Y0);
+  function drawPad() {
+    let s = "";
+    s += `<rect x="${PAD.X0}" y="${PAD.Y0}" width="${PAD.X1 - PAD.X0}" height="${PAD.Y1 - PAD.Y0}" fill="#13151a" stroke="#3a3f4b" stroke-width="1"/>`;
+    // typical sung-voice guide region: falloff ≈ 0.9–1.6 exp, bandwidth ≈ 5–8%
+    const gx0 = padX(0.9), gx1 = padX(1.6), gy0 = padY(0.08), gy1 = padY(0.05);
+    s += `<rect x="${gx0}" y="${gy0}" width="${gx1 - gx0}" height="${gy1 - gy0}" fill="rgba(93,210,143,0.10)" stroke="rgba(93,210,143,0.55)" stroke-dasharray="3 3" stroke-width="1"/>`;
+    s += `<text x="${(gx0 + gx1) / 2}" y="${gy0 - 4}" fill="rgba(93,210,143,0.85)" font-size="9" text-anchor="middle">typical</text>`;
+    for (const f of [0, 1, 2, 3]) {
+      const x = padX(f);
+      s += `<line x1="${x}" y1="${PAD.Y0}" x2="${x}" y2="${PAD.Y1}" stroke="#262b34" stroke-width="1"/>`;
+      s += `<text x="${x}" y="${PAD.Y1 + 14}" fill="#6b7280" font-size="9.5" text-anchor="middle">${(-6 * f).toFixed(0)}</text>`;
+    }
+    for (const b of [0.02, 0.04, 0.06, 0.08, 0.10]) {
+      const y = padY(b);
+      s += `<line x1="${PAD.X0}" y1="${y}" x2="${PAD.X1}" y2="${y}" stroke="#262b34" stroke-width="1"/>`;
+      s += `<text x="${PAD.X0 - 6}" y="${y + 3}" fill="#6b7280" font-size="9.5" text-anchor="end">${Math.round(b * 100)}%</text>`;
+    }
+    s += `<text x="${(PAD.X0 + PAD.X1) / 2}" y="${PAD.VBH - 4}" fill="#9aa0ac" font-size="10.5" text-anchor="middle">source falloff (dB/oct) · bright ← → dark</text>`;
+    s += `<text transform="translate(12,${(PAD.Y0 + PAD.Y1) / 2}) rotate(-90)" fill="#9aa0ac" font-size="10.5" text-anchor="middle">bandwidth · narrow ↓ wide ↑</text>`;
+    const cx = padX(srcExp), cy = padY(bwFrac);
+    s += `<line x1="${cx}" y1="${PAD.Y0}" x2="${cx}" y2="${PAD.Y1}" stroke="#ffcf5c" stroke-opacity="0.18" stroke-width="1"/>`;
+    s += `<line x1="${PAD.X0}" y1="${cy}" x2="${PAD.X1}" y2="${cy}" stroke="#ffcf5c" stroke-opacity="0.18" stroke-width="1"/>`;
+    s += `<circle cx="${cx}" cy="${cy}" r="8" fill="#ffcf5c" stroke="#241c00" stroke-width="1.5" style="cursor:grab"/>`;
+    padSvg.innerHTML = s;
+    padValEl.textContent = `${(-6 * srcExp).toFixed(1)} dB/oct · ${Math.round(bwFrac * 100)}% bw`;
+  }
+  let padDrag = false;
+  function setFromPad(clientX, clientY) {
+    const r = padSvg.getBoundingClientRect();
+    const px = (clientX - r.left) / r.width * PAD.VBW;
+    const py = (clientY - r.top) / r.height * PAD.VBH;
+    srcExp = clamp((px - PAD.X0) / (PAD.X1 - PAD.X0) * PAD.SMAX, 0, PAD.SMAX);
+    bwFrac = clamp(PAD.BLO + (PAD.Y1 - py) / (PAD.Y1 - PAD.Y0) * (PAD.BHI - PAD.BLO), PAD.BLO, PAD.BHI);
+    drawPad();
+    redraw();          // formant rails show bandwidth B
+    scheduleSource();  // rebuild source wave for the new falloff (+ re-normalize)
+    syncFormants();    // new Q for the new bandwidth (+ re-normalize)
+  }
+  padSvg.addEventListener("pointerdown", e => { padDrag = true; setFromPad(e.clientX, e.clientY); e.preventDefault(); });
+
   playBtn.addEventListener("click", () => playing ? stop() : start());
+  document.getElementById("waves").addEventListener("click", e => {
+    const b = e.target.closest("[data-mode]");
+    if (!b) return;
+    oscMode = b.dataset.mode;
+    document.querySelectorAll("#waves .wave").forEach(w => w.classList.toggle("on", w === b));
+    applyOscType();
+    syncFormants();
+    updateMeta();
+  });
   volEl.addEventListener("input", () => {
     if (playing && ctx) master.gain.setTargetAtTime(parseFloat(volEl.value), ctx.currentTime, 0.01);
-  });
-  tiltEl.addEventListener("input", () => {
-    srcExp = parseFloat(tiltEl.value);
-    updateTiltLabel();
-    scheduleSource();
-  });
-  bwEl.addEventListener("input", () => {
-    bwFrac = parseFloat(bwEl.value);
-    updateBwLabel();
-    redraw();
-    syncFormants();
-  });
-  lpfEl.addEventListener("input", () => {
-    lpfHz = lpfFromPos(parseFloat(lpfEl.value));
-    updateLpfLabel();
-    if (lowpass && ctx) lowpass.frequency.setTargetAtTime(lpfHz, ctx.currentTime, 0.01);
   });
   vibEl.addEventListener("input", () => {
     vibCents = parseFloat(vibEl.value);
     updateVibLabel();
     if (vibDepth && ctx) vibDepth.gain.setTargetAtTime(vibCents, ctx.currentTime, 0.02);
   });
-  breathEl.addEventListener("input", () => {
-    breath = parseFloat(breathEl.value);
-    updateBreathLabel();
-    if (noiseGain && ctx) noiseGain.gain.setTargetAtTime(breath, ctx.currentTime, 0.02);
-  });
   fundEl.addEventListener("change", () => { redraw(); rebuildSource(); });
 
   redraw();
+  drawPad();
 })();
 </script>
 </body>

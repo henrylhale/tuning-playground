@@ -21,6 +21,7 @@
   label{color:var(--muted);font-size:12px}
   select{background:#13151a;color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:6px 8px;font-size:13px}
   input[type=range]{width:120px;vertical-align:middle}
+  input[type=range].bend{ writing-mode:vertical-lr; direction:rtl; width:12px; height:150px; cursor:pointer }
 
   .bar{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
   .ctl{display:flex;align-items:center;gap:8px}
@@ -45,6 +46,10 @@
   .vbox.drag{opacity:.4}
   .vbox .vnum{font-size:10px;color:var(--muted)}
   .vbox .itv{font-size:18px;font-weight:700}
+  .vbox .roles{display:flex;gap:12px;align-items:flex-end}
+  .vbox .roles span{display:flex;flex-direction:column;align-items:center;line-height:1.05}
+  .vbox .roles b{font-size:18px;font-weight:700}
+  .vbox .roles i{font-style:normal;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
   .vbox .note{font-size:11px;color:var(--accent)}
   .vbox .hz{font-size:10px;color:var(--muted)}
   .octbtns{display:flex;gap:4px;margin-top:2px}
@@ -61,6 +66,12 @@
   .mute{appearance:none;cursor:pointer;border:1px solid var(--line);background:#23262f;color:var(--muted);
     border-radius:6px;padding:4px 9px;font-size:11px}
   .mute.on{background:#5a2330;color:#ffb4be;border-color:#7a3140}
+  .waves{display:flex;gap:4px}
+  .wave{appearance:none;cursor:pointer;border:1px solid var(--line);background:#13151a;color:var(--muted);
+    border-radius:6px;padding:4px 8px;font-size:11px;font-weight:600;
+    transition:background .12s,border-color .12s,color .12s}
+  .wave:hover{background:#23262f;color:var(--ink)}
+  .wave.on{background:#2f3340;color:var(--ink);border-color:var(--accent)}
   svg{display:block;width:100%;height:auto;touch-action:none;user-select:none}
 </style>
 </head>
@@ -70,10 +81,15 @@
     <button id="play" class="play">▶ Play quartet</button>
     <div class="ctl"><label>Volume</label><input id="vol" type="range" min="0" max="1" step="0.01" value="0.45"></div>
     <div class="ctl"><label>Vibrato</label><input id="vib" type="range" min="0" max="8" step="0.5" value="3"><span id="vibval" class="val"></span></div>
-    <div class="ctl"><label>Breath</label><input id="breath" type="range" min="0" max="1" step="0.01" value="0.15"><span id="breathval" class="val"></span></div>
-    <div class="ctl"><label>Falloff</label><input id="tilt" type="range" min="0" max="3" step="0.05" value="1.2"><span id="tiltval" class="val"></span></div>
-    <div class="ctl"><label>Bandwidth</label><input id="bw" type="range" min="0.02" max="0.22" step="0.005" value="0.06"><span id="bwval" class="val"></span></div>
-    <div class="ctl"><label>Low-pass</label><input id="lpf" type="range" min="0" max="100" step="1" value="65"><span id="lpfval" class="val"></span></div>
+    <div class="ctl"><label>Source</label>
+      <div class="waves" id="waves">
+        <button class="wave on" data-mode="voice">Voice</button>
+        <button class="wave" data-mode="sine">Sine</button>
+        <button class="wave" data-mode="sawtooth">Saw</button>
+        <button class="wave" data-mode="triangle">Tri</button>
+        <button class="wave" data-mode="square">Sqr</button>
+      </div>
+    </div>
   </div>
 
   <div class="panel selector">
@@ -86,18 +102,36 @@
       <div id="roots" class="btnrow"></div>
     </div>
     <div class="sp">
-      <h3>Chord (omnichord)</h3>
+      <h3>Chord</h3>
       <div id="chords" class="grid"></div>
     </div>
     <div class="sp" style="min-width:380px">
-      <h3>Voicing &nbsp;·&nbsp; drag to reorder (L→R = voices) &nbsp;·&nbsp; ▲▼ octave</h3>
+      <h3>Voicing &nbsp;·&nbsp; drag to reorder</h3>
       <div id="voicing" class="vrow"></div>
     </div>
   </div>
 
-  <div class="panel" style="display:flex;flex-direction:column;align-items:center">
-    <h3 style="align-self:flex-start">Vowels — drag each voice's dot (bigger = lower pitch)</h3>
-    <svg id="chart" viewBox="0 0 380 300" preserveAspectRatio="xMidYMid meet" style="max-width:480px"></svg>
+  <div class="panel">
+    <div style="display:flex;gap:20px;align-items:center;justify-content:center;flex-wrap:wrap">
+      <svg id="chart" viewBox="0 0 380 300" preserveAspectRatio="xMidYMid meet" style="max-width:480px;flex:1;min-width:300px"></svg>
+      <div id="bends" style="display:flex;gap:16px;align-items:flex-end"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+      <div id="cliplbl" style="font-size:12px;color:var(--muted)">level —</div>
+    </div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap">
+      <div style="flex:1;min-width:320px">
+        <canvas id="scope" width="1000" height="150" style="width:100%;height:auto;display:block;background:#13151a;border-radius:8px"></canvas>
+        <div style="color:var(--muted);font-size:11px;margin-top:5px">Waveform — peaks flattening at the dashed ±1 lines (turning red) is clipping</div>
+      </div>
+      <div style="flex:1;min-width:320px">
+        <canvas id="spectrum" width="1000" height="150" style="width:100%;height:auto;display:block;background:#13151a;border-radius:8px"></canvas>
+        <div style="color:var(--muted);font-size:11px;margin-top:5px">Spectrum (log frequency) — peaks are the overtones of the four voices combined</div>
+      </div>
+    </div>
   </div>
 
   <div id="voices" class="voices"></div>
@@ -144,7 +178,9 @@
 
   // ============================================================ formant / chart constants
   const COLORS = ["#e5484d","#f2870a","#f5cf3d","#5dd28f","#5b9cf2"];
-  const VOICE_COLORS = ["#ff6f91","#ffd166","#06d6a0","#4d96ff"]; // voices 1..4
+  const VOICE_COLORS = ["#ff6f91","#ffd166","#06d6a0","#4d96ff"]; // bass, bari, lead, tenor (L→R)
+  const VOICE_NAMES = ["bass","bari","lead","tenor"];             // L→R = synths 1..4
+  const VOICE_TAGS  = ["Bs","Br","L","T"];                        // short tags for the vowel-chart dots
   const GRAY="#5b606b", GRAY_TXT="#7c828e";
   const DEFAULT_FORMANTS = [
     {F:500, min:250, max:900, fixed:false, on:true},
@@ -179,40 +215,38 @@
     chordIdx: 1,             // Dom7 bbs
     voicing: [],             // [{tone, octave}] left->right
     absPcs: [],              // pitch classes (rel key center) per chord tone
-    // shared timbre
-    srcExp:1.2, bwFrac:0.06, lpfHz:4000, vibCents:3, breath:0.15, volume:0.45,
+    // global timbre (falloff & bandwidth are per-voice)
+    vibCents:3, volume:0.45,
     playing:false,
   };
-  const bwOf = fm => Math.max(60, fm.F*state.bwFrac);
+  const DEFAULT_SRCEXP=1.2, DEFAULT_BWFRAC=0.06;
+  // typical ranges for the per-voice falloff × bandwidth pads (axes limited to realistic values)
+  const TYP_F0=0.8, TYP_F1=1.8, TYP_B0=0.04, TYP_B1=0.09;
+  const PADW=170, PADH=120, PPX0=18, PPX1=162, PPY0=8, PPY1=98;
+  const padX=s=>PPX0+(s-TYP_F0)/(TYP_F1-TYP_F0)*(PPX1-PPX0);
+  const padY=b=>PPY1-(b-TYP_B0)/(TYP_B1-TYP_B0)*(PPY1-PPY0);
+  const bwOf = (fm,bwFrac) => Math.max(60, fm.F*bwFrac);
   const HEARING_TOP=20000;
   const VIB_RATE=5.5, JITTER_CENTS=4, SHIMMER=0.04, FORMANT_LEVEL=0.8;
 
   // ============================================================ audio
-  let ctx=null, masterOut=null, masterBus=null, globalLP=null, humanTimer=null;
-  const voices=[];   // each: {formants, freq, muted, nodes..., railsSvg, els...}
+  let ctx=null, masterOut=null, masterBus=null, humanTimer=null;
+  let analyser=null, scopeRAF=null, timeBuf=null, freqBuf=null;
+  const voices=[];   // each: {formants, freq, muted, srcExp, bwFrac, nodes..., railsSvg, els...}
 
-  function computeWave(f0){
+  function computeWave(f0,srcExp){
     const top=Math.min(HEARING_TOP, ctx.sampleRate/2);
     const N=Math.max(1,Math.floor(top/f0));
     const real=new Float32Array(N+1), imag=new Float32Array(N+1);
-    for(let n=1;n<=N;n++) imag[n]=Math.pow(n,-state.srcExp);
+    for(let n=1;n<=N;n++) imag[n]=Math.pow(n,-srcExp);
     return ctx.createPeriodicWave(real,imag);
   }
-  function makeNoiseBuffer(){
-    const len=Math.floor(ctx.sampleRate*2);
-    const buf=ctx.createBuffer(1,len,ctx.sampleRate);
-    const d=buf.getChannelData(0);
-    for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
-    return buf;
-  }
-
   function ensureAudio(){
     if(!ctx){
       ctx=new (window.AudioContext||window.webkitAudioContext)();
       masterOut=ctx.createGain(); masterOut.gain.value=0; masterOut.connect(ctx.destination);
-      globalLP=ctx.createBiquadFilter(); globalLP.type="lowpass"; globalLP.frequency.value=state.lpfHz;
-      globalLP.connect(masterOut);
-      masterBus=ctx.createGain(); masterBus.gain.value=1; masterBus.connect(globalLP);
+      analyser=ctx.createAnalyser(); analyser.fftSize=4096; analyser.smoothingTimeConstant=0.5; masterOut.connect(analyser);
+      masterBus=ctx.createGain(); masterBus.gain.value=1; masterBus.connect(masterOut);
 
       voices.forEach(v=>{
         v.sourceBus=ctx.createGain(); v.sourceBus.gain.value=1;
@@ -226,10 +260,9 @@
           v.sourceBus.connect(f); f.connect(g); g.connect(v.formantMix);
           v.bp[i]=f; v.fg[i]=g;
         }
-        v.noiseGain=ctx.createGain(); v.noiseGain.gain.value=state.breath;
-        v.noiseGain.connect(v.sourceBus);
-        v.noiseSrc=ctx.createBufferSource(); v.noiseSrc.buffer=makeNoiseBuffer();
-        v.noiseSrc.loop=true; v.noiseSrc.connect(v.noiseGain); v.noiseSrc.start();
+        // dry bypass: pass the raw buzz when this voice has all formants off
+        v.dryGain=ctx.createGain(); v.dryGain.gain.value=0;
+        v.sourceBus.connect(v.dryGain); v.dryGain.connect(v.formantMix);
         v.vibLFO=ctx.createOscillator(); v.vibLFO.type="sine";
         v.vibLFO.frequency.value=VIB_RATE*(0.96+0.08*Math.random()); // slight per-voice detune of vibrato
         v.vibDepth=ctx.createGain(); v.vibDepth.gain.value=state.vibCents;
@@ -244,12 +277,52 @@
     if(!ctx||!v.bp) return;
     const now=ctx.currentTime;
     for(let i=0;i<v.formants.length;i++){
-      const fm=v.formants[i], B=bwOf(fm);
+      const fm=v.formants[i], B=bwOf(fm,v.bwFrac);
       v.bp[i].frequency.setTargetAtTime(fm.F,now,0.02);
       v.bp[i].Q.setTargetAtTime(fm.F/B,now,0.02);
       const sign=(i%2===0)?1:-1;
-      v.fg[i].gain.setTargetAtTime(fm.on?sign*FORMANT_LEVEL:0,now,0.02);
+      const active = v.mode==="voice" && fm.on;   // basic waveforms bypass the formant bank
+      v.fg[i].gain.setTargetAtTime(active?sign*FORMANT_LEVEL:0,now,0.02);
     }
+    const anyOn = v.mode==="voice" && v.formants.some(f=>f.on);
+    v.dryGain.gain.setTargetAtTime(anyOn?0:1,now,0.02);
+    v.formantMix.gain.setTargetAtTime(normGain(v),now,0.03);  // keep loudness steady across vowels
+  }
+  // Estimated RMS power of the filtered glottal source (bandpass magnitudes summed
+  // across harmonics, phase ignored — fine for a level estimate).
+  function spectralPower(fms, f0, srcExp, bwFrac){
+    const top=Math.min(HEARING_TOP, (ctx?ctx.sampleRate:48000)/2);
+    const N=Math.max(1,Math.floor(top/f0));
+    let P=0;
+    for(let n=1;n<=N;n++){
+      const f=n*f0, A=Math.pow(n,-srcExp);
+      let H=0, any=false;
+      for(const fm of fms){
+        if(!fm.on) continue; any=true;
+        const B=Math.max(60, fm.F*bwFrac), Q=fm.F/B, r=f/fm.F;
+        const d=1-r*r, e=r/Q;
+        H+=FORMANT_LEVEL*e/Math.sqrt(d*d+e*e);
+      }
+      if(!any) H=1;                 // dry bypass passes the source flat
+      const val=A*H; P+=val*val;
+    }
+    return P;
+  }
+  // intrinsic power (Σ of squared harmonic amplitudes) of each built-in waveform
+  const WAVE_POWER={sine:1, sawtooth:2/3, square:2, triangle:2/3};
+  // Compensating gain that holds loudness constant as the vowel changes,
+  // normalized to the default formant centers as the reference vowel.
+  // Plain waveforms are matched to that same reference-vowel level too.
+  function normGain(v){
+    const ref=spectralPower(DEFAULT_FORMANTS.map(f=>({F:f.F,on:true})), v.freq, v.srcExp, v.bwFrac);
+    const src = v.mode==="voice" ? spectralPower(v.formants, v.freq, v.srcExp, v.bwFrac) : (WAVE_POWER[v.mode]||1);
+    if(src<=0) return 1;
+    return Math.max(0.1, Math.min(8, Math.sqrt(ref/src)));
+  }
+  function applyOscType(v){
+    if(!v.osc) return;
+    if(v.mode==="voice") v.osc.setPeriodicWave(computeWave(v.freq,v.srcExp));
+    else v.osc.type=v.mode;
   }
 
   function tickHuman(){
@@ -257,7 +330,7 @@
     const now=ctx.currentTime;
     voices.forEach(v=>{
       if(!v.osc) return;
-      v.osc.detune.setTargetAtTime((Math.random()*2-1)*JITTER_CENTS, now, 0.05);
+      v.osc.detune.setTargetAtTime(v.bend + (Math.random()*2-1)*JITTER_CENTS, now, 0.05);
       const target = v.muted?0:v.level*(1+(Math.random()*2-1)*SHIMMER);
       v.voiceGain.gain.setTargetAtTime(Math.max(0,target), now, 0.06);
     });
@@ -268,12 +341,12 @@
     const now=ctx.currentTime;
     voices.forEach(v=>{
       v.osc=ctx.createOscillator();
-      v.osc.setPeriodicWave(computeWave(v.freq));
       v.osc.frequency.value=v.freq;
+      applyOscType(v);
       v.osc.connect(v.sourceBus);
       v.vibDepth.disconnect(); v.vibDepth.connect(v.osc.detune);
       v.osc.detune.setValueAtTime(-40,now);
-      v.osc.detune.linearRampToValueAtTime(0,now+0.12);
+      v.osc.detune.linearRampToValueAtTime(v.bend,now+0.12);
       v.osc.start();
       v.voiceGain.gain.cancelScheduledValues(now);
       v.voiceGain.gain.setValueAtTime(0,now);
@@ -285,11 +358,13 @@
     masterOut.gain.linearRampToValueAtTime(state.volume, now+0.07);
     state.playing=true;
     humanTimer=setInterval(tickHuman,110);
+    startScope();
     playBtn.classList.add("on"); playBtn.textContent="■ Stop";
   }
   function stopAll(){
     if(!state.playing) return;
     clearInterval(humanTimer); humanTimer=null;
+    stopScope();
     const now=ctx.currentTime;
     masterOut.gain.cancelScheduledValues(now);
     masterOut.gain.setValueAtTime(masterOut.gain.value,now);
@@ -297,6 +372,71 @@
     voices.forEach(v=>{ const d=v.osc; if(d){ setTimeout(()=>{try{d.stop();d.disconnect();}catch(e){}},160);} v.osc=null; });
     state.playing=false;
     playBtn.classList.remove("on"); playBtn.textContent="▶ Play quartet";
+  }
+
+  // ---------- output visualization (live, from the analyser tap on the final mix) ----------
+  const scopeCv=document.getElementById("scope"), spectrumCv=document.getElementById("spectrum");
+  const clipLbl=document.getElementById("cliplbl");
+  function startScope(){
+    if(!analyser||scopeRAF) return;
+    timeBuf=new Float32Array(analyser.fftSize);
+    freqBuf=new Uint8Array(analyser.frequencyBinCount);
+    const frame=()=>{ scopeRAF=requestAnimationFrame(frame); drawWave(); drawSpectrum(); };
+    frame();
+  }
+  function stopScope(){
+    if(scopeRAF) cancelAnimationFrame(scopeRAF);
+    scopeRAF=null;
+    scopeCv.getContext("2d").clearRect(0,0,scopeCv.width,scopeCv.height);
+    spectrumCv.getContext("2d").clearRect(0,0,spectrumCv.width,spectrumCv.height);
+    clipLbl.textContent="level —"; clipLbl.style.color="var(--muted)";
+  }
+  function drawWave(){
+    const g=scopeCv.getContext("2d"), W=scopeCv.width, H=scopeCv.height, mid=H/2, amp=(H/2)*0.82;
+    analyser.getFloatTimeDomainData(timeBuf);
+    g.clearRect(0,0,W,H);
+    g.strokeStyle="#2a2e38"; g.lineWidth=1;
+    g.beginPath(); g.moveTo(0,mid); g.lineTo(W,mid); g.stroke();
+    g.strokeStyle="#4a505d"; g.setLineDash([4,4]);
+    g.beginPath(); g.moveTo(0,mid-amp); g.lineTo(W,mid-amp); g.moveTo(0,mid+amp); g.lineTo(W,mid+amp); g.stroke();
+    g.setLineDash([]);
+    const N=timeBuf.length, step=N/W; let peak=0;
+    g.beginPath();
+    for(let x=0;x<W;x++){
+      const v=timeBuf[Math.floor(x*step)];
+      if(Math.abs(v)>peak) peak=Math.abs(v);
+      let y=mid-v*amp; if(y<0)y=0; else if(y>H)y=H;
+      x?g.lineTo(x,y):g.moveTo(x,y);
+    }
+    const clipped=peak>=1.0;
+    g.strokeStyle=clipped?"#ff5a5a":"#5dd28f"; g.lineWidth=1.5; g.stroke();
+    clipLbl.textContent=clipped?`peak ${peak.toFixed(2)} · CLIPPING`:`peak ${peak.toFixed(2)}`;
+    clipLbl.style.color=clipped?"#ff5a5a":(peak>0.85?"#f2cf3d":"var(--muted)");
+  }
+  function drawSpectrum(){
+    const g=spectrumCv.getContext("2d"), W=spectrumCv.width, H=spectrumCv.height, base=H-12;
+    analyser.getByteFrequencyData(freqBuf);
+    g.clearRect(0,0,W,H);
+    const bins=freqBuf.length, nyq=ctx.sampleRate/2;
+    const fmin=50, fmax=Math.min(20000,nyq);
+    const lmin=Math.log10(fmin), lspan=Math.log10(fmax)-lmin;
+    const xOf=f=>(Math.log10(f)-lmin)/lspan*W;
+    g.strokeStyle="#23272f"; g.fillStyle="#6b7280"; g.font="9px sans-serif"; g.textAlign="center"; g.lineWidth=1;
+    for(const f of [100,200,500,1000,2000,5000,10000]){
+      if(f>fmax) continue;
+      const x=xOf(f);
+      g.beginPath(); g.moveTo(x,0); g.lineTo(x,base); g.stroke();
+      g.fillText(f>=1000?(f/1000)+"k":f, x, H-2);
+    }
+    g.beginPath();
+    for(let x=0;x<W;x++){
+      const f=Math.pow(10, lmin+x/W*lspan);
+      const v=freqBuf[Math.min(bins-1,Math.round(f/nyq*bins))]/255;
+      const y=base-v*(base-4);
+      x?g.lineTo(x,y):g.moveTo(x,y);
+    }
+    g.strokeStyle="#5b9cf2"; g.lineWidth=1.5; g.stroke();
+    g.lineTo(W,base); g.lineTo(0,base); g.closePath(); g.fillStyle="rgba(91,156,242,0.15)"; g.fill();
   }
 
   // ============================================================ pitch logic
@@ -320,14 +460,30 @@
     return slots;
   }
   function slotFreq(slot){ return state.keyFreq * state.absPcs[slot.tone] * Math.pow(2,slot.octave); }
+  // distinct chord pitch classes, ascending, each with a representative tone index
+  function chordPcs(){
+    const seen=new Map();
+    state.absPcs.forEach((pc,ti)=>{ if(!seen.has(pc)) seen.set(pc,ti); });
+    return [...seen.entries()].map(([pc,ti])=>({pc,ti})).sort((a,b)=>a.pc-b.pc);
+  }
+  // move a voice to the next chord pitch up/down, dropping/raising an octave on wrap
+  function stepVoice(slot,dir){
+    const pcs=chordPcs();
+    let idx=pcs.findIndex(p=>p.pc===state.absPcs[slot.tone]);
+    if(idx<0) idx=0;
+    let ni=idx+dir, oct=slot.octave;
+    if(ni<0){ ni=pcs.length-1; oct--; }
+    else if(ni>=pcs.length){ ni=0; oct++; }
+    slot.tone=pcs[ni].ti; slot.octave=oct;
+  }
   function applyFreqs(){
     state.voicing.forEach((slot,k)=>{
       const v=voices[k]; v.freq=slotFreq(slot);
       if(state.playing && v.osc){
         v.osc.frequency.setTargetAtTime(v.freq, ctx.currentTime, 0.04);
-        v.osc.setPeriodicWave(computeWave(v.freq));
+        if(v.mode==="voice") v.osc.setPeriodicWave(computeWave(v.freq,v.srcExp));
       }
-      drawRails(v); updateVoiceHead(v);
+      drawRails(v); updateVoiceHead(v); syncFormants(v);  // syncFormants re-normalizes level for the new f0
     });
     drawSharedChart();
   }
@@ -364,17 +520,18 @@
     voicingEl.innerHTML="";
     state.voicing.forEach((slot,k)=>{
       const tone=CHORDS[state.chordIdx].r[slot.tone];
+      const keyDeg=DEGREES[(Math.round(12*Math.log2(state.absPcs[slot.tone]))%12+12)%12].lab;
       const box=document.createElement("div"); box.className="vbox"; box.draggable=true;
       box.innerHTML =
-        `<div class="vnum">voice ${k+1}</div>`+
-        `<div class="itv">${ITV[tone]||tone}</div>`+
+        `<div class="vnum">${VOICE_NAMES[k]}</div>`+
+        `<div class="roles"><span><b>${ITV[tone]||tone}</b><i>chord</i></span><span><b>${keyDeg}</b><i>key</i></span></div>`+
         `<div class="note">${noteName(slotFreq(slot))}</div>`+
         `<div class="hz">${Math.round(slotFreq(slot))} Hz · oct ${slot.octave>=0?"+":""}${slot.octave}</div>`;
       const ob=document.createElement("div"); ob.className="octbtns";
       const up=document.createElement("button"); up.textContent="▲";
       const dn=document.createElement("button"); dn.textContent="▼";
-      up.addEventListener("click",e=>{e.stopPropagation(); slot.octave++; applyFreqs(); renderVoicing();});
-      dn.addEventListener("click",e=>{e.stopPropagation(); slot.octave--; applyFreqs(); renderVoicing();});
+      up.addEventListener("click",e=>{e.stopPropagation(); stepVoice(slot,+1); applyFreqs(); renderVoicing();});
+      dn.addEventListener("click",e=>{e.stopPropagation(); stepVoice(slot,-1); applyFreqs(); renderVoicing();});
       ob.appendChild(dn); ob.appendChild(up); box.appendChild(ob);
 
       box.addEventListener("dragstart",()=>{ dragFrom=k; box.classList.add("drag"); });
@@ -395,14 +552,19 @@
   const voicesEl=document.getElementById("voices");
   const chartSvg=document.getElementById("chart");
   function buildVoice(k){
-    const v={ formants: JSON.parse(JSON.stringify(DEFAULT_FORMANTS)), freq:state.keyFreq, muted:false, level:1 };
+    const v={ formants: JSON.parse(JSON.stringify(DEFAULT_FORMANTS)), freq:state.keyFreq, muted:false, level:1, mode:"voice", bend:0,
+              srcExp:DEFAULT_SRCEXP, bwFrac:DEFAULT_BWFRAC };
     const panel=document.createElement("div"); panel.className="voice";
     panel.innerHTML=
       `<div class="vhead">`+
-        `<div><span class="name" style="color:${VOICE_COLORS[k]}">●</span> <span class="name">Voice ${k+1}</span> <span class="pitch"></span></div>`+
+        `<div><span class="name" style="color:${VOICE_COLORS[k]}">●</span> <span class="name" style="text-transform:capitalize">${VOICE_NAMES[k]}</span> <span class="pitch"></span></div>`+
         `<div style="display:flex;align-items:center;gap:10px"><span class="f12"></span>`+
-        `<label style="font-size:11px">vol</label><input class="vlevel" type="range" min="0" max="1.5" step="0.01" value="1" style="width:80px">`+
-        `<button class="mute">mute</button></div>`+
+          `<label style="font-size:11px">vol</label><input class="vlevel" type="range" min="0" max="1.5" step="0.01" value="1" style="width:80px">`+
+          `<button class="mute">mute</button></div>`+
+      `</div>`+
+      `<div class="vtimbre" style="display:flex;align-items:center;gap:12px;margin-bottom:6px">`+
+        `<svg class="vpad" viewBox="0 0 ${PADW} ${PADH}" style="width:${PADW}px;height:${PADH}px;flex:none"></svg>`+
+        `<div style="font-size:11px;color:var(--muted)"><span class="vtimbreval" style="color:var(--ink)"></span></div>`+
       `</div>`+
       `<svg class="rails" viewBox="0 0 760 345" preserveAspectRatio="xMidYMid meet"></svg>`;
     voicesEl.appendChild(panel);
@@ -419,8 +581,36 @@
       v.level=parseFloat(e.target.value);
       if(ctx) v.voiceGain.gain.setTargetAtTime(v.muted?0:v.level, ctx.currentTime, 0.03);
     });
+    v.padSvg=panel.querySelector(".vpad");
+    v.padValEl=panel.querySelector(".vtimbreval");
+    v.padSvg.addEventListener("pointerdown",e=>{
+      activeDrag={kind:"pad", v}; setVoiceTimbreFromPad(v,e.clientX,e.clientY); e.preventDefault();
+    });
+    drawVoicePad(v);
     attachRailInteraction(v);
     voices.push(v);
+  }
+  function drawVoicePad(v){
+    const cx=padX(v.srcExp), cy=padY(v.bwFrac), dx=padX(DEFAULT_SRCEXP), dy=padY(DEFAULT_BWFRAC);
+    let s="";
+    s+=`<rect x="${PPX0}" y="${PPY0}" width="${PPX1-PPX0}" height="${PPY1-PPY0}" fill="#13151a" stroke="#3a3f4b" stroke-width="1"/>`;
+    s+=`<circle cx="${dx}" cy="${dy}" r="3" fill="none" stroke="#5dd28f" stroke-width="1" stroke-dasharray="2 2"/>`;  // default reference
+    s+=`<line x1="${cx}" y1="${PPY0}" x2="${cx}" y2="${PPY1}" stroke="#ffcf5c" stroke-opacity="0.2"/>`;
+    s+=`<line x1="${PPX0}" y1="${cy}" x2="${PPX1}" y2="${cy}" stroke="#ffcf5c" stroke-opacity="0.2"/>`;
+    s+=`<circle cx="${cx}" cy="${cy}" r="6" fill="#ffcf5c" stroke="#241c00" stroke-width="1.5" style="cursor:grab"/>`;
+    s+=`<text x="${(PPX0+PPX1)/2}" y="${PADH-3}" fill="#6b7280" font-size="8" text-anchor="middle">bright←→dark</text>`;
+    s+=`<text transform="translate(8,${(PPY0+PPY1)/2}) rotate(-90)" fill="#6b7280" font-size="8" text-anchor="middle">nasality</text>`;
+    v.padSvg.innerHTML=s;
+    v.padValEl.textContent=`${(-6*v.srcExp).toFixed(1)} dB/oct · ${Math.round(v.bwFrac*100)}% bw`;
+  }
+  function setVoiceTimbreFromPad(v,clientX,clientY){
+    const r=v.padSvg.getBoundingClientRect();
+    const px=(clientX-r.left)/r.width*PADW, py=(clientY-r.top)/r.height*PADH;
+    v.srcExp=clamp(TYP_F0+(px-PPX0)/(PPX1-PPX0)*(TYP_F1-TYP_F0), TYP_F0, TYP_F1);
+    v.bwFrac=clamp(TYP_B0+(PPY1-py)/(PPY1-PPY0)*(TYP_B1-TYP_B0), TYP_B0, TYP_B1);
+    drawVoicePad(v);
+    if(ctx&&state.playing&&v.osc&&v.mode==="voice") v.osc.setPeriodicWave(computeWave(v.freq,v.srcExp));
+    drawVoice(v); syncFormants(v);  // rails show new bandwidth; syncFormants re-Qs + re-normalizes
   }
   function updateVoiceHead(v){
     v.pitchEl.textContent = `${Math.round(v.freq)} Hz · ${noteName(v.freq)}`;
@@ -440,7 +630,7 @@
     s+=`<circle cx="${xf}" cy="${AXIS_Y}" r="5" fill="#ffcf5c" stroke="#241c00" stroke-width="1"/>`;
     s+=`<text x="${xf}" y="${AXIS_Y-9}" fill="#ffcf5c" font-size="10" text-anchor="middle">f₀</text>`;
     for(let i=v.formants.length-1;i>=0;i--){
-      const fm=v.formants[i], cy=RAIL_CY[i], B=bwOf(fm);
+      const fm=v.formants[i], cy=RAIL_CY[i], B=bwOf(fm,v.bwFrac);
       const col=fm.on?COLORS[i]:GRAY, txt=fm.on?COLORS[i]:GRAY_TXT;
       const lx=freqToX(fm.F-B/2), mx=freqToX(fm.F), rx=freqToX(fm.F+B/2);
       if(!fm.fixed)
@@ -490,7 +680,7 @@
       const r=12-k*2.2, col=VOICE_COLORS[k];
       s+=`<g data-vdot="${k}" style="cursor:grab">`;
       s+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${col}" fill-opacity="0.5" stroke="${col}" stroke-width="2"/>`;
-      s+=`<text x="${cx}" y="${cy+3.5}" fill="#10131a" font-size="${Math.max(8,Math.round(r-1))}" font-weight="700" text-anchor="middle">${k+1}</text></g>`;
+      s+=`<text x="${cx}" y="${cy+3.5}" fill="#10131a" font-size="${Math.max(8,Math.round(r-1))}" font-weight="700" text-anchor="middle">${VOICE_TAGS[k]}</text></g>`;
     }
     chartSvg.innerHTML=s;
   }
@@ -554,6 +744,8 @@
         drawRails(v); updateVoiceHead(v); syncFormants(v);
       });
       drawSharedChart();
+    } else if(activeDrag.kind==="pad"){
+      setVoiceTimbreFromPad(activeDrag.v, e.clientX, e.clientY);
     } else {
       setFromChart(activeDrag.v, e.clientX, e.clientY);
     }
@@ -563,39 +755,49 @@
   // ============================================================ global timbre controls
   const volEl=document.getElementById("vol");
   const vibEl=document.getElementById("vib"), vibVal=document.getElementById("vibval");
-  const breathEl=document.getElementById("breath"), breathVal=document.getElementById("breathval");
-  const tiltEl=document.getElementById("tilt"), tiltVal=document.getElementById("tiltval");
-  const bwEl=document.getElementById("bw"), bwVal=document.getElementById("bwval");
-  const lpfEl=document.getElementById("lpf"), lpfVal=document.getElementById("lpfval");
-  const lpfFromPos=pos=>200*Math.pow(100,pos/100);
 
   function lab(){
     vibVal.textContent=state.vibCents<=0?"off":`±${state.vibCents}¢`;
-    breathVal.textContent=`${Math.round(state.breath*100)}%`;
-    tiltVal.textContent=`${(-6*state.srcExp).toFixed(1)}dB/oct`;
-    bwVal.textContent=`${Math.round(state.bwFrac*100)}%`;
-    lpfVal.textContent=state.lpfHz>=1000?(state.lpfHz/1000).toFixed(1)+"k":Math.round(state.lpfHz)+"Hz";
   }
   volEl.addEventListener("input",()=>{ state.volume=parseFloat(volEl.value);
     if(ctx&&state.playing) masterOut.gain.setTargetAtTime(state.volume,ctx.currentTime,0.02); });
   vibEl.addEventListener("input",()=>{ state.vibCents=parseFloat(vibEl.value); lab();
     if(ctx) voices.forEach(v=>v.vibDepth&&v.vibDepth.gain.setTargetAtTime(state.vibCents,ctx.currentTime,0.02)); });
-  breathEl.addEventListener("input",()=>{ state.breath=parseFloat(breathEl.value); lab();
-    if(ctx) voices.forEach(v=>v.noiseGain&&v.noiseGain.gain.setTargetAtTime(state.breath,ctx.currentTime,0.02)); });
-  tiltEl.addEventListener("input",()=>{ state.srcExp=parseFloat(tiltEl.value); lab();
-    if(ctx&&state.playing) voices.forEach(v=>{ if(v.osc) v.osc.setPeriodicWave(computeWave(v.freq)); }); });
-  bwEl.addEventListener("input",()=>{ state.bwFrac=parseFloat(bwEl.value); lab();
-    voices.forEach(v=>{ drawVoice(v); syncFormants(v); }); });
-  lpfEl.addEventListener("input",()=>{ state.lpfHz=lpfFromPos(parseFloat(lpfEl.value)); lab();
-    if(ctx) globalLP.frequency.setTargetAtTime(state.lpfHz,ctx.currentTime,0.02); });
+  document.getElementById("waves").addEventListener("click",e=>{
+    const b=e.target.closest("[data-mode]"); if(!b) return;
+    document.querySelectorAll("#waves .wave").forEach(w=>w.classList.toggle("on",w===b));
+    voices.forEach(v=>{ v.mode=b.dataset.mode; applyOscType(v); syncFormants(v); });
+  });
 
   playBtn.addEventListener("click",()=> state.playing?stopAll():playAll());
 
+  // per-voice ±15¢ pitch-bend sliders (to the right of the vowel chart)
+  function buildBends(){
+    const bendsEl=document.getElementById("bends");
+    voices.forEach((v,k)=>{
+      const col=document.createElement("div");
+      col.style.cssText="display:flex;flex-direction:column;align-items:center;gap:6px";
+      col.innerHTML=
+        `<div class="bendval" style="font-size:11px;font-weight:600;color:${VOICE_COLORS[k]};min-height:14px">0¢</div>`+
+        `<input class="bend" type="range" min="-15" max="15" step="0.5" value="0" style="accent-color:${VOICE_COLORS[k]}">`+
+        `<div style="font-size:10px;color:var(--muted);text-transform:capitalize">${VOICE_NAMES[k]}</div>`;
+      const sl=col.querySelector(".bend"), val=col.querySelector(".bendval");
+      const apply=()=>{
+        v.bend=parseFloat(sl.value);
+        val.textContent=`${v.bend>0?"+":""}${v.bend}¢`;
+        if(ctx&&v.osc) v.osc.detune.setTargetAtTime(v.bend,ctx.currentTime,0.03);
+      };
+      sl.addEventListener("input",apply);
+      sl.addEventListener("dblclick",()=>{ sl.value=0; apply(); });
+      bendsEl.appendChild(col);
+    });
+  }
+
   // ============================================================ init
   for(let k=0;k<4;k++) buildVoice(k);
+  buildBends();
   markSel(rootsEl,state.rootIdx);
   markSel(chordsEl,state.chordIdx);
-  state.lpfHz=lpfFromPos(parseFloat(lpfEl.value));
   lab();
   recomputeChord();
   voices.forEach(drawVoice);
