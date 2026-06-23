@@ -1,0 +1,48 @@
+name: Deploy to henryhale.com/tuning
+
+# Any push that touches the apps syncs them into the `landing` repo's
+# tuning/ folder, which GitHub Pages then publishes at henryhale.com/tuning/.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "*.html"
+      - ".github/workflows/deploy-to-site.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-tuning-site
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tuning-playground
+        uses: actions/checkout@v4
+
+      - name: Configure deploy key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new"
+          echo "GIT_SSH_COMMAND=$GIT_SSH_COMMAND" >> "$GITHUB_ENV"
+
+      - name: Sync apps into landing/tuning and push
+        run: |
+          set -euo pipefail
+          git config --global user.name "tuning-playground-bot"
+          git config --global user.email "actions@users.noreply.github.com"
+          git clone git@github.com:henrylhale/landing.git landing
+          mkdir -p landing/tuning
+          rm -f landing/tuning/*.html
+          cp ./*.html landing/tuning/
+          cd landing
+          git add -A tuning
+          if git diff --cached --quiet; then
+            echo "No changes to deploy."
+            exit 0
+          fi
+          git commit -m "Deploy tuning apps from tuning-playground@${GITHUB_SHA::7}"
+          git push origin main
