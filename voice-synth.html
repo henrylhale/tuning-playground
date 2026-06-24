@@ -6,53 +6,73 @@
 <title>Glottal Source + Formants — Voice Synth</title>
 <style>
   :root{
-    --bg:#15171c; --panel:#1d2027; --ink:#e8eaf0; --muted:#9aa0ac;
-    --accent:#ffcf5c; --line:#2a2e38;
+    --case:#bfa97f; --panel:#d9c7a1; --keycap:#e7d8b7; --keycap-hi:#f7eed7; --keycap-edge:#b39868;
+    --display:#171008; --ink:#2c1e0e; --muted:#7d6743; --accent:#e26a10; --accent-deep:#b1500a;
+    --amber:#ffb347; --line:#a98e62; --bezel-hi:#f3e8ce; --bezel-lo:#8f7649;
   }
   *{box-sizing:border-box}
   html{height:100%}
   body{
     min-height:100%; margin:0;
-    background:var(--bg); color:var(--ink);
-    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:radial-gradient(125% 80% at 50% -10%, #cfbb91 0%, var(--case) 60%);
+    color:var(--ink);
+    font:14px/1.5 "Helvetica Neue",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
     display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
-    gap:22px; padding:24px;
+    gap:20px; padding:28px 20px;
   }
-  h1{font-size:18px;font-weight:600;margin:0;letter-spacing:.2px}
-  .sub{color:var(--muted);font-size:12.5px;margin-top:-16px;text-align:center;max-width:560px}
+  h1{font-size:17px;font-weight:800;margin:0;letter-spacing:1.5px;text-transform:uppercase;
+    color:#3a2810; text-shadow:0 1px 0 var(--bezel-hi)}
+  .sub{color:var(--muted);font-size:12.5px;margin-top:-12px;text-align:center;max-width:560px}
   .panel{
-    background:var(--panel); border:1px solid var(--line); border-radius:14px;
-    padding:22px 24px; display:flex; flex-direction:column; gap:18px;
-    width:780px; max-width:calc(100vw - 48px);
+    background:linear-gradient(180deg,#e3d4af,#d2bf98);
+    border:1px solid var(--bezel-lo); border-radius:5px;
+    box-shadow:inset 0 1px 0 var(--bezel-hi), 0 2px 7px rgba(60,40,15,.22);
+    padding:20px 22px; display:flex; flex-direction:column; gap:18px;
+    width:780px; max-width:100%;
   }
-  .toprow{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+  .toprow{display:flex;align-items:center;gap:18px 20px;flex-wrap:wrap}
   .ctl{display:flex;align-items:center;gap:10px}
-  label{color:var(--muted);font-size:12.5px}
+  label{color:var(--muted);font-size:12.5px;font-weight:600}
   select{
-    background:#13151a; color:var(--ink); border:1px solid var(--line);
-    border-radius:8px; padding:7px 10px; font-size:14px;
+    background:linear-gradient(180deg,var(--keycap-hi),var(--keycap));
+    color:var(--ink); border:1px solid var(--bezel-lo); border-radius:4px;
+    padding:7px 10px; font-size:14px; font-weight:600;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.55), 0 1px 2px rgba(60,40,15,.18);
   }
-  input[type=range]{width:140px}
-  button.play{
-    appearance:none; border:1px solid var(--line); cursor:pointer;
-    background:#23262f; color:var(--ink); border-radius:10px;
-    padding:10px 18px; font-size:14px; font-weight:600; margin-left:auto;
-    transition:background .12s,border-color .12s,color .12s;
+  input[type=range]{width:140px; max-width:42vw; accent-color:var(--accent)}
+  button.play,button.wave{
+    appearance:none; cursor:pointer; color:var(--ink); font-family:inherit; font-weight:700;
+    background:linear-gradient(180deg,var(--keycap-hi),var(--keycap) 55%,var(--keycap-edge));
+    border:1px solid var(--bezel-lo); border-radius:4px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.6), 0 2px 0 var(--keycap-edge), 0 3px 5px rgba(60,40,15,.25);
+    transition:transform .06s, box-shadow .06s, filter .1s;
   }
-  button.play:hover{background:#2a2e38}
-  button.play.on{background:var(--accent);color:#241c00;border-color:var(--accent)}
-  .waves{display:flex;gap:6px}
-  button.wave{
-    appearance:none; border:1px solid var(--line); cursor:pointer;
-    background:#13151a; color:var(--muted); border-radius:8px;
-    padding:7px 11px; font-size:12.5px; font-weight:600;
-    transition:background .12s,border-color .12s,color .12s;
+  button.play{padding:10px 18px; font-size:14px; margin-left:auto}
+  button.wave{padding:7px 11px; font-size:12.5px; color:var(--muted)}
+  button.play:hover,button.wave:hover{filter:brightness(1.05)}
+  button.play:active,button.wave:active{transform:translateY(2px);
+    box-shadow:inset 0 2px 4px rgba(60,40,15,.4)}
+  button.play.on,button.wave.on{
+    background:linear-gradient(180deg,#ffbf6f,var(--accent) 60%,var(--accent-deep));
+    color:#2a1400; border-color:var(--accent-deep);
+    box-shadow:inset 0 1px 0 rgba(255,231,195,.6), 0 0 12px rgba(226,106,16,.55), 0 2px 0 var(--accent-deep);
   }
-  button.wave:hover{background:#23262f;color:var(--ink)}
-  button.wave.on{background:#2f3340;color:var(--ink);border-color:var(--accent)}
+  .waves{display:flex;gap:6px;flex-wrap:wrap}
   svg{display:block;width:100%;height:auto;touch-action:none;user-select:none}
+  .screen{
+    background:var(--display); border-radius:3px; padding:6px;
+    box-shadow:inset 0 2px 9px rgba(0,0,0,.6), inset 0 0 0 2px #0e0904, 0 1px 0 var(--bezel-hi);
+  }
+  canvas.screen{padding:0}
   .meta{color:var(--muted);font-size:12px;text-align:center}
-  .meta b{color:var(--ink);font-weight:600}
+  .meta b{color:var(--ink);font-weight:700}
+  @media (max-width:600px){
+    body{padding:16px 10px; gap:14px}
+    .panel{padding:14px 13px; gap:14px}
+    .sub{font-size:12px; margin-top:-8px}
+    .toprow{gap:12px 16px}
+    button.play{margin-left:0}
+  }
 </style>
 </head>
 <body>
@@ -90,7 +110,7 @@
       </div>
     </div>
 
-    <svg id="plot" viewBox="0 0 760 345" preserveAspectRatio="xMidYMid meet"></svg>
+    <svg id="plot" class="screen" viewBox="0 0 760 345" preserveAspectRatio="xMidYMid meet"></svg>
 
     <div class="meta" id="meta">Press Start to hear the buzz.</div>
   </div>
@@ -100,7 +120,7 @@
       <div style="font-weight:600">Vowel chart</div>
       <div style="color:var(--muted);font-size:12px">drag the dot · click a vowel to snap</div>
     </div>
-    <svg id="chart" viewBox="0 0 380 300" preserveAspectRatio="xMidYMid meet"></svg>
+    <svg id="chart" class="screen" viewBox="0 0 380 300" preserveAspectRatio="xMidYMid meet"></svg>
     <div class="meta" id="vmeta"></div>
   </div>
 
@@ -109,7 +129,7 @@
       <div style="font-weight:600">Falloff × bandwidth</div>
       <div id="padval" style="color:var(--ink);font-size:12px">—</div>
     </div>
-    <svg id="pad" viewBox="0 0 360 270" preserveAspectRatio="xMidYMid meet"></svg>
+    <svg id="pad" class="screen" viewBox="0 0 360 270" preserveAspectRatio="xMidYMid meet"></svg>
     <div class="meta">Drag to explore pairs · shaded box ≈ typical sung voice</div>
   </div>
 
@@ -119,11 +139,11 @@
       <div id="cliplbl" style="font-size:12px;color:var(--muted)">level —</div>
     </div>
     <div>
-      <canvas id="scope" width="760" height="150" style="width:100%;height:auto;display:block;background:#13151a;border-radius:8px"></canvas>
+      <canvas id="scope" class="screen" width="760" height="150" style="width:100%;height:auto;display:block;background:#120c06;border-radius:3px"></canvas>
       <div class="meta" style="margin-top:6px">Waveform — peaks flattening at the dashed ±1 lines (and turning red) is clipping</div>
     </div>
     <div>
-      <canvas id="spectrum" width="760" height="150" style="width:100%;height:auto;display:block;background:#13151a;border-radius:8px"></canvas>
+      <canvas id="spectrum" class="screen" width="760" height="150" style="width:100%;height:auto;display:block;background:#120c06;border-radius:3px"></canvas>
       <div class="meta" style="margin-top:6px">Spectrum (log frequency) — peaks are overtones; amber marks show the formant centers</div>
     </div>
   </div>
@@ -146,7 +166,7 @@
 
   // ---------- formant state ----------  index 0 = red (bottom) ... 4 = blue (top)
   const COLORS = ["#e5484d", "#f2870a", "#f5cf3d", "#5dd28f", "#5b9cf2"];
-  const GRAY = "#5b606b", GRAY_TXT = "#7c828e";
+  const GRAY = "#6e5a3a", GRAY_TXT = "#a98a55";
   const formants = [
     { F: 500,  min: 250,  max: 900,  fixed: false, on: true },  // red
     { F: 1500, min: 700,  max: 2300, fixed: false, on: true },  // orange
@@ -206,17 +226,17 @@
   function drawChart() {
     let s = "";
     // plot box
-    s += `<rect x="${CX0}" y="${CY0}" width="${CX1-CX0}" height="${CY1-CY0}" fill="#13151a" stroke="#3a3f4b" stroke-width="1"/>`;
+    s += `<rect x="${CX0}" y="${CY0}" width="${CX1-CX0}" height="${CY1-CY0}" fill="#120c06" stroke="#5a4324" stroke-width="1"/>`;
     // F2 gridlines + bottom ticks
     for (const t of [2200,1800,1400,1000]) {
       const x = cxOfF2(t);
-      s += `<line x1="${x}" y1="${CY0}" x2="${x}" y2="${CY1}" stroke="#262b34" stroke-width="1"/>`;
+      s += `<line x1="${x}" y1="${CY0}" x2="${x}" y2="${CY1}" stroke="#2c2010" stroke-width="1"/>`;
       s += `<text x="${x}" y="${CY1+14}" fill="${GRAY_TXT}" font-size="9.5" text-anchor="middle">${t}</text>`;
     }
     // F1 gridlines + left ticks
     for (const t of [300,400,500,600,700,800]) {
       const y = cyOfF1(t);
-      s += `<line x1="${CX0}" y1="${y}" x2="${CX1}" y2="${y}" stroke="#262b34" stroke-width="1"/>`;
+      s += `<line x1="${CX0}" y1="${y}" x2="${CX1}" y2="${y}" stroke="#2c2010" stroke-width="1"/>`;
       s += `<text x="${CX0-6}" y="${y+3}" fill="${GRAY_TXT}" font-size="9.5" text-anchor="end">${t}</text>`;
     }
     // axis labels
@@ -227,15 +247,15 @@
     for (const v of VOWELS) {
       const cx = cxOfF2(v.f2), cy = cyOfF1(v.f1);
       s += `<g data-vowel="1" data-f1="${v.f1}" data-f2="${v.f2}" style="cursor:pointer">`;
-      s += `<circle cx="${cx}" cy="${cy}" r="3.5" fill="#8b919d"><title>${v.ipa} — ${v.word} (F1 ${v.f1}, F2 ${v.f2})</title></circle>`;
-      s += `<text x="${cx+6}" y="${cy+4}" fill="#c7ccd6" font-size="12" font-weight="600">${v.ipa}</text></g>`;
+      s += `<circle cx="${cx}" cy="${cy}" r="3.5" fill="#9c8154"><title>${v.ipa} — ${v.word} (F1 ${v.f1}, F2 ${v.f2})</title></circle>`;
+      s += `<text x="${cx+6}" y="${cy+4}" fill="#d8c39a" font-size="12" font-weight="600">${v.ipa}</text></g>`;
     }
 
     // current point (driven by F1 = formants[0], F2 = formants[1])
     const f1 = formants[0].F, f2 = formants[1].F;
     const px = cxOfF2(f2), py = cyOfF1(f1);
-    s += `<circle cx="${px}" cy="${py}" r="7.5" fill="#ffcf5c" fill-opacity="0.25" stroke="#ffcf5c" stroke-width="2"/>`;
-    s += `<circle cx="${px}" cy="${py}" r="2.5" fill="#ffcf5c"/>`;
+    s += `<circle cx="${px}" cy="${py}" r="7.5" fill="#ffb347" fill-opacity="0.25" stroke="#ffb347" stroke-width="2"/>`;
+    s += `<circle cx="${px}" cy="${py}" r="2.5" fill="#ffb347"/>`;
 
     chartSvg.innerHTML = s;
     vmetaEl.innerHTML = `F1 <b>${Math.round(f1)}</b> Hz · F2 <b>${Math.round(f2)}</b> Hz`;
@@ -249,10 +269,10 @@
     let s = "";
 
     // frequency axis
-    s += `<line x1="${X0}" y1="${AXIS_Y}" x2="${X1}" y2="${AXIS_Y}" stroke="#3a3f4b" stroke-width="1.5"/>`;
+    s += `<line x1="${X0}" y1="${AXIS_Y}" x2="${X1}" y2="${AXIS_Y}" stroke="#5a4324" stroke-width="1.5"/>`;
     for (const t of [100,200,300,500,700,1000,2000,3000,5000,8000]) {
       const x = freqToX(t);
-      s += `<line x1="${x}" y1="${AXIS_Y-4}" x2="${x}" y2="${AXIS_Y+4}" stroke="#4a505d" stroke-width="1"/>`;
+      s += `<line x1="${x}" y1="${AXIS_Y-4}" x2="${x}" y2="${AXIS_Y+4}" stroke="#6b5128" stroke-width="1"/>`;
       s += `<text x="${x}" y="${LABEL_Y}" fill="${GRAY_TXT}" font-size="10" text-anchor="middle">${fmtHz(t)}</text>`;
     }
     s += `<text x="${X1}" y="${LABEL_Y+13}" fill="${GRAY_TXT}" font-size="9.5" text-anchor="end">Hz (log)</text>`;
@@ -260,9 +280,9 @@
     // fundamental guide + dot
     const f0 = parseFloat(fundEl.value);
     const xf = freqToX(f0);
-    s += `<line x1="${xf}" y1="34" x2="${xf}" y2="${AXIS_Y}" stroke="#ffcf5c" stroke-opacity="0.18" stroke-width="1" stroke-dasharray="3 4"/>`;
-    s += `<circle cx="${xf}" cy="${AXIS_Y}" r="5" fill="${'#ffcf5c'}" stroke="#241c00" stroke-width="1"/>`;
-    s += `<text x="${xf}" y="${AXIS_Y-9}" fill="#ffcf5c" font-size="10" text-anchor="middle">f₀</text>`;
+    s += `<line x1="${xf}" y1="34" x2="${xf}" y2="${AXIS_Y}" stroke="#ffb347" stroke-opacity="0.18" stroke-width="1" stroke-dasharray="3 4"/>`;
+    s += `<circle cx="${xf}" cy="${AXIS_Y}" r="5" fill="${'#ffb347'}" stroke="#2a1400" stroke-width="1"/>`;
+    s += `<text x="${xf}" y="${AXIS_Y-9}" fill="#ffb347" font-size="10" text-anchor="middle">f₀</text>`;
 
     // rails
     for (let i = formants.length - 1; i >= 0; i--) {
@@ -280,8 +300,8 @@
 
       // toggle button (left gutter)
       s += `<g data-toggle="1" data-i="${i}" style="cursor:pointer">`;
-      s += `<rect x="8" y="${cy-15}" width="44" height="30" rx="8" fill="${fm.on ? col : '#23262f'}" stroke="${col}" stroke-width="1.5"/>`;
-      s += `<text x="30" y="${cy+4}" fill="${fm.on ? '#15171c' : txt}" font-size="12" font-weight="700" text-anchor="middle">F${i+1}</text></g>`;
+      s += `<rect x="8" y="${cy-15}" width="44" height="30" rx="8" fill="${fm.on ? col : '#241a0c'}" stroke="${col}" stroke-width="1.5"/>`;
+      s += `<text x="30" y="${cy+4}" fill="${fm.on ? '#120c06' : txt}" font-size="12" font-weight="700" text-anchor="middle">F${i+1}</text></g>`;
 
       // shaded span between whiskers
       s += `<line x1="${lx}" y1="${cy}" x2="${rx}" y2="${cy}" stroke="${col}" stroke-opacity="0.45" stroke-width="7" stroke-linecap="round"/>`;
@@ -293,7 +313,7 @@
       if (fm.fixed) {
         s += `<circle cx="${mx}" cy="${cy-22}" r="6" fill="none" stroke="${col}" stroke-width="2"/>`;
       } else {
-        s += `<circle cx="${mx}" cy="${cy-22}" r="7" fill="${col}" stroke="#15171c" stroke-width="1.5"/>`;
+        s += `<circle cx="${mx}" cy="${cy-22}" r="7" fill="${col}" stroke="#120c06" stroke-width="1.5"/>`;
       }
 
       // label
@@ -578,9 +598,9 @@
     const g = scopeCv.getContext("2d"), W = scopeCv.width, H = scopeCv.height, mid = H / 2, amp = (H / 2) * 0.82;
     analyser.getFloatTimeDomainData(timeBuf);
     g.clearRect(0, 0, W, H);
-    g.strokeStyle = "#2a2e38"; g.lineWidth = 1;
+    g.strokeStyle = "#2c2010"; g.lineWidth = 1;
     g.beginPath(); g.moveTo(0, mid); g.lineTo(W, mid); g.stroke();           // zero line
-    g.strokeStyle = "#4a505d"; g.setLineDash([4, 4]);                        // ±1 (clip threshold)
+    g.strokeStyle = "#6b5128"; g.setLineDash([4, 4]);                        // ±1 (clip threshold)
     g.beginPath(); g.moveTo(0, mid - amp); g.lineTo(W, mid - amp); g.moveTo(0, mid + amp); g.lineTo(W, mid + amp); g.stroke();
     g.setLineDash([]);
     const N = timeBuf.length, step = N / W;
@@ -593,9 +613,9 @@
       x ? g.lineTo(x, y) : g.moveTo(x, y);
     }
     const clipped = peak >= 1.0;
-    g.strokeStyle = clipped ? "#ff5a5a" : "#5dd28f"; g.lineWidth = 1.5; g.stroke();
+    g.strokeStyle = clipped ? "#ff5a4a" : "#ffb347"; g.lineWidth = 1.5; g.stroke();
     clipLbl.textContent = clipped ? `peak ${peak.toFixed(2)} · CLIPPING` : `peak ${peak.toFixed(2)}`;
-    clipLbl.style.color = clipped ? "#ff5a5a" : (peak > 0.85 ? "#f2cf3d" : "var(--muted)");
+    clipLbl.style.color = clipped ? "#ff5a5a" : (peak > 0.85 ? "#ffce54" : "var(--muted)");
   }
   function drawSpectrum() {
     const g = spectrumCv.getContext("2d"), W = spectrumCv.width, H = spectrumCv.height, base = H - 12;
@@ -605,7 +625,7 @@
     const fmin = 50, fmax = Math.min(20000, nyq);
     const lmin = Math.log10(fmin), lspan = Math.log10(fmax) - lmin;
     const xOf = f => (Math.log10(f) - lmin) / lspan * W;
-    g.strokeStyle = "#23272f"; g.fillStyle = "#6b7280"; g.font = "9px sans-serif"; g.textAlign = "center"; g.lineWidth = 1;
+    g.strokeStyle = "#2c2010"; g.fillStyle = "#a07f4c"; g.font = "9px sans-serif"; g.textAlign = "center"; g.lineWidth = 1;
     for (const f of [100, 200, 500, 1000, 2000, 5000, 10000]) {
       if (f > fmax) continue;
       const x = xOf(f);
@@ -615,7 +635,7 @@
     if (oscMode === "voice") for (const fm of formants) {            // formant centers
       if (!fm.on) continue;
       const x = xOf(fm.F);
-      g.strokeStyle = "rgba(255,207,92,0.55)"; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, base); g.stroke();
+      g.strokeStyle = "rgba(255,179,71,0.5)"; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, base); g.stroke();
     }
     g.beginPath();
     for (let x = 0; x < W; x++) {
@@ -624,8 +644,8 @@
       const y = base - v * (base - 4);
       x ? g.lineTo(x, y) : g.moveTo(x, y);
     }
-    g.strokeStyle = "#5b9cf2"; g.lineWidth = 1.5; g.stroke();
-    g.lineTo(W, base); g.lineTo(0, base); g.closePath(); g.fillStyle = "rgba(91,156,242,0.15)"; g.fill();
+    g.strokeStyle = "#ff8a2e"; g.lineWidth = 1.5; g.stroke();
+    g.lineTo(W, base); g.lineTo(0, base); g.closePath(); g.fillStyle = "rgba(255,138,46,0.16)"; g.fill();
   }
 
   // ---------- interaction ----------
@@ -688,27 +708,27 @@
   const padY = b => PAD.Y1 - ((b - PAD.BLO) / (PAD.BHI - PAD.BLO)) * (PAD.Y1 - PAD.Y0);
   function drawPad() {
     let s = "";
-    s += `<rect x="${PAD.X0}" y="${PAD.Y0}" width="${PAD.X1 - PAD.X0}" height="${PAD.Y1 - PAD.Y0}" fill="#13151a" stroke="#3a3f4b" stroke-width="1"/>`;
+    s += `<rect x="${PAD.X0}" y="${PAD.Y0}" width="${PAD.X1 - PAD.X0}" height="${PAD.Y1 - PAD.Y0}" fill="#120c06" stroke="#5a4324" stroke-width="1"/>`;
     // typical sung-voice guide region: falloff ≈ 0.9–1.6 exp, bandwidth ≈ 5–8%
     const gx0 = padX(0.9), gx1 = padX(1.6), gy0 = padY(0.08), gy1 = padY(0.05);
     s += `<rect x="${gx0}" y="${gy0}" width="${gx1 - gx0}" height="${gy1 - gy0}" fill="rgba(93,210,143,0.10)" stroke="rgba(93,210,143,0.55)" stroke-dasharray="3 3" stroke-width="1"/>`;
     s += `<text x="${(gx0 + gx1) / 2}" y="${gy0 - 4}" fill="rgba(93,210,143,0.85)" font-size="9" text-anchor="middle">typical</text>`;
     for (const f of [0, 1, 2, 3]) {
       const x = padX(f);
-      s += `<line x1="${x}" y1="${PAD.Y0}" x2="${x}" y2="${PAD.Y1}" stroke="#262b34" stroke-width="1"/>`;
-      s += `<text x="${x}" y="${PAD.Y1 + 14}" fill="#6b7280" font-size="9.5" text-anchor="middle">${(-6 * f).toFixed(0)}</text>`;
+      s += `<line x1="${x}" y1="${PAD.Y0}" x2="${x}" y2="${PAD.Y1}" stroke="#2c2010" stroke-width="1"/>`;
+      s += `<text x="${x}" y="${PAD.Y1 + 14}" fill="#a07f4c" font-size="9.5" text-anchor="middle">${(-6 * f).toFixed(0)}</text>`;
     }
     for (const b of [0.02, 0.04, 0.06, 0.08, 0.10]) {
       const y = padY(b);
-      s += `<line x1="${PAD.X0}" y1="${y}" x2="${PAD.X1}" y2="${y}" stroke="#262b34" stroke-width="1"/>`;
-      s += `<text x="${PAD.X0 - 6}" y="${y + 3}" fill="#6b7280" font-size="9.5" text-anchor="end">${Math.round(b * 100)}%</text>`;
+      s += `<line x1="${PAD.X0}" y1="${y}" x2="${PAD.X1}" y2="${y}" stroke="#2c2010" stroke-width="1"/>`;
+      s += `<text x="${PAD.X0 - 6}" y="${y + 3}" fill="#a07f4c" font-size="9.5" text-anchor="end">${Math.round(b * 100)}%</text>`;
     }
-    s += `<text x="${(PAD.X0 + PAD.X1) / 2}" y="${PAD.VBH - 4}" fill="#9aa0ac" font-size="10.5" text-anchor="middle">source falloff (dB/oct) · bright ← → dark</text>`;
-    s += `<text transform="translate(12,${(PAD.Y0 + PAD.Y1) / 2}) rotate(-90)" fill="#9aa0ac" font-size="10.5" text-anchor="middle">bandwidth · narrow ↓ wide ↑</text>`;
+    s += `<text x="${(PAD.X0 + PAD.X1) / 2}" y="${PAD.VBH - 4}" fill="#ab8c57" font-size="10.5" text-anchor="middle">source falloff (dB/oct) · bright ← → dark</text>`;
+    s += `<text transform="translate(12,${(PAD.Y0 + PAD.Y1) / 2}) rotate(-90)" fill="#ab8c57" font-size="10.5" text-anchor="middle">bandwidth · narrow ↓ wide ↑</text>`;
     const cx = padX(srcExp), cy = padY(bwFrac);
-    s += `<line x1="${cx}" y1="${PAD.Y0}" x2="${cx}" y2="${PAD.Y1}" stroke="#ffcf5c" stroke-opacity="0.18" stroke-width="1"/>`;
-    s += `<line x1="${PAD.X0}" y1="${cy}" x2="${PAD.X1}" y2="${cy}" stroke="#ffcf5c" stroke-opacity="0.18" stroke-width="1"/>`;
-    s += `<circle cx="${cx}" cy="${cy}" r="8" fill="#ffcf5c" stroke="#241c00" stroke-width="1.5" style="cursor:grab"/>`;
+    s += `<line x1="${cx}" y1="${PAD.Y0}" x2="${cx}" y2="${PAD.Y1}" stroke="#ffb347" stroke-opacity="0.18" stroke-width="1"/>`;
+    s += `<line x1="${PAD.X0}" y1="${cy}" x2="${PAD.X1}" y2="${cy}" stroke="#ffb347" stroke-opacity="0.18" stroke-width="1"/>`;
+    s += `<circle cx="${cx}" cy="${cy}" r="8" fill="#ffb347" stroke="#2a1400" stroke-width="1.5" style="cursor:grab"/>`;
     padSvg.innerHTML = s;
     padValEl.textContent = `${(-6 * srcExp).toFixed(1)} dB/oct · ${Math.round(bwFrac * 100)}% bw`;
   }

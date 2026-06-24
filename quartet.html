@@ -6,73 +6,103 @@
 <title>Barbershop Quartet — JI Voice Synth</title>
 <style>
   :root{
-    --bg:#15171c; --panel:#1d2027; --ink:#e8eaf0; --muted:#9aa0ac;
-    --accent:#ffcf5c; --line:#2a2e38;
+    --case:#bfa97f; --panel:#d9c7a1; --keycap:#e7d8b7; --keycap-hi:#f7eed7; --keycap-edge:#b39868;
+    --display:#171008; --ink:#2c1e0e; --muted:#7d6743; --accent:#e26a10; --accent-deep:#b1500a;
+    --amber:#ffb347; --line:#a98e62; --bezel-hi:#f3e8ce; --bezel-lo:#8f7649;
   }
   *{box-sizing:border-box}
   html,body{margin:0}
   body{
-    background:var(--bg); color:var(--ink);
-    font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:radial-gradient(140% 60% at 50% -10%, #cfbb91, var(--case) 65%);
+    color:var(--ink);
+    font:13px/1.45 "Helvetica Neue",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
     padding:14px; display:flex; flex-direction:column; gap:14px;
   }
-  h3{font-size:11px;font-weight:600;color:var(--muted);margin:0 0 6px;text-transform:uppercase;letter-spacing:.5px}
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
-  label{color:var(--muted);font-size:12px}
-  select{background:#13151a;color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:6px 8px;font-size:13px}
-  input[type=range]{width:120px;vertical-align:middle}
-  input[type=range].bend{ writing-mode:vertical-lr; direction:rtl; width:12px; height:150px; cursor:pointer }
+  h3{font-size:10.5px;font-weight:800;color:var(--muted);margin:0 0 7px;text-transform:uppercase;letter-spacing:1px}
+  .panel{background:linear-gradient(180deg,#e3d4af,#d2bf98);border:1px solid var(--bezel-lo);border-radius:5px;
+    box-shadow:inset 0 1px 0 var(--bezel-hi),0 2px 7px rgba(60,40,15,.2);padding:14px}
+  label{color:var(--muted);font-size:12px;font-weight:600}
+  select{background:linear-gradient(180deg,var(--keycap-hi),var(--keycap));color:var(--ink);border:1px solid var(--bezel-lo);
+    border-radius:4px;padding:6px 8px;font-size:13px;font-weight:600;box-shadow:inset 0 1px 0 rgba(255,255,255,.55)}
+  input[type=range]{width:120px;max-width:46vw;vertical-align:middle;accent-color:var(--accent)}
+  input[type=range].bend{ writing-mode:vertical-lr; direction:rtl; width:14px; height:150px; cursor:pointer }
 
-  .bar{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  .bar{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
   .ctl{display:flex;align-items:center;gap:8px}
-  .val{color:var(--ink);font-size:12px;min-width:30px}
-  button.play{appearance:none;border:1px solid var(--line);cursor:pointer;background:#23262f;color:var(--ink);
-    border-radius:9px;padding:9px 18px;font-size:14px;font-weight:600;transition:.12s}
-  button.play:hover{background:#2a2e38}
-  button.play.on{background:var(--accent);color:#241c00;border-color:var(--accent)}
+  .val{color:var(--ink);font-size:12px;min-width:30px;font-weight:600}
+
+  /* keycaps */
+  button.play,.chip,.mute,.wave,.octbtns button,.toggle{
+    appearance:none;cursor:pointer;color:var(--ink);font-family:inherit;font-weight:700;
+    background:linear-gradient(180deg,var(--keycap-hi),var(--keycap) 55%,var(--keycap-edge));
+    border:1px solid var(--bezel-lo);border-radius:4px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.6),0 2px 0 var(--keycap-edge),0 2px 4px rgba(60,40,15,.22);
+    transition:transform .06s,box-shadow .06s,filter .1s}
+  button.play:hover,.chip:hover,.mute:hover,.wave:hover,.octbtns button:hover,.toggle:hover{filter:brightness(1.05)}
+  button.play:active,.chip:active,.mute:active,.wave:active,.octbtns button:active,.toggle:active{
+    transform:translateY(2px);box-shadow:inset 0 2px 4px rgba(60,40,15,.4)}
+  button.play{padding:9px 18px;font-size:14px}
+  .chip{padding:5px 8px;font-size:12px;min-width:30px;text-align:center}
+  .grid .chip{font-size:11px;padding:6px 4px}
+  .mute{color:var(--muted);padding:4px 9px;font-size:11px}
+  .wave{color:var(--muted);padding:4px 8px;font-size:11px}
+  .octbtns button{width:24px;height:20px;font-size:11px;line-height:1;padding:0}
+  .toggle{padding:5px 11px;font-size:11px}
+  /* lit state */
+  button.play.on,.chip.sel,.wave.on,.toggle.on{
+    background:linear-gradient(180deg,#ffbf6f,var(--accent) 60%,var(--accent-deep));
+    color:#2a1400;border-color:var(--accent-deep);
+    box-shadow:inset 0 1px 0 rgba(255,231,195,.6),0 0 11px rgba(226,106,16,.5),0 2px 0 var(--accent-deep)}
+  .mute.on{background:linear-gradient(180deg,#e98a7a,#c0473a);color:#fff0ec;border-color:#9c3327;
+    box-shadow:inset 0 1px 0 rgba(255,200,190,.5),0 0 9px rgba(192,71,58,.5),0 2px 0 #9c3327}
 
   .selector{display:grid;grid-template-columns:auto auto 1fr auto;gap:14px;align-items:start}
   .sp{min-width:0}
   .btnrow{display:flex;flex-wrap:wrap;gap:4px;max-width:230px}
-  .chip{appearance:none;cursor:pointer;border:1px solid var(--line);background:#23262f;color:var(--ink);
-    border-radius:6px;padding:5px 8px;font-size:12px;min-width:30px;text-align:center}
-  .chip.sel{background:var(--accent);color:#241c00;border-color:var(--accent);font-weight:700}
   .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
-  .grid .chip{font-size:11px;padding:6px 4px}
 
   .vrow{display:flex;gap:10px}
-  .vbox{flex:1;background:#13151a;border:1px solid var(--line);border-radius:9px;padding:8px;
-    display:flex;flex-direction:column;align-items:center;gap:4px;cursor:grab;min-width:0}
+  .vbox{flex:1;background:var(--display);border:1px solid #120c06;border-radius:4px;padding:8px;
+    display:flex;flex-direction:column;align-items:center;gap:4px;cursor:grab;min-width:0;color:#e8d6b0;
+    box-shadow:inset 0 2px 7px rgba(0,0,0,.55),0 1px 0 var(--bezel-hi)}
   .vbox.drag{opacity:.4}
-  .vbox .vnum{font-size:10px;color:var(--muted)}
+  .vbox .vnum{font-size:10px;color:#a98a55;text-transform:capitalize;letter-spacing:.5px}
   .vbox .itv{font-size:18px;font-weight:700}
   .vbox .roles{display:flex;gap:12px;align-items:flex-end}
   .vbox .roles span{display:flex;flex-direction:column;align-items:center;line-height:1.05}
-  .vbox .roles b{font-size:18px;font-weight:700}
-  .vbox .roles i{font-style:normal;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
-  .vbox .note{font-size:11px;color:var(--accent)}
-  .vbox .hz{font-size:10px;color:var(--muted)}
+  .vbox .roles b{font-size:18px;font-weight:700;color:#f3e3bf}
+  .vbox .roles i{font-style:normal;font-size:9px;color:#a98a55;text-transform:uppercase;letter-spacing:.4px}
+  .vbox .note{font-size:11px;color:var(--amber)}
+  .vbox .hz{font-size:10px;color:#a98a55}
   .octbtns{display:flex;gap:4px;margin-top:2px}
-  .octbtns button{appearance:none;cursor:pointer;border:1px solid var(--line);background:#23262f;color:var(--ink);
-    border-radius:5px;width:24px;height:20px;font-size:11px;line-height:1}
-  .octbtns button:hover{background:#2a2e38}
 
-  .voices{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px}
-  .voice{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px}
-  .vhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
-  .vhead .name{font-weight:600}
-  .vhead .pitch{color:var(--accent);font-size:12px}
+  .voices{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(440px,100%),1fr));gap:12px}
+  .voice{background:linear-gradient(180deg,#e3d4af,#d2bf98);border:1px solid var(--bezel-lo);border-radius:5px;
+    box-shadow:inset 0 1px 0 var(--bezel-hi),0 2px 6px rgba(60,40,15,.2);padding:10px}
+  .vhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:8px;flex-wrap:wrap}
+  .vhead .name{font-weight:700}
+  .vhead .pitch{color:var(--accent-deep);font-size:12px;font-weight:600}
   .vhead .f12{color:var(--muted);font-size:11px}
-  .mute{appearance:none;cursor:pointer;border:1px solid var(--line);background:#23262f;color:var(--muted);
-    border-radius:6px;padding:4px 9px;font-size:11px}
-  .mute.on{background:#5a2330;color:#ffb4be;border-color:#7a3140}
-  .waves{display:flex;gap:4px}
-  .wave{appearance:none;cursor:pointer;border:1px solid var(--line);background:#13151a;color:var(--muted);
-    border-radius:6px;padding:4px 8px;font-size:11px;font-weight:600;
-    transition:background .12s,border-color .12s,color .12s}
-  .wave:hover{background:#23262f;color:var(--ink)}
-  .wave.on{background:#2f3340;color:var(--ink);border-color:var(--accent)}
+  .waves{display:flex;gap:4px;flex-wrap:wrap}
   svg{display:block;width:100%;height:auto;touch-action:none;user-select:none}
+  .screen{background:var(--display);border-radius:3px;padding:6px;
+    box-shadow:inset 0 2px 9px rgba(0,0,0,.6),inset 0 0 0 2px #0e0904,0 1px 0 var(--bezel-hi)}
+  canvas.screen{padding:0}
+
+  @media (max-width:760px){
+    .selector{grid-template-columns:1fr 1fr}
+    .btnrow{max-width:none}
+  }
+  @media (max-width:520px){
+    body{padding:10px;gap:10px}
+    .panel{padding:11px}
+    .bar{gap:10px 14px}
+    .selector{grid-template-columns:1fr}
+    .grid{grid-template-columns:repeat(3,1fr)}
+    input[type=range]{width:110px}
+    .vbox{padding:6px}
+    .vbox .roles{gap:8px}
+  }
 </style>
 </head>
 <body>
@@ -105,15 +135,19 @@
       <h3>Chord</h3>
       <div id="chords" class="grid"></div>
     </div>
-    <div class="sp" style="min-width:380px">
+    <div class="sp">
       <h3>Voicing &nbsp;·&nbsp; drag to reorder</h3>
       <div id="voicing" class="vrow"></div>
     </div>
   </div>
 
   <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+      <h3 style="margin:0">Vowel chart &nbsp;·&nbsp; drag a voice</h3>
+      <button id="moveall" class="toggle">move: one voice</button>
+    </div>
     <div style="display:flex;gap:20px;align-items:center;justify-content:center;flex-wrap:wrap">
-      <svg id="chart" viewBox="0 0 380 300" preserveAspectRatio="xMidYMid meet" style="max-width:480px;flex:1;min-width:300px"></svg>
+      <svg id="chart" class="screen" viewBox="0 0 380 300" preserveAspectRatio="xMidYMid meet" style="max-width:480px;flex:1;min-width:200px"></svg>
       <div id="bends" style="display:flex;gap:16px;align-items:flex-end"></div>
     </div>
   </div>
@@ -123,12 +157,12 @@
       <div id="cliplbl" style="font-size:12px;color:var(--muted)">level —</div>
     </div>
     <div style="display:flex;gap:14px;flex-wrap:wrap">
-      <div style="flex:1;min-width:320px">
-        <canvas id="scope" width="1000" height="150" style="width:100%;height:auto;display:block;background:#13151a;border-radius:8px"></canvas>
+      <div style="flex:1;min-width:240px">
+        <canvas id="scope" class="screen" width="1000" height="150" style="width:100%;height:auto;display:block;background:#120c06;border-radius:3px"></canvas>
         <div style="color:var(--muted);font-size:11px;margin-top:5px">Waveform — peaks flattening at the dashed ±1 lines (turning red) is clipping</div>
       </div>
-      <div style="flex:1;min-width:320px">
-        <canvas id="spectrum" width="1000" height="150" style="width:100%;height:auto;display:block;background:#13151a;border-radius:8px"></canvas>
+      <div style="flex:1;min-width:240px">
+        <canvas id="spectrum" class="screen" width="1000" height="150" style="width:100%;height:auto;display:block;background:#120c06;border-radius:3px"></canvas>
         <div style="color:var(--muted);font-size:11px;margin-top:5px">Spectrum (log frequency) — peaks are the overtones of the four voices combined</div>
       </div>
     </div>
@@ -181,7 +215,7 @@
   const VOICE_COLORS = ["#ff6f91","#ffd166","#06d6a0","#4d96ff"]; // bass, bari, lead, tenor (L→R)
   const VOICE_NAMES = ["bass","bari","lead","tenor"];             // L→R = synths 1..4
   const VOICE_TAGS  = ["Bs","Br","L","T"];                        // short tags for the vowel-chart dots
-  const GRAY="#5b606b", GRAY_TXT="#7c828e";
+  const GRAY="#6e5a3a", GRAY_TXT="#a98a55";
   const DEFAULT_FORMANTS = [
     {F:500, min:250, max:900, fixed:false, on:true},
     {F:1500,min:700, max:2300,fixed:false, on:true},
@@ -218,6 +252,7 @@
     // global timbre (falloff & bandwidth are per-voice)
     vibCents:3, volume:0.45,
     playing:false,
+    moveAll:false,           // when on, dragging any vowel moves all four together (mobile-friendly ⌘-drag)
   };
   const DEFAULT_SRCEXP=1.2, DEFAULT_BWFRAC=0.06;
   // typical ranges for the per-voice falloff × bandwidth pads (axes limited to realistic values)
@@ -395,9 +430,9 @@
     const g=scopeCv.getContext("2d"), W=scopeCv.width, H=scopeCv.height, mid=H/2, amp=(H/2)*0.82;
     analyser.getFloatTimeDomainData(timeBuf);
     g.clearRect(0,0,W,H);
-    g.strokeStyle="#2a2e38"; g.lineWidth=1;
+    g.strokeStyle="#2c2010"; g.lineWidth=1;
     g.beginPath(); g.moveTo(0,mid); g.lineTo(W,mid); g.stroke();
-    g.strokeStyle="#4a505d"; g.setLineDash([4,4]);
+    g.strokeStyle="#6b5128"; g.setLineDash([4,4]);
     g.beginPath(); g.moveTo(0,mid-amp); g.lineTo(W,mid-amp); g.moveTo(0,mid+amp); g.lineTo(W,mid+amp); g.stroke();
     g.setLineDash([]);
     const N=timeBuf.length, step=N/W; let peak=0;
@@ -409,9 +444,9 @@
       x?g.lineTo(x,y):g.moveTo(x,y);
     }
     const clipped=peak>=1.0;
-    g.strokeStyle=clipped?"#ff5a5a":"#5dd28f"; g.lineWidth=1.5; g.stroke();
+    g.strokeStyle=clipped?"#ff5a4a":"#ffb347"; g.lineWidth=1.5; g.stroke();
     clipLbl.textContent=clipped?`peak ${peak.toFixed(2)} · CLIPPING`:`peak ${peak.toFixed(2)}`;
-    clipLbl.style.color=clipped?"#ff5a5a":(peak>0.85?"#f2cf3d":"var(--muted)");
+    clipLbl.style.color=clipped?"#ff5a5a":(peak>0.85?"#ffce54":"var(--muted)");
   }
   function drawSpectrum(){
     const g=spectrumCv.getContext("2d"), W=spectrumCv.width, H=spectrumCv.height, base=H-12;
@@ -421,7 +456,7 @@
     const fmin=50, fmax=Math.min(20000,nyq);
     const lmin=Math.log10(fmin), lspan=Math.log10(fmax)-lmin;
     const xOf=f=>(Math.log10(f)-lmin)/lspan*W;
-    g.strokeStyle="#23272f"; g.fillStyle="#6b7280"; g.font="9px sans-serif"; g.textAlign="center"; g.lineWidth=1;
+    g.strokeStyle="#2c2010"; g.fillStyle="#a07f4c"; g.font="9px sans-serif"; g.textAlign="center"; g.lineWidth=1;
     for(const f of [100,200,500,1000,2000,5000,10000]){
       if(f>fmax) continue;
       const x=xOf(f);
@@ -435,8 +470,8 @@
       const y=base-v*(base-4);
       x?g.lineTo(x,y):g.moveTo(x,y);
     }
-    g.strokeStyle="#5b9cf2"; g.lineWidth=1.5; g.stroke();
-    g.lineTo(W,base); g.lineTo(0,base); g.closePath(); g.fillStyle="rgba(91,156,242,0.15)"; g.fill();
+    g.strokeStyle="#ff8a2e"; g.lineWidth=1.5; g.stroke();
+    g.lineTo(W,base); g.lineTo(0,base); g.closePath(); g.fillStyle="rgba(255,138,46,0.16)"; g.fill();
   }
 
   // ============================================================ pitch logic
@@ -566,7 +601,7 @@
         `<svg class="vpad" viewBox="0 0 ${PADW} ${PADH}" style="width:${PADW}px;height:${PADH}px;flex:none"></svg>`+
         `<div style="font-size:11px;color:var(--muted)"><span class="vtimbreval" style="color:var(--ink)"></span></div>`+
       `</div>`+
-      `<svg class="rails" viewBox="0 0 760 345" preserveAspectRatio="xMidYMid meet"></svg>`;
+      `<svg class="rails screen" viewBox="0 0 760 345" preserveAspectRatio="xMidYMid meet"></svg>`;
     voicesEl.appendChild(panel);
     v.railsSvg=panel.querySelector(".rails");
     v.pitchEl=panel.querySelector(".pitch");
@@ -593,13 +628,13 @@
   function drawVoicePad(v){
     const cx=padX(v.srcExp), cy=padY(v.bwFrac), dx=padX(DEFAULT_SRCEXP), dy=padY(DEFAULT_BWFRAC);
     let s="";
-    s+=`<rect x="${PPX0}" y="${PPY0}" width="${PPX1-PPX0}" height="${PPY1-PPY0}" fill="#13151a" stroke="#3a3f4b" stroke-width="1"/>`;
+    s+=`<rect x="${PPX0}" y="${PPY0}" width="${PPX1-PPX0}" height="${PPY1-PPY0}" fill="#120c06" stroke="#5a4324" stroke-width="1"/>`;
     s+=`<circle cx="${dx}" cy="${dy}" r="3" fill="none" stroke="#5dd28f" stroke-width="1" stroke-dasharray="2 2"/>`;  // default reference
-    s+=`<line x1="${cx}" y1="${PPY0}" x2="${cx}" y2="${PPY1}" stroke="#ffcf5c" stroke-opacity="0.2"/>`;
-    s+=`<line x1="${PPX0}" y1="${cy}" x2="${PPX1}" y2="${cy}" stroke="#ffcf5c" stroke-opacity="0.2"/>`;
-    s+=`<circle cx="${cx}" cy="${cy}" r="6" fill="#ffcf5c" stroke="#241c00" stroke-width="1.5" style="cursor:grab"/>`;
-    s+=`<text x="${(PPX0+PPX1)/2}" y="${PADH-3}" fill="#6b7280" font-size="8" text-anchor="middle">bright←→dark</text>`;
-    s+=`<text transform="translate(8,${(PPY0+PPY1)/2}) rotate(-90)" fill="#6b7280" font-size="8" text-anchor="middle">nasality</text>`;
+    s+=`<line x1="${cx}" y1="${PPY0}" x2="${cx}" y2="${PPY1}" stroke="#ffb347" stroke-opacity="0.2"/>`;
+    s+=`<line x1="${PPX0}" y1="${cy}" x2="${PPX1}" y2="${cy}" stroke="#ffb347" stroke-opacity="0.2"/>`;
+    s+=`<circle cx="${cx}" cy="${cy}" r="6" fill="#ffb347" stroke="#2a1400" stroke-width="1.5" style="cursor:grab"/>`;
+    s+=`<text x="${(PPX0+PPX1)/2}" y="${PADH-3}" fill="#a07f4c" font-size="8" text-anchor="middle">bright←→dark</text>`;
+    s+=`<text transform="translate(8,${(PPY0+PPY1)/2}) rotate(-90)" fill="#a07f4c" font-size="8" text-anchor="middle">nasality</text>`;
     v.padSvg.innerHTML=s;
     v.padValEl.textContent=`${(-6*v.srcExp).toFixed(1)} dB/oct · ${Math.round(v.bwFrac*100)}% bw`;
   }
@@ -619,16 +654,16 @@
 
   function drawRails(v){
     let s="";
-    s+=`<line x1="${X0}" y1="${AXIS_Y}" x2="${X1}" y2="${AXIS_Y}" stroke="#3a3f4b" stroke-width="1.5"/>`;
+    s+=`<line x1="${X0}" y1="${AXIS_Y}" x2="${X1}" y2="${AXIS_Y}" stroke="#5a4324" stroke-width="1.5"/>`;
     for(const t of [100,200,300,500,700,1000,2000,3000,5000,8000]){
       const x=freqToX(t);
-      s+=`<line x1="${x}" y1="${AXIS_Y-4}" x2="${x}" y2="${AXIS_Y+4}" stroke="#4a505d" stroke-width="1"/>`;
+      s+=`<line x1="${x}" y1="${AXIS_Y-4}" x2="${x}" y2="${AXIS_Y+4}" stroke="#6b5128" stroke-width="1"/>`;
       s+=`<text x="${x}" y="${LABEL_Y}" fill="${GRAY_TXT}" font-size="10" text-anchor="middle">${fmtHz(t)}</text>`;
     }
     const xf=freqToX(v.freq);
-    s+=`<line x1="${xf}" y1="34" x2="${xf}" y2="${AXIS_Y}" stroke="#ffcf5c" stroke-opacity="0.18" stroke-width="1" stroke-dasharray="3 4"/>`;
-    s+=`<circle cx="${xf}" cy="${AXIS_Y}" r="5" fill="#ffcf5c" stroke="#241c00" stroke-width="1"/>`;
-    s+=`<text x="${xf}" y="${AXIS_Y-9}" fill="#ffcf5c" font-size="10" text-anchor="middle">f₀</text>`;
+    s+=`<line x1="${xf}" y1="34" x2="${xf}" y2="${AXIS_Y}" stroke="#ffb347" stroke-opacity="0.18" stroke-width="1" stroke-dasharray="3 4"/>`;
+    s+=`<circle cx="${xf}" cy="${AXIS_Y}" r="5" fill="#ffb347" stroke="#2a1400" stroke-width="1"/>`;
+    s+=`<text x="${xf}" y="${AXIS_Y-9}" fill="#ffb347" font-size="10" text-anchor="middle">f₀</text>`;
     for(let i=v.formants.length-1;i>=0;i--){
       const fm=v.formants[i], cy=RAIL_CY[i], B=bwOf(fm,v.bwFrac);
       const col=fm.on?COLORS[i]:GRAY, txt=fm.on?COLORS[i]:GRAY_TXT;
@@ -636,15 +671,15 @@
       if(!fm.fixed)
         s+=`<line x1="${freqToX(fm.min)}" y1="${cy+17}" x2="${freqToX(fm.max)}" y2="${cy+17}" stroke="${col}" stroke-opacity="0.25" stroke-width="1.5" stroke-dasharray="2 3"/>`;
       s+=`<g data-toggle="1" data-i="${i}" style="cursor:pointer">`;
-      s+=`<rect x="8" y="${cy-15}" width="44" height="30" rx="8" fill="${fm.on?col:'#23262f'}" stroke="${col}" stroke-width="1.5"/>`;
-      s+=`<text x="30" y="${cy+4}" fill="${fm.on?'#15171c':txt}" font-size="12" font-weight="700" text-anchor="middle">F${i+1}</text></g>`;
+      s+=`<rect x="8" y="${cy-15}" width="44" height="30" rx="8" fill="${fm.on?col:'#241a0c'}" stroke="${col}" stroke-width="1.5"/>`;
+      s+=`<text x="30" y="${cy+4}" fill="${fm.on?'#120c06':txt}" font-size="12" font-weight="700" text-anchor="middle">F${i+1}</text></g>`;
       s+=`<line x1="${lx}" y1="${cy}" x2="${rx}" y2="${cy}" stroke="${col}" stroke-opacity="0.45" stroke-width="7" stroke-linecap="round"/>`;
       s+=`<line x1="${lx}" y1="${cy-12}" x2="${lx}" y2="${cy+12}" stroke="${col}" stroke-width="2"/>`;
       s+=`<line x1="${rx}" y1="${cy-12}" x2="${rx}" y2="${cy+12}" stroke="${col}" stroke-width="2"/>`;
       s+=`<line x1="${mx}" y1="${cy-20}" x2="${mx}" y2="${cy+20}" stroke="${col}" stroke-width="2.5"/>`;
       s+= fm.fixed
         ? `<circle cx="${mx}" cy="${cy-22}" r="6" fill="none" stroke="${col}" stroke-width="2"/>`
-        : `<circle cx="${mx}" cy="${cy-22}" r="7" fill="${col}" stroke="#15171c" stroke-width="1.5"/>`;
+        : `<circle cx="${mx}" cy="${cy-22}" r="7" fill="${col}" stroke="#120c06" stroke-width="1.5"/>`;
       s+=`<text x="${X1}" y="${cy-22}" fill="${txt}" font-size="10.5" text-anchor="end">F=${Math.round(fm.F)}${fm.fixed?" (fixed)":""}  B=${Math.round(B)}</text>`;
       if(!fm.fixed)
         s+=`<rect data-handle="1" data-i="${i}" data-type="median" x="${mx-10}" y="${cy-32}" width="20" height="56" fill="transparent" style="cursor:ew-resize"/>`;
@@ -654,24 +689,24 @@
 
   function drawSharedChart(){
     let s="";
-    s+=`<rect x="${CX0}" y="${CY0}" width="${CX1-CX0}" height="${CY1-CY0}" fill="#13151a" stroke="#3a3f4b" stroke-width="1"/>`;
+    s+=`<rect x="${CX0}" y="${CY0}" width="${CX1-CX0}" height="${CY1-CY0}" fill="#120c06" stroke="#5a4324" stroke-width="1"/>`;
     for(const t of [2200,1800,1400,1000]){
       const x=cxOfF2(t);
-      s+=`<line x1="${x}" y1="${CY0}" x2="${x}" y2="${CY1}" stroke="#262b34" stroke-width="1"/>`;
+      s+=`<line x1="${x}" y1="${CY0}" x2="${x}" y2="${CY1}" stroke="#2c2010" stroke-width="1"/>`;
       s+=`<text x="${x}" y="${CY1+14}" fill="${GRAY_TXT}" font-size="9.5" text-anchor="middle">${t}</text>`;
     }
     for(const t of [300,400,500,600,700,800]){
       const y=cyOfF1(t);
-      s+=`<line x1="${CX0}" y1="${y}" x2="${CX1}" y2="${y}" stroke="#262b34" stroke-width="1"/>`;
+      s+=`<line x1="${CX0}" y1="${y}" x2="${CX1}" y2="${y}" stroke="#2c2010" stroke-width="1"/>`;
       s+=`<text x="${CX0-6}" y="${y+3}" fill="${GRAY_TXT}" font-size="9.5" text-anchor="end">${t}</text>`;
     }
-    s+=`<text x="${(CX0+CX1)/2}" y="${CY0-6}" fill="#9aa0ac" font-size="10.5" text-anchor="middle">F2 — front ← → back</text>`;
-    s+=`<text transform="translate(13,${(CY0+CY1)/2}) rotate(-90)" fill="#9aa0ac" font-size="10.5" text-anchor="middle">F1 — close ↑ open ↓</text>`;
+    s+=`<text x="${(CX0+CX1)/2}" y="${CY0-6}" fill="#ab8c57" font-size="10.5" text-anchor="middle">F2 — front ← → back</text>`;
+    s+=`<text transform="translate(13,${(CY0+CY1)/2}) rotate(-90)" fill="#ab8c57" font-size="10.5" text-anchor="middle">F1 — close ↑ open ↓</text>`;
     // static reference vowels
     for(const vw of VOWELS){
       const cx=cxOfF2(vw.f2), cy=cyOfF1(vw.f1);
-      s+=`<circle cx="${cx}" cy="${cy}" r="3" fill="#6b7280"/>`;
-      s+=`<text x="${cx+5}" y="${cy+4}" fill="#aab0bb" font-size="11">${vw.ipa}</text>`;
+      s+=`<circle cx="${cx}" cy="${cy}" r="3" fill="#a07f4c"/>`;
+      s+=`<text x="${cx+5}" y="${cy+4}" fill="#c9b78f" font-size="11">${vw.ipa}</text>`;
     }
     // voice dots: size locked to voice index (voice 1 biggest), drawn back-to-front so every dot stays grabbable
     for(let k=0;k<voices.length;k++){
@@ -680,7 +715,7 @@
       const r=12-k*2.2, col=VOICE_COLORS[k];
       s+=`<g data-vdot="${k}" style="cursor:grab">`;
       s+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${col}" fill-opacity="0.5" stroke="${col}" stroke-width="2"/>`;
-      s+=`<text x="${cx}" y="${cy+3.5}" fill="#10131a" font-size="${Math.max(8,Math.round(r-1))}" font-weight="700" text-anchor="middle">${VOICE_TAGS[k]}</text></g>`;
+      s+=`<text x="${cx}" y="${cy+3.5}" fill="#120c06" font-size="${Math.max(8,Math.round(r-1))}" font-weight="700" text-anchor="middle">${VOICE_TAGS[k]}</text></g>`;
     }
     chartSvg.innerHTML=s;
   }
@@ -716,8 +751,8 @@
   chartSvg.addEventListener("pointerdown",e=>{
     const dot=e.target.closest("[data-vdot]");
     if(!dot) return;
-    if(e.metaKey||e.ctrlKey){
-      // ⌘/Ctrl-click: the following drag shifts all four voices together (preserving their spread)
+    if(e.metaKey||e.ctrlKey||state.moveAll){
+      // ⌘/Ctrl-click (or the "move: all" toggle): the following drag shifts all four voices together (preserving their spread)
       const st=chartToF(e.clientX,e.clientY);
       activeDrag={kind:"chartAll", startF1:st.f1, startF2:st.f2,
         base:voices.map(v=>({f1:v.formants[0].F, f2:v.formants[1].F}))};
@@ -770,6 +805,14 @@
   });
 
   playBtn.addEventListener("click",()=> state.playing?stopAll():playAll());
+
+  // move-one / move-all toggle (lets touch users drag all vowels in unison without a modifier key)
+  const moveAllBtn=document.getElementById("moveall");
+  moveAllBtn.addEventListener("click",()=>{
+    state.moveAll=!state.moveAll;
+    moveAllBtn.classList.toggle("on",state.moveAll);
+    moveAllBtn.textContent=state.moveAll?"move: all voices":"move: one voice";
+  });
 
   // per-voice ±15¢ pitch-bend sliders (to the right of the vowel chart)
   function buildBends(){
