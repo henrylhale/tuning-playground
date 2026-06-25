@@ -111,8 +111,11 @@
 
   <div class="panel bar">
     <button id="play" class="play">▶ Play quartet</button>
+    <div class="ctl"><label>Tuning</label><button id="tuning" class="toggle on" title="Swap between just intonation and 12-tone equal temperament (chord root pinned)">Just</button></div>
     <div class="ctl"><label>Volume</label><input id="vol" type="range" min="0" max="1" step="0.01" value="0.45"></div>
     <div class="ctl"><label>Vibrato</label><input id="vib" type="range" min="0" max="8" step="0.5" value="3"><span id="vibval" class="val"></span></div>
+    <div class="ctl"><label title="random cycle-to-cycle pitch wobble">Jitter</label><input id="jit" type="range" min="0" max="15" step="0.5" value="4"><span id="jitval" class="val"></span></div>
+    <div class="ctl"><label title="random amplitude wobble">Shimmer</label><input id="shim" type="range" min="0" max="0.2" step="0.005" value="0.04"><span id="shimval" class="val"></span></div>
     <div class="ctl"><label>Source</label>
       <div class="waves" id="waves">
         <button class="wave on" data-mode="voice">Voice</button>
@@ -165,7 +168,11 @@
       </div>
       <div style="flex:1;min-width:240px">
         <canvas id="spectrum" class="screen" width="1000" height="150" style="width:100%;height:auto;display:block;background:#120c06;border-radius:3px"></canvas>
-        <div style="color:var(--muted);font-size:11px;margin-top:5px">Spectrum (log frequency) — peaks are the overtones of the four voices combined</div>
+        <div style="color:var(--muted);font-size:11px;margin-top:5px">Spectrum (log frequency) — peaks are the combined overtones; red lines mark the implied fundamental and its harmonics. In just intonation peaks land on the lines; in 12-ET they drift off</div>
+      </div>
+      <div style="flex:1;min-width:240px">
+        <canvas id="auto" class="screen" width="1000" height="150" style="width:100%;height:auto;display:block;background:#120c06;border-radius:3px"></canvas>
+        <div style="color:var(--muted);font-size:11px;margin-top:5px">Autocorrelation (lag/time) — a tall peak at the red line (the implied fundamental's period) means the chord locks into one periodic tone. That lock is the "ring"</div>
       </div>
     </div>
   </div>
@@ -178,6 +185,10 @@
   const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
   const rval = s => { const [n,d]=s.split("/").map(Number); return n/d; };
   const octRed = v => { while(v>=2)v/=2; while(v<1)v*=2; return v; };
+  const gcd = (a,b)=>{ a=Math.abs(a); b=Math.abs(b); while(b){ [a,b]=[b,a%b]; } return a; };
+  const lcm = (a,b)=> a/gcd(a,b)*b;
+  // nearest 12-tone-equal-tempered interval to a just ratio (used by the JI↔ET toggle)
+  const etOf = ratio => Math.pow(2, Math.round(12*Math.log2(ratio))/12);
   const NOTE_NAMES = ["C","C♯","D","D♯","E","F","F♯","G","G♯","A","A♯","B"];
   const midiToFreq = m => 440*Math.pow(2,(m-69)/12);
   function noteName(f){
@@ -252,9 +263,11 @@
     voicing: [],             // [{tone, octave}] left->right
     absPcs: [],              // pitch classes (rel key center) per chord tone
     // global timbre (falloff & bandwidth are per-voice)
-    vibCents:3, volume:0.45,
+    vibCents:3, jitterCents:4, shimmer:0.04, volume:0.45,
     playing:false,
     moveAll:false,           // when on, dragging any vowel moves all four together (mobile-friendly ⌘-drag)
+    et:false,                // false = just intonation, true = 12-tone equal temperament (chord root pinned)
+    fundHz:null,             // implied (JI-ideal) fundamental of the current chord, in Hz
   };
   const DEFAULT_SRCEXP=1.2, DEFAULT_BWFRAC=0.06;
   // typical ranges for the per-voice falloff × bandwidth pads (axes limited to realistic values)
@@ -264,11 +277,11 @@
   const padY=b=>PPY1-(b-TYP_B0)/(TYP_B1-TYP_B0)*(PPY1-PPY0);
   const bwOf = (fm,bwFrac) => Math.max(60, fm.F*bwFrac);
   const HEARING_TOP=20000;
-  const VIB_RATE=5.5, JITTER_CENTS=4, SHIMMER=0.04, FORMANT_LEVEL=0.8;
+  const VIB_RATE=5.5, FORMANT_LEVEL=0.8;   // jitter (random pitch) & shimmer (random amplitude) are in state
 
   // ============================================================ audio
   let ctx=null, masterOut=null, masterBus=null, humanTimer=null;
-  let analyser=null, scopeRAF=null, timeBuf=null, freqBuf=null;
+  let analyser=null, scopeRAF=null, timeBuf=null, freqBuf=null, acBuf=null;
   const voices=[];   // each: {formants, freq, muted, srcExp, bwFrac, nodes..., railsSvg, els...}
 
   function computeWave(f0,srcExp){
@@ -367,8 +380,8 @@
     const now=ctx.currentTime;
     voices.forEach(v=>{
       if(!v.osc) return;
-      v.osc.detune.setTargetAtTime(v.bend + (Math.random()*2-1)*JITTER_CENTS, now, 0.05);
-      const target = v.muted?0:v.level*(1+(Math.random()*2-1)*SHIMMER);
+      v.osc.detune.setTargetAtTime(v.bend + (Math.random()*2-1)*state.jitterCents, now, 0.05);
+      const target = v.muted?0:v.level*(1+(Math.random()*2-1)*state.shimmer);
       v.voiceGain.gain.setTargetAtTime(Math.max(0,target), now, 0.06);
     });
   }
@@ -412,13 +425,13 @@
   }
 
   // ---------- output visualization (live, from the analyser tap on the final mix) ----------
-  const scopeCv=document.getElementById("scope"), spectrumCv=document.getElementById("spectrum");
+  const scopeCv=document.getElementById("scope"), spectrumCv=document.getElementById("spectrum"), autoCv=document.getElementById("auto");
   const clipLbl=document.getElementById("cliplbl");
   function startScope(){
     if(!analyser||scopeRAF) return;
     timeBuf=new Float32Array(analyser.fftSize);
     freqBuf=new Uint8Array(analyser.frequencyBinCount);
-    const frame=()=>{ scopeRAF=requestAnimationFrame(frame); drawWave(); drawSpectrum(); };
+    const frame=()=>{ scopeRAF=requestAnimationFrame(frame); drawWave(); drawSpectrum(); drawAuto(); };
     frame();
   }
   function stopScope(){
@@ -426,6 +439,7 @@
     scopeRAF=null;
     scopeCv.getContext("2d").clearRect(0,0,scopeCv.width,scopeCv.height);
     spectrumCv.getContext("2d").clearRect(0,0,spectrumCv.width,spectrumCv.height);
+    autoCv.getContext("2d").clearRect(0,0,autoCv.width,autoCv.height);
     clipLbl.textContent="level —"; clipLbl.style.color="var(--muted)";
   }
   function drawWave(){
@@ -455,7 +469,7 @@
     analyser.getByteFrequencyData(freqBuf);
     g.clearRect(0,0,W,H);
     const bins=freqBuf.length, nyq=ctx.sampleRate/2;
-    const fmin=50, fmax=Math.min(20000,nyq);
+    const fmin=30, fmax=Math.min(20000,nyq);
     const lmin=Math.log10(fmin), lspan=Math.log10(fmax)-lmin;
     const xOf=f=>(Math.log10(f)-lmin)/lspan*W;
     g.strokeStyle="#2c2010"; g.fillStyle="#a07f4c"; g.font="9px sans-serif"; g.textAlign="center"; g.lineWidth=1;
@@ -474,16 +488,108 @@
     }
     g.strokeStyle="#ff8a2e"; g.lineWidth=1.5; g.stroke();
     g.lineTo(W,base); g.lineTo(0,base); g.closePath(); g.fillStyle="rgba(255,138,46,0.16)"; g.fill();
+    // red comb: the implied fundamental and its harmonic series
+    const f0=state.fundHz;
+    if(f0&&f0>0){
+      const MAIN="rgba(255,74,74,0.95)", OTH="rgba(255,74,74,0.6)";
+      let lastx=-10;
+      for(let k=1;k*f0<=fmax;k++){
+        const fk=k*f0; if(fk<fmin) continue;
+        const x=xOf(fk);
+        if(x-lastx<3) continue; lastx=x;            // skip lines that would visually merge at the top end
+        g.strokeStyle=k===1?MAIN:OTH;
+        g.lineWidth=k===1?1.6:1;
+        g.beginPath(); g.moveTo(x,0); g.lineTo(x,base); g.stroke();
+      }
+      g.fillStyle="#ff8a8a"; g.font="9px sans-serif"; g.textAlign="left";
+      g.fillText(`f₀ ${f0.toFixed(0)} Hz`, clamp(xOf(f0)+3,2,W-58), 10);
+    }
+  }
+  function drawAuto(){
+    const g=autoCv.getContext("2d"), W=autoCv.width, H=autoCv.height, mid=H/2;
+    g.clearRect(0,0,W,H);
+    const x=timeBuf, N=x.length, sr=ctx.sampleRate;
+    const maxLag=Math.min(2000,N-1), minLag=8;                    // minLag>0 for the log axis (~6 kHz)
+    const lr=Math.log(maxLag/minLag);
+    const lagToX=lag=>Math.log(lag/minLag)/lr*W;                  // log-spaced lag/time axis
+    const xToLag=px=>minLag*Math.exp(px/W*lr);
+    g.strokeStyle="#2c2010"; g.lineWidth=1;
+    g.beginPath(); g.moveTo(0,mid); g.lineTo(W,mid); g.stroke();   // zero line
+    let r0=0; for(let n=0;n<N;n+=2) r0+=x[n]*x[n];                 // stride 2 — plenty for a smooth viz
+    if(r0<1e-6) return;                                            // silence
+    if(!acBuf||acBuf.length<maxLag+1) acBuf=new Float32Array(maxLag+1);
+    for(let lag=0;lag<=maxLag;lag++){
+      let s=0; const M=N-lag;
+      for(let n=0;n<M;n+=2) s+=x[n]*x[n+lag];
+      acBuf[lag]=s/r0;                                             // biased, normalized autocorrelation
+    }
+    g.beginPath();
+    for(let px=0;px<=W;px++){
+      const lag=clamp(Math.round(xToLag(px)),0,maxLag);
+      const py=mid-acBuf[lag]*(mid*0.9);
+      px?g.lineTo(px,py):g.moveTo(px,py);
+    }
+    g.strokeStyle="#ffb347"; g.lineWidth=1.5; g.stroke();
+    // red lines at the fundamental period, its repeats, and the overtone periods (T/n)
+    const f0=state.fundHz;
+    if(f0&&f0>0){
+      const T=sr/f0, MAIN="rgba(255,74,74,0.95)", OTH="rgba(255,74,74,0.6)";
+      // overtone periods: the nth harmonic repeats every T/n (smaller lags, to the left on the log axis)
+      g.strokeStyle=OTH; g.lineWidth=1;
+      for(let n=2;n<=32;n++){
+        const lag=T/n; if(lag<minLag) break;
+        const px=lagToX(lag);
+        g.beginPath(); g.moveTo(px,0); g.lineTo(px,H); g.stroke();
+      }
+      // fundamental period and its repeats (the big peaks)
+      for(let k=1;k*T<=maxLag;k++){
+        const lag=k*T; if(lag<minLag) continue;
+        const px=lagToX(lag);
+        g.strokeStyle=k===1?MAIN:OTH;
+        g.lineWidth=k===1?1.6:1;
+        g.beginPath(); g.moveTo(px,0); g.lineTo(px,H); g.stroke();
+      }
+      g.fillStyle="#ff8a8a"; g.font="9px sans-serif"; g.textAlign="left";
+      g.fillText(`1/f₀ ${(1000/f0).toFixed(1)} ms · ${f0.toFixed(1)} Hz`, clamp(lagToX(T)+3,2,W-150), 11);
+    }
+    g.fillStyle="#a07f4c"; g.font="9px sans-serif"; g.textAlign="center";
+    for(const ms of [0.5,1,2,5,10,20,40]){
+      const lag=ms/1000*sr; if(lag<minLag||lag>maxLag) continue;
+      g.fillText(ms+"ms", clamp(lagToX(lag),12,W-12), H-2);
+    }
   }
 
   // ============================================================ pitch logic
+  // a chord tone's value relative to the chord root — just, or snapped to 12-ET
+  const chordToneVal = t => { const r=rval(t); return state.et ? etOf(r) : r; };
+  function computeAbsPcs(){
+    const root=rval(DEGREES[state.rootIdx].r);   // chord root vs key center stays JI so the root pitch is pinned
+    state.absPcs = CHORDS[state.chordIdx].r.map(t => octRed(root*chordToneVal(t)));
+  }
   function recomputeChord(){
-    const root=rval(DEGREES[state.rootIdx].r);
-    const tones=CHORDS[state.chordIdx].r;
-    state.absPcs = tones.map(t => octRed(root*rval(t)));
+    computeAbsPcs();
     state.voicing = defaultVoicing(state.absPcs);
     renderVoicing();
     applyFreqs();
+  }
+  // The implied fundamental: the (JI-ideal) common harmonic-series root the whole chord
+  // sits on — e.g. two octaves below the root for 4:5:6:7, but root⁄10 for a 10:12:15 minor.
+  // Computed exactly from the chord ratios + each voice's octave, independent of the ET toggle,
+  // so the red guide stays put and ET partials visibly drift off it.
+  function impliedFundamentalHz(){
+    if(!state.voicing.length) return null;
+    const [rp,rq]=DEGREES[state.rootIdx].r.split("/").map(Number), rootVal=rp/rq;
+    const fr=[];   // each realized voice as an exact fraction of keyFreq: (rootDeg · tone · 2^e)
+    state.voicing.forEach(slot=>{
+      const [p,q]=CHORDS[state.chordIdx].r[slot.tone].split("/").map(Number);
+      const e=Math.round(Math.log2(octRed(rootVal*p/q)*Math.pow(2,slot.octave)/(rootVal*p/q)));
+      let a=rp*p, b=rq*q;
+      if(e>=0) a*=2**e; else b*=2**(-e);
+      const g=gcd(a,b); fr.push([a/g,b/g]);
+    });
+    let den=1; fr.forEach(([,b])=> den=lcm(den,b));         // common denominator across voices
+    let num=0; fr.forEach(([a,b])=> num=gcd(num,a*(den/b))); // greatest common rational = num/den
+    return state.keyFreq * num/den;
   }
   function defaultVoicing(pcs){
     const idx=[0,1,2,3].sort((a,b)=>pcs[a]-pcs[b]);
@@ -522,6 +628,7 @@
       }
       drawRails(v); updateVoiceHead(v); syncFormants(v);  // syncFormants re-normalizes level for the new f0
     });
+    state.fundHz = impliedFundamentalHz();
     drawSharedChart();
   }
 
@@ -825,14 +932,21 @@
   // ============================================================ global timbre controls
   const volEl=document.getElementById("vol");
   const vibEl=document.getElementById("vib"), vibVal=document.getElementById("vibval");
+  const jitEl=document.getElementById("jit"), jitVal=document.getElementById("jitval");
+  const shimEl=document.getElementById("shim"), shimVal=document.getElementById("shimval");
 
   function lab(){
     vibVal.textContent=state.vibCents<=0?"off":`±${state.vibCents}¢`;
+    jitVal.textContent=state.jitterCents<=0?"off":`±${state.jitterCents}¢`;
+    shimVal.textContent=state.shimmer<=0?"off":`±${Math.round(state.shimmer*100)}%`;
   }
   volEl.addEventListener("input",()=>{ state.volume=parseFloat(volEl.value);
     if(ctx&&state.playing) masterOut.gain.setTargetAtTime(state.volume,ctx.currentTime,0.02); });
   vibEl.addEventListener("input",()=>{ state.vibCents=parseFloat(vibEl.value); lab();
     if(ctx) voices.forEach(v=>v.vibDepth&&v.vibDepth.gain.setTargetAtTime(state.vibCents,ctx.currentTime,0.02)); });
+  // jitter & shimmer are read live by tickHuman, so no audio-node push needed
+  jitEl.addEventListener("input",()=>{ state.jitterCents=parseFloat(jitEl.value); lab(); });
+  shimEl.addEventListener("input",()=>{ state.shimmer=parseFloat(shimEl.value); lab(); });
   document.getElementById("waves").addEventListener("click",e=>{
     const b=e.target.closest("[data-mode]"); if(!b) return;
     document.querySelectorAll("#waves .wave").forEach(w=>w.classList.toggle("on",w===b));
@@ -840,6 +954,17 @@
   });
 
   playBtn.addEventListener("click",()=> state.playing?stopAll():playAll());
+
+  // just ↔ 12-ET toggle: keep the current voicing, just retune the chord's internal intervals
+  const tuningBtn=document.getElementById("tuning");
+  tuningBtn.addEventListener("click",()=>{
+    state.et=!state.et;
+    tuningBtn.classList.toggle("on",!state.et);   // lit = just intonation (ring mode)
+    tuningBtn.textContent=state.et?"12-ET":"Just";
+    computeAbsPcs();
+    applyFreqs();      // retune the sounding voices and recompute the implied fundamental
+    renderVoicing();   // refresh the displayed note names / cents
+  });
 
   // move-one / move-all toggle (lets touch users drag all vowels in unison without a modifier key)
   const moveAllBtn=document.getElementById("moveall");
