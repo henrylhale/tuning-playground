@@ -64,8 +64,10 @@
   .vrow{display:flex;gap:10px}
   .vbox{flex:1;background:var(--display);border:1px solid #120c06;border-radius:4px;padding:8px;
     display:flex;flex-direction:column;align-items:center;gap:4px;cursor:grab;min-width:0;color:#e8d6b0;
+    touch-action:pan-y;user-select:none;-webkit-user-select:none;
     box-shadow:inset 0 2px 7px rgba(0,0,0,.55),0 1px 0 var(--bezel-hi)}
   .vbox.drag{opacity:.4}
+  .vbox.over{outline:2px solid var(--accent);outline-offset:-2px}
   .vbox .vnum{font-size:10px;color:#a98a55;text-transform:capitalize;letter-spacing:.5px}
   .vbox .itv{font-size:18px;font-weight:700}
   .vbox .roles{display:flex;gap:12px;align-items:flex-end}
@@ -550,13 +552,51 @@
   function markSel(container,i){ [...container.children].forEach((c,j)=>c.classList.toggle("sel",j===i)); }
 
   const voicingEl=document.getElementById("voicing");
-  let dragFrom=null;
+
+  // ---- drag-to-reorder via pointer events (HTML5 drag-and-drop never fires on touch) ----
+  let vdrag=null;
+  function startVoicingDrag(e,k,box){
+    vdrag={from:k, x0:e.clientX, y0:e.clientY, moved:false, box, pid:e.pointerId};
+    try{ box.setPointerCapture(e.pointerId); }catch(_){}   // keep receiving moves if the finger leaves the box
+  }
+  function voicingInsertIndex(clientX){                     // where in the row the dragged box would land
+    const boxes=[...voicingEl.children];
+    for(let i=0;i<boxes.length;i++){
+      const r=boxes[i].getBoundingClientRect();
+      if(clientX < r.left + r.width/2) return i;
+    }
+    return boxes.length;
+  }
+  window.addEventListener("pointermove",e=>{
+    if(!vdrag) return;
+    if(!vdrag.moved && Math.hypot(e.clientX-vdrag.x0, e.clientY-vdrag.y0) > 6){
+      vdrag.moved=true; vdrag.box.classList.add("drag");    // only treat it as a drag past a small threshold (so taps still work)
+    }
+    if(vdrag.moved){
+      const boxes=[...voicingEl.children], ins=voicingInsertIndex(e.clientX);
+      boxes.forEach((b,i)=> b.classList.toggle("over", i===Math.min(ins,boxes.length-1) && i!==vdrag.from));
+    }
+  });
+  window.addEventListener("pointerup",e=>{
+    if(!vdrag) return;
+    const v=vdrag; vdrag=null;
+    try{ v.box.releasePointerCapture(v.pid); }catch(_){}
+    if(v.moved){
+      let ins=voicingInsertIndex(e.clientX);
+      const [m]=state.voicing.splice(v.from,1);
+      if(ins>v.from) ins--;                                 // array shrank after removing the dragged item
+      state.voicing.splice(clamp(ins,0,state.voicing.length),0,m);
+      applyFreqs(); renderVoicing();
+    }
+  });
+  window.addEventListener("pointercancel",()=>{ if(vdrag){ vdrag=null; renderVoicing(); } });
+
   function renderVoicing(){
     voicingEl.innerHTML="";
     state.voicing.forEach((slot,k)=>{
       const tone=CHORDS[state.chordIdx].r[slot.tone];
       const keyDeg=DEGREES[(Math.round(12*Math.log2(state.absPcs[slot.tone]))%12+12)%12].lab;
-      const box=document.createElement("div"); box.className="vbox"; box.draggable=true;
+      const box=document.createElement("div"); box.className="vbox"; box.dataset.k=k;
       box.innerHTML =
         `<div class="vnum">${VOICE_NAMES[k]}</div>`+
         `<div class="roles"><span><b>${ITV[tone]||tone}</b><i>chord</i></span><span><b>${keyDeg}</b><i>key</i></span></div>`+
@@ -569,15 +609,9 @@
       dn.addEventListener("click",e=>{e.stopPropagation(); stepVoice(slot,-1); applyFreqs(); renderVoicing();});
       ob.appendChild(dn); ob.appendChild(up); box.appendChild(ob);
 
-      box.addEventListener("dragstart",()=>{ dragFrom=k; box.classList.add("drag"); });
-      box.addEventListener("dragend",()=>box.classList.remove("drag"));
-      box.addEventListener("dragover",e=>e.preventDefault());
-      box.addEventListener("drop",e=>{
-        e.preventDefault();
-        if(dragFrom===null||dragFrom===k) return;
-        const [m]=state.voicing.splice(dragFrom,1);
-        state.voicing.splice(k,0,m);
-        dragFrom=null; applyFreqs(); renderVoicing();
+      box.addEventListener("pointerdown",e=>{
+        if(e.target.closest(".octbtns")) return;   // let the octave buttons handle their own taps
+        startVoicingDrag(e,k,box);
       });
       voicingEl.appendChild(box);
     });
@@ -714,6 +748,7 @@
       const cx=cxOfF2(v.formants[1].F), cy=cyOfF1(v.formants[0].F);
       const r=12-k*2.2, col=VOICE_COLORS[k];
       s+=`<g data-vdot="${k}" style="cursor:grab">`;
+      s+=`<circle cx="${cx}" cy="${cy}" r="16" fill="none" pointer-events="all"/>`;  // generous invisible touch target
       s+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${col}" fill-opacity="0.5" stroke="${col}" stroke-width="2"/>`;
       s+=`<text x="${cx}" y="${cy+3.5}" fill="#120c06" font-size="${Math.max(8,Math.round(r-1))}" font-weight="700" text-anchor="middle">${VOICE_TAGS[k]}</text></g>`;
     }
