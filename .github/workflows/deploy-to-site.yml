@@ -1,7 +1,16 @@
 name: Deploy to henryhale.com/tuning
 
-# Any push that touches the apps syncs them into the `landing` repo's
-# tuning/ folder, which GitHub Pages then publishes at henryhale.com/tuning/.
+# This workflow no longer copies HTML into the `landing` repo.
+#
+# `landing` now pulls the apps from this repo at build time, at the commit
+# recorded in its .tuning-version file. All this job does is move that
+# pointer, which makes landing's Pages workflow rebuild and publish.
+#
+# Why: previously this job wrote ~900 lines of built HTML into `landing`,
+# which meant the apps had two homes and a stale local checkout of
+# `landing` could revert the live versions. There is now exactly one
+# source of truth — this repo.
+
 on:
   push:
     branches: [main]
@@ -18,31 +27,26 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout tuning-playground
-        uses: actions/checkout@v4
-
       - name: Configure deploy key
         run: |
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          export GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new"
-          echo "GIT_SSH_COMMAND=$GIT_SSH_COMMAND" >> "$GITHUB_ENV"
+          echo "GIT_SSH_COMMAND=ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new" >> "$GITHUB_ENV"
 
-      - name: Sync apps into landing/tuning and push
+      - name: Point landing at this commit
         run: |
           set -euo pipefail
           git config --global user.name "tuning-playground-bot"
           git config --global user.email "actions@users.noreply.github.com"
-          git clone git@github.com:henrylhale/landing.git landing
-          mkdir -p landing/tuning
-          rm -f landing/tuning/*.html
-          cp ./*.html landing/tuning/
+          git clone --depth 1 git@github.com:henrylhale/landing.git landing
           cd landing
-          git add -A tuning
-          if git diff --cached --quiet; then
-            echo "No changes to deploy."
+          printf '%s\n' "${GITHUB_SHA}" > .tuning-version
+          if git diff --quiet -- .tuning-version; then
+            echo "landing is already pinned to ${GITHUB_SHA::7} — nothing to do."
             exit 0
           fi
-          git commit -m "Deploy tuning apps from tuning-playground@${GITHUB_SHA::7}"
+          git add .tuning-version
+          git commit -m "Pin tuning apps to tuning-playground@${GITHUB_SHA::7}"
           git push origin main
+          echo "Pinned landing to ${GITHUB_SHA::7}; its Pages workflow will rebuild."
