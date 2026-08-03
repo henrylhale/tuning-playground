@@ -244,8 +244,11 @@
 
   const CVBW=380,CVBH=300,CX0=46,CX1=356,CY0=18,CY1=250;
   const F1LO=250,F1HI=900,F2HI=2400,F2LO=700;
-  const cxOfF2=f2=>CX0+(F2HI-clamp(f2,F2LO,F2HI))/(F2HI-F2LO)*(CX1-CX0);
-  const cyOfF1=f1=>CY0+(clamp(f1,F1LO,F1HI)-F1LO)/(F1HI-F1LO)*(CY1-CY0);
+  // log-log axes: equal screen distance == equal frequency ratio, so a chord "shape"
+  // (the set of F1/F2 ratios between voices) is a rigid figure you can slide without distortion.
+  const lF1LO=Math.log(F1LO),lF1HI=Math.log(F1HI),lF2LO=Math.log(F2LO),lF2HI=Math.log(F2HI);
+  const cxOfF2=f2=>CX0+(lF2HI-Math.log(clamp(f2,F2LO,F2HI)))/(lF2HI-lF2LO)*(CX1-CX0);
+  const cyOfF1=f1=>CY0+(Math.log(clamp(f1,F1LO,F1HI))-lF1LO)/(lF1HI-lF1LO)*(CY1-CY0);
   const VOWELS=[
     {ipa:"i",f1:342,f2:2322},{ipa:"ɪ",f1:427,f2:2034},{ipa:"eɪ",f1:476,f2:2089},
     {ipa:"ɛ",f1:580,f2:1799},{ipa:"æ",f1:588,f2:1952},{ipa:"ɑ",f1:768,f2:1333},
@@ -849,8 +852,8 @@
     const r=chartSvg.getBoundingClientRect();
     const x=(clientX-r.left)/r.width*CVBW, y=(clientY-r.top)/r.height*CVBH;
     return {
-      f1: F1LO+(y-CY0)/(CY1-CY0)*(F1HI-F1LO),
-      f2: F2HI-(x-CX0)/(CX1-CX0)*(F2HI-F2LO),
+      f1: Math.exp(lF1LO+(y-CY0)/(CY1-CY0)*(lF1HI-lF1LO)),
+      f2: Math.exp(lF2HI-(x-CX0)/(CX1-CX0)*(lF2HI-lF2LO)),
     };
   }
   function setFromChart(v,clientX,clientY){
@@ -875,10 +878,12 @@
     if(!activeDrag) return;
     if(activeDrag.kind==="chartAll"){
       const cur=chartToF(e.clientX,e.clientY);
-      const d1=cur.f1-activeDrag.startF1, d2=cur.f2-activeDrag.startF2;
+      // ratio (not difference) so the slide is rigid in log-log space: every voice's
+      // F1/F2 scales by the same factor, holding the chord's formant ratios constant.
+      const r1=cur.f1/activeDrag.startF1, r2=cur.f2/activeDrag.startF2;
       voices.forEach((v,k)=>{
-        v.formants[0].F=clamp(activeDrag.base[k].f1+d1, v.formants[0].min, v.formants[0].max);
-        v.formants[1].F=clamp(activeDrag.base[k].f2+d2, v.formants[1].min, v.formants[1].max);
+        v.formants[0].F=clamp(activeDrag.base[k].f1*r1, v.formants[0].min, v.formants[0].max);
+        v.formants[1].F=clamp(activeDrag.base[k].f2*r2, v.formants[1].min, v.formants[1].max);
         updateVoiceInfo(v); syncFormants(v);
       });
       drawSharedChart();
