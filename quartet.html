@@ -90,6 +90,10 @@
   .vparam label{font-size:9px;color:#a98a55;letter-spacing:.3px}
   .vparam input[type=range]{width:58px;max-width:24vw;vertical-align:middle}
   .vparam .pv{font-size:9px;color:#c9b78f;min-width:54px}
+  /* voice level lives on its own row below the other four, as wide as they are combined */
+  .vstrip .volrow{margin-top:1px}
+  .vstrip .volrow .vparam{flex:1}
+  .vstrip .volrow input[type=range]{flex:1;width:auto;max-width:none}
   svg{display:block;width:100%;height:auto;touch-action:none;user-select:none}
   .screen{background:var(--display);border-radius:3px;padding:6px;
     box-shadow:inset 0 2px 9px rgba(0,0,0,.6),inset 0 0 0 2px #0e0904,0 1px 0 var(--bezel-hi)}
@@ -836,10 +840,14 @@
     {key:"f3",lab:"F3",min:1800,max:3000,step:10,def:2500,
       get:v=>v.formants[2].F, set:(v,x)=>v.formants[2].F=x, apply:v=>syncFormants(v),
       fmt:v=>`${Math.round(v.formants[2].F)} Hz`},
-    {key:"vol",lab:"vol",min:0,max:1.5,step:0.01,def:1,
-      get:v=>v.level, set:(v,x)=>v.level=x,
+    // Level slider is in dB (log curve) so equal drags give equal loudness change; it spans its own
+    // full-width row, and its dB range gives a fine, even step. v.level stays LINEAR gain (the stored
+    // quantity + wire format), so only this get/set translate between the two.
+    {key:"vol",lab:"vol",min:-48,max:3.5,step:0.2,def:0,
+      get:v=>v.level>0 ? 20*Math.log10(v.level) : -48,
+      set:(v,x)=>v.level=Math.pow(10, x/20),
       apply:v=>{ if(ctx) v.voiceGain.gain.setTargetAtTime(v.muted?0:v.level,ctx.currentTime,0.03); },
-      fmt:v=>v.level.toFixed(2)},
+      fmt:v=>{ const dB=v.level>0?20*Math.log10(v.level):-48; return `${dB>=0?"+":""}${dB.toFixed(1)} dB`; }},
     {key:"bend",lab:"bend",min:-15,max:15,step:0.5,def:0,
       get:v=>v.bend, set:(v,x)=>v.bend=x,
       apply:v=>{ if(ctx&&v.osc) v.osc.detune.setTargetAtTime(v.bend,ctx.currentTime,0.03); },
@@ -869,17 +877,18 @@
     voices.forEach((v,k)=>{
       v.ui={};
       const col=VOICE_COLORS[k];
-      let ph="";
-      PARAMS.forEach(p=>{
-        ph+=`<span class="vparam" data-p="${p.key}"><label>${p.lab}</label>`+
-            `<input type="range" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.get(v)}" title="${p.lab} (double-click to reset)" style="accent-color:${col}">`+
-            `<span class="pv"></span></span>`;
-      });
+      const vparamHTML = p =>
+        `<span class="vparam" data-p="${p.key}"><label>${p.lab}</label>`+
+        `<input type="range" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.get(v)}" title="${p.lab} (double-click to reset)" style="accent-color:${col}">`+
+        `<span class="pv"></span></span>`;
+      const topRow = PARAMS.filter(p=>p.key!=="vol").map(vparamHTML).join("");
+      const volRow = vparamHTML(PARAMS.find(p=>p.key==="vol"));
       const row=document.createElement("div"); row.className="vstrip";
       row.innerHTML=
         `<div class="vhd"><span class="nm" style="color:${col}">${VOICE_NAMES[k]}</span>`+
         `<span class="vinfo"></span><button class="mute">mute</button></div>`+
-        `<div class="params">${ph}</div>`;
+        `<div class="params">${topRow}</div>`+
+        `<div class="params volrow">${volRow}</div>`;
       stripsEl.appendChild(row);
       v.infoEl=row.querySelector(".vinfo");
       PARAMS.forEach(p=>{
@@ -1094,7 +1103,8 @@
         applyParam(PBYKEY.bright, v, sv.bri);      // routed through applyParam so each value is
         applyParam(PBYKEY.nasal,  v, sv.nas);      // clamped to its slider range and the strip UI
         applyParam(PBYKEY.f3,     v, sv.f3);       // + readouts stay in sync
-        applyParam(PBYKEY.vol,    v, sv.lvl);
+        applyParam(PBYKEY.vol,    v, sv.lvl>0 ? 20*Math.log10(sv.lvl) : PBYKEY.vol.min);  // lvl stored linear → dB
+
         applyParam(PBYKEY.bend,   v, sv.bend);
         v.muted = sv.mute; setMuteUI(v);
         if(ctx) v.voiceGain.gain.setTargetAtTime(v.muted?0:v.level, ctx.currentTime, 0.03);
