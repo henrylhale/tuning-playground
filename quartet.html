@@ -85,15 +85,19 @@
   .vstrip .vhd{display:flex;align-items:center;gap:8px}
   .vstrip .nm{font-weight:700;text-transform:capitalize;font-size:11px;min-width:34px}
   .vstrip .vinfo{flex:1;min-width:0;font-size:10px;color:#c9b78f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .vstrip .params{display:flex;flex-wrap:wrap;gap:5px 9px}
-  .vparam{display:flex;align-items:center;gap:3px}
-  .vparam label{font-size:9px;color:#a98a55;letter-spacing:.3px}
-  .vparam input[type=range]{width:58px;max-width:24vw;vertical-align:middle}
-  .vparam .pv{font-size:9px;color:#c9b78f;min-width:54px}
+  /* the four timbre params share one row as equal columns (label / slider / value stacked), so they
+     stay on a single row from ~280px phones up to desktop instead of wrapping when space is tight */
+  .vstrip .params{display:flex;gap:6px}
+  .vparam{flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:1px}
+  .vparam label{font-size:9px;color:#a98a55;letter-spacing:.3px;text-align:center}
+  .vparam input[type=range]{width:100%;min-width:0;max-width:none;vertical-align:middle}
+  .vparam .pv{font-size:9px;color:#c9b78f;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   /* voice level lives on its own row below the other four, as wide as they are combined */
-  .vstrip .volrow{margin-top:1px}
-  .vstrip .volrow .vparam{flex:1}
-  .vstrip .volrow input[type=range]{flex:1;width:auto;max-width:none}
+  .vstrip .volrow{margin-top:3px}
+  .vstrip .volrow .vparam{flex:1;flex-direction:row;align-items:center;gap:6px}
+  .vstrip .volrow label{text-align:left}
+  .vstrip .volrow input[type=range]{flex:1;width:auto}
+  .vstrip .volrow .pv{flex:0 0 auto;min-width:54px;text-align:right}
   svg{display:block;width:100%;height:auto;touch-action:none;user-select:none}
   .screen{background:var(--display);border-radius:3px;padding:6px;
     box-shadow:inset 0 2px 9px rgba(0,0,0,.6),inset 0 0 0 2px #0e0904,0 1px 0 var(--bezel-hi)}
@@ -120,7 +124,6 @@
   <div class="panel bar">
     <button id="play" class="play">▶ Play quartet</button>
     <div class="ctl"><label>Tuning</label><button id="tuning" class="toggle on" title="Swap between just intonation and 12-tone equal temperament (chord root pinned)">Just</button></div>
-    <div class="ctl"><label>Volume</label><input id="vol" type="range" min="0" max="1" step="0.01" value="0.45"></div>
     <div class="ctl"><label>Vibrato</label><input id="vib" type="range" min="0" max="8" step="0.5" value="3"><span id="vibval" class="val"></span></div>
   </div>
 
@@ -412,7 +415,7 @@
     voicing: [],             // [{tone, octave}] left->right
     absPcs: [],              // pitch classes (rel key center) per chord tone
     // global timbre (falloff & bandwidth are per-voice)
-    vibCents:3, jitterCents:4, shimmer:0.04, volume:0.45,
+    vibCents:3, jitterCents:4, shimmer:0.04, volume:0.36,   // volume is the pinned master gain (MASTER_GAIN); no UI
     playing:false,
     et:false,                // false = just intonation, true = 12-tone equal temperament (chord root pinned)
     fundHz:null,             // implied (JI-ideal) fundamental of the current chord, in Hz
@@ -427,6 +430,11 @@
   const bwOf = (fm,bwFrac) => Math.max(60, fm.F*bwFrac);
   const HEARING_TOP=20000;
   const VIB_RATE=5.5, FORMANT_LEVEL=0.8;   // jitter (random pitch) & shimmer (random amplitude) are in state
+  // Pinned master gain (no user slider). Gain-staged from an offline-render sweep of the actual graph:
+  // the worst-case four-voice peak at per-voice max (0 dB) is ~2.17 at unity master, so 0.36 keeps it
+  // to ~-2 dBFS (never clips), while one voice at the slider's -48 dB floor lands ~-65 dBFS (the
+  // quietest still-audible level at full system volume). Per-voice level range is set to match.
+  const MASTER_GAIN=0.36;
 
   // ============================================================ audio
   let ctx=null, masterOut=null, masterBus=null, humanTimer=null;
@@ -841,9 +849,10 @@
       get:v=>v.formants[2].F, set:(v,x)=>v.formants[2].F=x, apply:v=>syncFormants(v),
       fmt:v=>`${Math.round(v.formants[2].F)} Hz`},
     // Level slider is in dB (log curve) so equal drags give equal loudness change; it spans its own
-    // full-width row, and its dB range gives a fine, even step. v.level stays LINEAR gain (the stored
-    // quantity + wire format), so only this get/set translate between the two.
-    {key:"vol",lab:"vol",min:-48,max:3.5,step:0.2,def:0,
+    // full-width row. Range is gain-staged (see MASTER_GAIN): 0 dB = unity = the top, so four voices at
+    // max stay ~2 dB below clipping; -48 dB floor is ~the quietest audible level at full system volume.
+    // v.level stays LINEAR gain (the stored quantity + wire format); only this get/set translate.
+    {key:"vol",lab:"vol",min:-48,max:0,step:0.2,def:0,
       get:v=>v.level>0 ? 20*Math.log10(v.level) : -48,
       set:(v,x)=>v.level=Math.pow(10, x/20),
       apply:v=>{ if(ctx) v.voiceGain.gain.setTargetAtTime(v.muted?0:v.level,ctx.currentTime,0.03); },
@@ -996,7 +1005,6 @@
   window.addEventListener("pointerup",()=>{ activeDrag=null; });
 
   // ============================================================ global timbre controls
-  const volEl=document.getElementById("vol");
   const vibEl=document.getElementById("vib"), vibVal=document.getElementById("vibval");
   // Jitter & shimmer stay implemented (tickHuman reads state.jitterCents/state.shimmer live and the
   // save-state codec still carries them); their sliders are just no longer exposed in the UI.
@@ -1004,8 +1012,6 @@
   function lab(){
     vibVal.textContent=state.vibCents<=0?"off":`±${state.vibCents}¢`;
   }
-  volEl.addEventListener("input",()=>{ state.volume=parseFloat(volEl.value);
-    if(ctx&&state.playing) masterOut.gain.setTargetAtTime(state.volume,ctx.currentTime,0.02); scheduleUrlSync(); });
   vibEl.addEventListener("input",()=>{ state.vibCents=parseFloat(vibEl.value); lab();
     if(ctx) voices.forEach(v=>v.vibDepth&&v.vibDepth.gain.setTargetAtTime(state.vibCents,ctx.currentTime,0.02)); scheduleUrlSync(); });
 
@@ -1041,7 +1047,7 @@
                  f1:DEFAULT_FORMANTS[0].F, f2:DEFAULT_FORMANTS[1].F };
     // mirrors the initial `state` values above; these are the wire-format defaults.
     return { key:220, root:0, chord:1, et:false, moveAll:true,
-             vib:3, jit:4, shim:0.04, vol:0.45,
+             vib:3, jit:4, shim:0.04, vol:MASTER_GAIN,
              voices:[0,1,2,3].map(() => ({...dv})) };
   }
   function readSnapshot(){
@@ -1083,17 +1089,14 @@
       moveAllBtn.classList.toggle("on", state.moveAll);
       moveAllBtn.textContent = state.moveAll ? "move: all voices" : "move: one voice";
 
-      // global timbre: set the slider, then read it back so the input's own min/max clamps the value
-      volEl.value = snap.vol;  state.volume     = parseFloat(volEl.value);
-      vibEl.value = snap.vib;  state.vibCents    = parseFloat(vibEl.value);
+      // master volume has no slider — it's pinned; ignore any stored vol so gain-staging always holds
+      state.volume = MASTER_GAIN;
+      vibEl.value = snap.vib;  state.vibCents = parseFloat(vibEl.value);  // set slider, read back to clamp
       // jitter/shimmer have no slider anymore — clamp to their former ranges directly
       state.jitterCents = clamp(snap.jit, 0, 15);
       state.shimmer     = clamp(snap.shim, 0, 0.2);
       lab();
-      if(ctx){
-        if(state.playing) masterOut.gain.setTargetAtTime(state.volume, ctx.currentTime, 0.02);
-        voices.forEach(v => v.vibDepth && v.vibDepth.gain.setTargetAtTime(state.vibCents, ctx.currentTime, 0.02));
-      }
+      if(ctx) voices.forEach(v => v.vibDepth && v.vibDepth.gain.setTargetAtTime(state.vibCents, ctx.currentTime, 0.02));
 
       snap.voices.forEach((sv,k) => {
         const v = voices[k];
