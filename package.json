@@ -1,0 +1,10 @@
+{
+  "name": "tuning-playground",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Barbershop just-intonation quartet synth (quartet.html). Tests use Node's built-in runner with zero dependencies.",
+  "scripts": {
+    "test": "node --test"
+  }
+}

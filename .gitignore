@@ -1,2 +1,6 @@
 .DS_Store
 *~
+
+# Node (tests use the built-in runner; no deps today, but keep installs out of git)
+node_modules/
+npm-debug.log*

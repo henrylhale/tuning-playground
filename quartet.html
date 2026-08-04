@@ -203,6 +203,164 @@
     return nm + (cents>=0?"+":"") + cents + "¢";
   }
 
+  //#region state-codec — PURE, DOM-FREE: snapshot <-> compact URL string. Node-testable
+  // (test/state.test.mjs slices this region out of the HTML and evals it). Keep it free of any
+  // reference to the DOM or to app constants: it takes app defaults as a parameter so the app
+  // stays the single source of truth.
+  //
+  // Wire format: a hand-packed binary buffer, deflate-raw'd, base64url'd.
+  //   [ header bytes ][ Float32 payload (little-endian) ]
+  //   header = version, root, chord, flags(et|moveAll|mute×4), mode×4, voicing×4 (tone|octave),
+  //   floats  = key, vib, jit, shim, vol, then per voice: bri, nas, f3, lvl, bend, f1, f2.
+  // Continuous controls are Float32 (~7 significant figures — finer than any audio control needs,
+  // and NOT pinned to current slider steps/ranges). Discrete controls are packed as small ints/bits.
+  // Forward/backward compat: a version byte, plus normalizeSnapshot fills any field a shorter/older
+  // buffer omits (unpack returns undefined past the end) and drops anything extra — so a string from
+  // an older or newer build still loads. Semantic range-clamping happens on apply.
+  const SCHEMA_VERSION = 1;
+  const VOICE_MODES = ["voice","sine","sawtooth","triangle","square"];
+  const N_VOICES = 4;
+  const HEADER_LEN = 4 + N_VOICES + N_VOICES;   // version,root,chord,flags + mode×4 + voicing×4 = 12
+  const N_FLOATS = 5 + N_VOICES * 7;            // key,vib,jit,shim,vol + 7 per voice = 33
+  const clampInt = (x,lo,hi) => { x = Math.round(+x || 0); return x < lo ? lo : x > hi ? hi : x; };
+
+  function defaultSnapshot(d){
+    return {
+      v: SCHEMA_VERSION,
+      key: d.key, root: d.root, chord: d.chord,
+      et: d.et, moveAll: d.moveAll,
+      vib: d.vib, jit: d.jit, shim: d.shim, vol: d.vol,
+      voicing: [],                          // [] => "let the app derive the chord's default voicing"
+      voices: d.voices.map(v => ({...v})),
+    };
+  }
+  const _num  = (x,dflt) => Number.isFinite(+x) ? +x : dflt;
+  const _bool = (x,dflt) => typeof x === "boolean" ? x : dflt;
+  const _int  = (x,dflt) => Number.isFinite(+x) ? Math.round(+x) : dflt;
+
+  // Coerce arbitrary parsed input into a clean snapshot shaped exactly like defaultSnapshot(defs).
+  function normalizeSnapshot(raw, defs){
+    const D = defaultSnapshot(defs);
+    if(!raw || typeof raw !== "object") return D;
+    return {
+      v: SCHEMA_VERSION,
+      key: _num(raw.key, D.key),
+      root: _int(raw.root, D.root),
+      chord: _int(raw.chord, D.chord),
+      et: _bool(raw.et, D.et),
+      moveAll: _bool(raw.moveAll, D.moveAll),
+      vib: _num(raw.vib, D.vib),
+      jit: _num(raw.jit, D.jit),
+      shim: _num(raw.shim, D.shim),
+      vol: _num(raw.vol, D.vol),
+      voicing: Array.isArray(raw.voicing)
+        ? raw.voicing.map(s =>
+            Array.isArray(s)                    ? {tone:_int(s[0],0),    octave:_int(s[1],0)}
+            : (s && typeof s === "object")      ? {tone:_int(s.tone,0),  octave:_int(s.octave,0)}
+            : null
+          ).filter(s => s && s.tone >= 0)
+        : D.voicing,
+      voices: D.voices.map((dv,i) => {
+        const rv = Array.isArray(raw.voices) ? raw.voices[i] : null;
+        if(!rv || typeof rv !== "object") return {...dv};
+        return {
+          bri: _num(rv.bri, dv.bri), nas: _num(rv.nas, dv.nas), f3: _num(rv.f3, dv.f3),
+          lvl: _num(rv.lvl, dv.lvl), bend: _num(rv.bend, dv.bend),
+          mode: VOICE_MODES.includes(rv.mode) ? rv.mode : dv.mode,
+          mute: _bool(rv.mute, dv.mute),
+          f1: _num(rv.f1, dv.f1), f2: _num(rv.f2, dv.f2),
+        };
+      }),
+    };
+  }
+
+  // ---- compressed URL string <-> snapshot (async: native deflate-raw + base64url) ----
+  function _bytesToB64url(bytes){
+    let bin = ""; for(let i=0;i<bytes.length;i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+  }
+  function _b64urlToBytes(str){
+    const b64 = str.replace(/-/g,"+").replace(/_/g,"/");
+    const pad = (4 - (b64.length % 4)) % 4;
+    const bin = atob(b64 + "=".repeat(pad));
+    const out = new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  async function _pipe(bytes, Stream){           // Stream = CompressionStream | DecompressionStream
+    const s = new Stream("deflate-raw");
+    const w = s.writable.getWriter(); w.write(bytes); w.close();
+    const rd = s.readable.getReader(), parts = [];
+    for(;;){ const {done,value} = await rd.read(); if(done) break; parts.push(value); }
+    let len = 0; parts.forEach(p => len += p.length);
+    const out = new Uint8Array(len); let o = 0;
+    parts.forEach(p => { out.set(p,o); o += p.length; });
+    return out;
+  }
+  // snapshot object -> packed bytes. Reads snap defensively (missing voices/slots -> 0/defaults).
+  function packSnapshot(snap){
+    const buf = new Uint8Array(HEADER_LEN + N_FLOATS * 4);
+    const dv = new DataView(buf.buffer);
+    const voices = Array.isArray(snap.voices) ? snap.voices : [];
+    const voicing = Array.isArray(snap.voicing) ? snap.voicing : [];
+    buf[0] = SCHEMA_VERSION;
+    buf[1] = clampInt(snap.root, 0, 255);
+    buf[2] = clampInt(snap.chord, 0, 255);
+    let flags = (snap.et ? 1 : 0) | (snap.moveAll ? 2 : 0);
+    for(let i=0;i<N_VOICES;i++) if(voices[i] && voices[i].mute) flags |= 1 << (2 + i);
+    buf[3] = flags;
+    for(let i=0;i<N_VOICES;i++){
+      const m = voices[i] ? VOICE_MODES.indexOf(voices[i].mode) : 0;
+      buf[4 + i] = m < 0 ? 0 : m;
+    }
+    for(let i=0;i<N_VOICES;i++){
+      const sl = voicing[i];
+      const t = sl ? (Array.isArray(sl) ? sl[0] : sl.tone)   : 0;
+      const o = sl ? (Array.isArray(sl) ? sl[1] : sl.octave) : 0;
+      buf[4 + N_VOICES + i] = clampInt(t, 0, 7) | ((clampInt(o, -8, 7) + 8) << 3);
+    }
+    let off = HEADER_LEN;
+    const putF = x => { dv.setFloat32(off, +x || 0, true); off += 4; };   // little-endian, fixed across devices
+    putF(snap.key); putF(snap.vib); putF(snap.jit); putF(snap.shim); putF(snap.vol);
+    for(let i=0;i<N_VOICES;i++){
+      const v = voices[i] || {};
+      putF(v.bri); putF(v.nas); putF(v.f3); putF(v.lvl); putF(v.bend); putF(v.f1); putF(v.f2);
+    }
+    return buf;
+  }
+  // packed bytes -> raw snapshot object. Reads past the buffer end return undefined, which
+  // normalizeSnapshot then fills from defaults (this is how older/shorter buffers stay loadable).
+  function unpackSnapshot(bytes){
+    if(!(bytes instanceof Uint8Array)) bytes = new Uint8Array(bytes);
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const u8 = i => i < bytes.length ? bytes[i] : 0;
+    const flags = u8(3);
+    const voices = [], voicing = [];
+    for(let i=0;i<N_VOICES;i++)
+      voices.push({ mode: VOICE_MODES[u8(4 + i)] || "voice", mute: !!(flags & (1 << (2 + i))) });
+    for(let i=0;i<N_VOICES;i++){
+      const b = u8(4 + N_VOICES + i);
+      voicing.push([ b & 7, ((b >> 3) & 15) - 8 ]);
+    }
+    let off = HEADER_LEN;
+    const getF = () => { const v = off + 4 <= bytes.length ? dv.getFloat32(off, true) : undefined; off += 4; return v; };
+    const key = getF(), vib = getF(), jit = getF(), shim = getF(), vol = getF();
+    for(let i=0;i<N_VOICES;i++){
+      const v = voices[i];
+      v.bri = getF(); v.nas = getF(); v.f3 = getF(); v.lvl = getF(); v.bend = getF(); v.f1 = getF(); v.f2 = getF();
+    }
+    return { v: u8(0), key, root: u8(1), chord: u8(2),
+             et: !!(flags & 1), moveAll: !!(flags & 2), vib, jit, shim, vol, voicing, voices };
+  }
+
+  async function encodeSnapshot(snap){
+    return _bytesToB64url(await _pipe(packSnapshot(snap), CompressionStream));
+  }
+  async function decodeSnapshot(str){
+    return unpackSnapshot(await _pipe(_b64urlToBytes(str), DecompressionStream));
+  }
+  //#endregion state-codec
+
   // ============================================================ music data
   // chord ratios relative to chord root (4 voices; triads double the root)
   const CHORDS = [
@@ -632,6 +790,7 @@
     });
     state.fundHz = impliedFundamentalHz();
     drawSharedChart();
+    scheduleUrlSync();   // key / root / chord / tuning / voicing all funnel through here
   }
 
   // ============================================================ selector UI
@@ -761,6 +920,7 @@
     const u=v.ui[p.key];
     if(parseFloat(u.sl.value)!==cv) u.sl.value=cv;
     u.pv.textContent=p.fmt(v);
+    scheduleUrlSync();   // per-voice sliders (bright/nasal/F3/vol/bend) + resets funnel through here
   }
   function onParamInput(p,k){
     const v=voices[k], nv=parseFloat(v.ui[p.key].sl.value);
@@ -804,6 +964,7 @@
         const ns=!v.muted, targets=state.moveAll?voices:[v];
         targets.forEach(w=>{ w.muted=ns; setMuteUI(w);
           if(ctx) w.voiceGain.gain.setTargetAtTime(w.muted?0:w.level,ctx.currentTime,0.03); });
+        scheduleUrlSync();
       });
       updateVoiceInfo(v);
     });
@@ -861,6 +1022,7 @@
     v.formants[0].F=clamp(f1, v.formants[0].min, v.formants[0].max);
     v.formants[1].F=clamp(f2, v.formants[1].min, v.formants[1].max);
     updateVoiceInfo(v); drawSharedChart(); syncFormants(v);
+    scheduleUrlSync();
   }
   chartSvg.addEventListener("pointerdown",e=>{
     const dot=e.target.closest("[data-vdot]");
@@ -887,6 +1049,7 @@
         updateVoiceInfo(v); syncFormants(v);
       });
       drawSharedChart();
+      scheduleUrlSync();
     } else {
       setFromChart(activeDrag.v, e.clientX, e.clientY);
     }
@@ -905,17 +1068,18 @@
     shimVal.textContent=state.shimmer<=0?"off":`±${Math.round(state.shimmer*100)}%`;
   }
   volEl.addEventListener("input",()=>{ state.volume=parseFloat(volEl.value);
-    if(ctx&&state.playing) masterOut.gain.setTargetAtTime(state.volume,ctx.currentTime,0.02); });
+    if(ctx&&state.playing) masterOut.gain.setTargetAtTime(state.volume,ctx.currentTime,0.02); scheduleUrlSync(); });
   vibEl.addEventListener("input",()=>{ state.vibCents=parseFloat(vibEl.value); lab();
-    if(ctx) voices.forEach(v=>v.vibDepth&&v.vibDepth.gain.setTargetAtTime(state.vibCents,ctx.currentTime,0.02)); });
+    if(ctx) voices.forEach(v=>v.vibDepth&&v.vibDepth.gain.setTargetAtTime(state.vibCents,ctx.currentTime,0.02)); scheduleUrlSync(); });
   // jitter & shimmer are read live by tickHuman, so no audio-node push needed
-  jitEl.addEventListener("input",()=>{ state.jitterCents=parseFloat(jitEl.value); lab(); });
-  shimEl.addEventListener("input",()=>{ state.shimmer=parseFloat(shimEl.value); lab(); });
+  jitEl.addEventListener("input",()=>{ state.jitterCents=parseFloat(jitEl.value); lab(); scheduleUrlSync(); });
+  shimEl.addEventListener("input",()=>{ state.shimmer=parseFloat(shimEl.value); lab(); scheduleUrlSync(); });
 
   document.getElementById("waves").addEventListener("click",e=>{
     const b=e.target.closest("[data-mode]"); if(!b) return;
     document.querySelectorAll("#waves .wave").forEach(w=>w.classList.toggle("on",w===b));
     voices.forEach(v=>{ v.mode=b.dataset.mode; applyOscType(v); syncFormants(v); });
+    scheduleUrlSync();
   });
 
   playBtn.addEventListener("click",()=> state.playing?stopAll():playAll());
@@ -937,7 +1101,121 @@
     state.moveAll=!state.moveAll;
     moveAllBtn.classList.toggle("on",state.moveAll);
     moveAllBtn.textContent=state.moveAll?"move: all voices":"move: one voice";
+    scheduleUrlSync();
   });
+
+  // ============================================================ save state (URL <-> app)
+  // DOM-aware glue around the pure state-codec region. The live app is the single source of
+  // truth for defaults (appDefaults), so the codec never hard-codes app constants.
+  const PBYKEY = Object.fromEntries(PARAMS.map(p => [p.key, p]));
+  function appDefaults(){
+    const dv = { bri:DEFAULT_SRCEXP, nas:DEFAULT_BWFRAC, f3:2500, lvl:1, bend:0,
+                 mode:"voice", mute:false,
+                 f1:DEFAULT_FORMANTS[0].F, f2:DEFAULT_FORMANTS[1].F };
+    // mirrors the initial `state` values above; these are the wire-format defaults.
+    return { key:220, root:0, chord:1, et:false, moveAll:true,
+             vib:3, jit:4, shim:0.04, vol:0.45,
+             voices:[0,1,2,3].map(() => ({...dv})) };
+  }
+  function readSnapshot(){
+    return {
+      v: SCHEMA_VERSION,
+      key: state.keyFreq, root: state.rootIdx, chord: state.chordIdx,
+      et: state.et, moveAll: state.moveAll,
+      vib: state.vibCents, jit: state.jitterCents, shim: state.shimmer, vol: state.volume,
+      voicing: state.voicing.map(s => [s.tone, s.octave]),
+      voices: voices.map(v => ({
+        bri:v.srcExp, nas:v.bwFrac, f3:v.formants[2].F,
+        lvl:v.level, bend:v.bend, mode:v.mode, mute:v.muted,
+        f1:v.formants[0].F, f2:v.formants[1].F,
+      })),
+    };
+  }
+  function selectClosestKey(freq){                 // snap to the nearest available key option
+    let best=0, bd=Infinity;
+    for(let i=0;i<keyEl.options.length;i++){
+      const d=Math.abs(parseFloat(keyEl.options[i].value)-freq);
+      if(d<bd){ bd=d; best=i; }
+    }
+    keyEl.selectedIndex=best; state.keyFreq=parseFloat(keyEl.value);
+  }
+  function applySnapshot(raw){
+    const snap = normalizeSnapshot(raw, appDefaults());
+    suppressSync = true;
+    try {
+      selectClosestKey(snap.key);
+      state.rootIdx  = clamp(snap.root,  0, DEGREES.length-1);
+      state.chordIdx = clamp(snap.chord, 0, CHORDS.length-1);
+      markSel(rootsEl, state.rootIdx); markSel(chordsEl, state.chordIdx);
+
+      state.et = snap.et;
+      tuningBtn.classList.toggle("on", !state.et);
+      tuningBtn.textContent = state.et ? "12-ET" : "Just";
+
+      state.moveAll = snap.moveAll;
+      moveAllBtn.classList.toggle("on", state.moveAll);
+      moveAllBtn.textContent = state.moveAll ? "move: all voices" : "move: one voice";
+
+      // global timbre: set the slider, then read it back so the input's own min/max clamps the value
+      volEl.value = snap.vol;  state.volume     = parseFloat(volEl.value);
+      vibEl.value = snap.vib;  state.vibCents    = parseFloat(vibEl.value);
+      jitEl.value = snap.jit;  state.jitterCents = parseFloat(jitEl.value);
+      shimEl.value= snap.shim; state.shimmer     = parseFloat(shimEl.value);
+      lab();
+      if(ctx){
+        if(state.playing) masterOut.gain.setTargetAtTime(state.volume, ctx.currentTime, 0.02);
+        voices.forEach(v => v.vibDepth && v.vibDepth.gain.setTargetAtTime(state.vibCents, ctx.currentTime, 0.02));
+      }
+
+      snap.voices.forEach((sv,k) => {
+        const v = voices[k];
+        v.mode = sv.mode;
+        v.formants[0].F = clamp(sv.f1, v.formants[0].min, v.formants[0].max);
+        v.formants[1].F = clamp(sv.f2, v.formants[1].min, v.formants[1].max);
+        applyParam(PBYKEY.bright, v, sv.bri);      // routed through applyParam so each value is
+        applyParam(PBYKEY.nasal,  v, sv.nas);      // clamped to its slider range and the strip UI
+        applyParam(PBYKEY.f3,     v, sv.f3);       // + readouts stay in sync
+        applyParam(PBYKEY.vol,    v, sv.lvl);
+        applyParam(PBYKEY.bend,   v, sv.bend);
+        v.muted = sv.mute; setMuteUI(v);
+        if(ctx) v.voiceGain.gain.setTargetAtTime(v.muted?0:v.level, ctx.currentTime, 0.03);
+        applyOscType(v); syncFormants(v);
+      });
+      document.querySelectorAll("#waves .wave").forEach(w => w.classList.toggle("on", w.dataset.mode===voices[0].mode));
+
+      computeAbsPcs();
+      const nT = CHORDS[state.chordIdx].r.length;
+      const vc = snap.voicing
+        .filter(s => s.tone>=0 && s.tone<nT)
+        .map(s => ({tone:s.tone, octave:clamp(s.octave, -6, 6)}));
+      state.voicing = (vc.length === voices.length) ? vc : defaultVoicing(state.absPcs);
+      applyFreqs(); renderVoicing(); drawSharedChart();
+    } finally {
+      suppressSync = false;
+    }
+  }
+
+  // URL <#s=...> reflects the current app state; rewritten (debounced) on any intent-changing action.
+  let ready = false, suppressSync = false, syncTimer = null;
+  function scheduleUrlSync(){
+    if(!ready || suppressSync) return;
+    if(syncTimer) clearTimeout(syncTimer);
+    syncTimer = setTimeout(writeUrl, 250);
+  }
+  async function writeUrl(){
+    syncTimer = null;
+    try {
+      const str = await encodeSnapshot(readSnapshot());
+      history.replaceState(null, "", "#s=" + str);
+    } catch(_) { /* codec unsupported in this browser: app still works, just no URL sync */ }
+  }
+  async function loadFromUrl(){
+    const m = /[#&]s=([^&]+)/.exec(location.hash || "");
+    if(!m) return;
+    try {
+      applySnapshot(await decodeSnapshot(m[1]));
+    } catch(_) { /* bad/old/corrupt hash: keep the default state that init already built */ }
+  }
 
   // ============================================================ init
   for(let k=0;k<4;k++) buildVoice(k);
@@ -947,6 +1225,8 @@
   lab();
   recomputeChord();
   drawSharedChart();
+  // restore a shared/saved state if present, then arm URL syncing (so init itself never stamps a URL)
+  loadFromUrl().finally(() => { ready = true; });
 })();
 </script>
 </body>
