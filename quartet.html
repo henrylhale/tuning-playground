@@ -62,10 +62,10 @@
   .selector{display:grid;grid-template-columns:auto auto 1fr auto;gap:14px;align-items:start}
   .sp{min-width:0}
   .btnrow{display:flex;flex-wrap:wrap;gap:4px;max-width:230px}
-  .keybend{display:flex;align-items:center;gap:8px;margin-top:8px;max-width:250px}
-  .keybend label{color:var(--muted);font-size:11px;font-weight:600}
-  .keybend input[type=range]{flex:1;width:auto;min-width:60px}
-  .keybend .kv{color:var(--ink);font-size:11px;font-weight:600;white-space:nowrap}
+  #keydial,#rootdial{width:250px;max-width:100%;height:auto;display:block;cursor:grab;touch-action:none;
+    -webkit-tap-highlight-color:transparent}
+  #keydial:active,#rootdial:active{cursor:grabbing}
+  #keydial text,#rootdial text{user-select:none;-webkit-user-select:none}
   .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
 
   .vrow{display:flex;gap:10px}
@@ -110,6 +110,10 @@
     box-shadow:inset 0 2px 9px rgba(0,0,0,.6),inset 0 0 0 2px #0e0904,0 1px 0 var(--bezel-hi)}
   canvas.screen{padding:0}
 
+  /* the key-center dial needs real estate — drop to two columns before things overlap */
+  @media (max-width:1200px){
+    .selector{grid-template-columns:auto 1fr}
+  }
   @media (max-width:760px){
     .selector{grid-template-columns:1fr 1fr}
     .btnrow{max-width:none}
@@ -138,24 +142,15 @@
 
   <div class="panel selector">
     <div class="sp">
-      <h3>Key center</h3>
-      <select id="key"></select>
-      <div class="keybend">
-        <label for="bend">bend</label>
-        <input id="bend" type="range" min="-100" max="100" step="1" value="0" title="Global pitch bend — fine-tunes the whole quartet's key center (double-click to reset)">
-        <span id="bendval" class="kv"></span>
-      </div>
+      <svg id="keydial" viewBox="0 0 340 340" preserveAspectRatio="xMidYMid meet" role="slider" aria-label="Key center"></svg>
     </div>
     <div class="sp">
-      <h3>Chord root</h3>
-      <div id="roots" class="btnrow"></div>
+      <svg id="rootdial" viewBox="0 0 340 340" preserveAspectRatio="xMidYMid meet" role="slider" aria-label="Chord root"></svg>
     </div>
     <div class="sp">
-      <h3>Chord</h3>
       <div id="chords" class="grid"></div>
     </div>
     <div class="sp">
-      <h3>Voicing &nbsp;·&nbsp; drag to reorder</h3>
       <div id="voicing" class="vrow"></div>
     </div>
   </div>
@@ -371,7 +366,7 @@
   // chord ratios relative to chord root (4 voices; triads double the root)
   const CHORDS = [
     {name:"Maj",       r:["1/1","5/4","3/2","1/1"]},
-    {name:"Dom7 bbs",  r:["1/1","5/4","3/2","7/4"]},
+    {name:"Dom7",  r:["1/1","5/4","3/2","7/4"]},
     {name:"Maj add9",  r:["1/1","9/8","5/4","3/2"]},
     {name:"Min",       r:["1/1","6/5","3/2","1/1"]},
     {name:"Min7",      r:["1/1","6/5","3/2","9/5"]},
@@ -424,10 +419,11 @@
 
   // ============================================================ global state
   const state = {
-    keyFreq: 220,            // A3
-    bendCents: 0,            // global pitch bend (cents) — presented as fine-tuning the key center
+    keyMidi: 57,             // A3 (the coarse dial's discrete note)
+    keyFreq: 220,            // A3 — derived: midiToFreq(keyMidi)
+    bendCents: 0,            // global pitch bend (cents) — the fine dial; presented as fine-tuning the key center
     rootIdx: 0,              // degree index
-    chordIdx: 1,             // Dom7 bbs
+    chordIdx: 1,             // Dom7 
     voicing: [],             // [{tone, octave}] left->right
     absPcs: [],              // pitch classes (rel key center) per chord tone
     // global timbre (falloff & bandwidth are per-voice)
@@ -759,31 +755,154 @@
 
   // ============================================================ selector UI
   const playBtn=document.getElementById("play");
-  const keyEl=document.getElementById("key");
-  for(let m=36;m<=84;m++){
-    const o=document.createElement("option");
-    o.value=String(midiToFreq(m));
-    o.textContent=`${NOTE_NAMES[m%12]+(Math.floor(m/12)-1)}  (${midiToFreq(m).toFixed(1)} Hz)`;
-    if(m===57)o.selected=true;
-    keyEl.appendChild(o);
-  }
-  keyEl.addEventListener("change",()=>{ state.keyFreq=parseFloat(keyEl.value); bendLab(); applyFreqs(); });
 
-  // global pitch bend — shown as a fine adjustment to the key center (note names/Hz track it everywhere)
-  const bendEl=document.getElementById("bend"), bendVal=document.getElementById("bendval");
-  function bendLab(){
-    const c=state.bendCents;
-    bendVal.textContent=`${c>0?"+":""}${c}¢ · ${effKey().toFixed(1)} Hz`;
-  }
-  bendEl.addEventListener("input",()=>{ state.bendCents=parseFloat(bendEl.value); bendLab(); applyFreqs(); renderVoicing(); });
-  bendEl.addEventListener("dblclick",()=>{ state.bendCents=0; bendEl.value=0; bendLab(); applyFreqs(); renderVoicing(); });
+  // ---- key-center dial: concentric analog-radio wheels ----------------------------------------
+  // Outer wheel = coarse note name: discrete (snaps per semitone), unlimited range (spin it to
+  // wind through octaves). Inner wheel = fine pitch bend: smooth, absolute scale from 0¢ at the
+  // top to ±100¢ at the bottom. Both fold into effKey(); the center shows the resulting key.
+  const dialSvg=document.getElementById("keydial");
+  const DVB=340, DCX=170, DCY=170;                 // viewBox + center
+  const R_NOTE=152, R_OUT_HI=138, R_OUT_LO=100, R_INN_HI=95, R_INN_LO=48, R_CENT=80, R_CORE=44;
+  const MIDI_LO=24, MIDI_HI=96;                     // C1..C7 clamp for the (otherwise "unlimited") spin
+  const DP=(ang,r)=>[DCX+r*Math.sin(ang*Math.PI/180), DCY-r*Math.cos(ang*Math.PI/180)]; // 0°=top, CW+
+  const tri=(ang,rTip,rBase,half,fill)=>{
+    const t=DP(ang,rTip), a=DP(ang-half,rBase), b=DP(ang+half,rBase);
+    return `<polygon points="${t[0].toFixed(1)},${t[1].toFixed(1)} ${a[0].toFixed(1)},${a[1].toFixed(1)} ${b[0].toFixed(1)},${b[1].toFixed(1)}" fill="${fill}"/>`;
+  };
+  const fmtHz=h=> h<100 ? h.toFixed(1) : Math.round(h).toString();
 
-  const rootsEl=document.getElementById("roots");
-  DEGREES.forEach((d,i)=>{
-    const b=document.createElement("button"); b.className="chip"; b.textContent=d.lab;
-    b.addEventListener("click",()=>{ state.rootIdx=i; markSel(rootsEl,i); recomputeChord(); });
-    rootsEl.appendChild(b);
+  function drawKeyDial(){
+    const pc=((state.keyMidi%12)+12)%12, oct=Math.floor(state.keyMidi/12)-1;
+    const noteAng=pc*30, bendAng=state.bendCents*1.8;   // 30°/semitone, 1.8°/cent
+    let s="";
+    // dial body: outer wheel disc, then inner wheel disc, then core display
+    s+=`<circle cx="${DCX}" cy="${DCY}" r="${R_OUT_HI}" fill="#241a0d" stroke="#6b5128" stroke-width="1.5"/>`;
+    s+=`<circle cx="${DCX}" cy="${DCY}" r="${R_OUT_LO}" fill="#1b130a" stroke="#4a3820" stroke-width="1"/>`;
+    s+=`<circle cx="${DCX}" cy="${DCY}" r="${R_INN_HI}" fill="#2a1e10" stroke="#6b5128" stroke-width="1.5"/>`;
+    s+=`<circle cx="${DCX}" cy="${DCY}" r="${R_INN_LO}" fill="#140d06" stroke="#4a3820" stroke-width="1"/>`;
+    // outer wheel: 12 note ticks + names around the edge (fixed clock face)
+    for(let i=0;i<12;i++){
+      const a=i*30, sel=i===pc;
+      const t1=DP(a,R_OUT_HI-2), t2=DP(a,R_OUT_HI-11);
+      s+=`<line x1="${t1[0].toFixed(1)}" y1="${t1[1].toFixed(1)}" x2="${t2[0].toFixed(1)}" y2="${t2[1].toFixed(1)}" stroke="${sel?"#e26a10":"#7d6743"}" stroke-width="${sel?2:1}"/>`;
+      const [lx,ly]=DP(a,R_NOTE);
+      s+=`<text x="${lx.toFixed(1)}" y="${(ly+4).toFixed(1)}" text-anchor="middle" font-size="13" font-weight="${sel?800:600}" fill="${sel?"#ffb347":"#a98a55"}">${NOTE_NAMES[i]}</text>`;
+    }
+    // outer pointer: arrow riding the wheel, aimed OUT at the selected note
+    s+=tri(noteAng, R_OUT_HI-3, R_OUT_LO+8, 7, "#e26a10");
+    // inner wheel: cent ticks every 10¢ (0 at top → ±100 at bottom) + numbers
+    for(let c=-100;c<=100;c+=10){
+      const a=c*1.8, zero=c===0;
+      const t1=DP(a,R_INN_HI-2), t2=DP(a,R_INN_HI-(c%20===0?9:6));
+      s+=`<line x1="${t1[0].toFixed(1)}" y1="${t1[1].toFixed(1)}" x2="${t2[0].toFixed(1)}" y2="${t2[1].toFixed(1)}" stroke="${zero?"#ffb347":"#6b5128"}" stroke-width="1"/>`;
+      if(c%20===0){
+        const la=Math.abs(c)===100 ? Math.sign(c)*172 : a;   // nudge the two bottom labels apart
+        const [lx,ly]=DP(la,R_CENT);
+        s+=`<text x="${lx.toFixed(1)}" y="${(ly+3).toFixed(1)}" text-anchor="middle" font-size="8.5" fill="${zero?"#ffce87":"#8a744c"}">${c>0?"+"+c:c}</text>`;
+      }
+    }
+    // inner pointer: arrow riding the wheel, aimed IN toward the core
+    s+=tri(bendAng, R_INN_LO+3, R_INN_LO+18, 7, "#ffb347");
+    // core: note name of the key center + resulting Hz (note name stays put past ±50¢ — see spec)
+    s+=`<circle cx="${DCX}" cy="${DCY}" r="${R_CORE}" fill="#0e0904" stroke="#6b5128" stroke-width="1.5"/>`;
+    s+=`<text x="${DCX}" y="${DCY-3}" text-anchor="middle" font-size="26" font-weight="800" fill="#ffce87">${NOTE_NAMES[pc]}${oct}</text>`;
+    s+=`<text x="${DCX}" y="${DCY+18}" text-anchor="middle" font-size="12" font-weight="600" fill="#c9b78f">${fmtHz(effKey())} Hz</text>`;
+    dialSvg.innerHTML=s;
+  }
+
+  function setKeyFromFreq(freq){
+    const m=Math.round(69+12*Math.log2(freq/440));
+    state.keyMidi=clamp(m, MIDI_LO, MIDI_HI);
+    state.keyFreq=midiToFreq(state.keyMidi);
+  }
+  function commitKey(nm){
+    nm=clamp(nm, MIDI_LO, MIDI_HI);
+    if(nm!==state.keyMidi){ state.keyMidi=nm; state.keyFreq=midiToFreq(nm); applyFreqs(); renderVoicing(); }
+    drawKeyDial(); drawRootDial();   // root's note readout follows the key
+  }
+  function commitBend(c){
+    c=clamp(c,-100,100);
+    if(c!==state.bendCents){ state.bendCents=c; applyFreqs(); renderVoicing(); }
+    drawKeyDial(); drawRootDial();
+  }
+
+  // pointer interaction: pick a wheel by grab radius, then drag
+  let dialDrag=null;
+  function polarAt(svg,e){   // pointer position on a dial, in its viewBox polar coords
+    const r=svg.getBoundingClientRect();
+    const x=(e.clientX-r.left)/r.width*DVB-DCX, y=(e.clientY-r.top)/r.height*DVB-DCY;
+    return {ang:Math.atan2(x,-y)*180/Math.PI, rad:Math.hypot(x,y)};   // ang: 0=top, CW+, (-180,180]
+  }
+  dialSvg.addEventListener("pointerdown",e=>{
+    const {ang,rad}=polarAt(dialSvg,e);
+    if(rad>=R_INN_LO-6 && rad<=R_INN_HI+3){
+      dialDrag={wheel:"inner", prev:clamp(ang/1.8,-100,100)};
+      commitBend(dialDrag.prev);
+    } else if(rad>=R_OUT_LO-2 && rad<=R_NOTE+10){
+      dialDrag={wheel:"outer", last:ang, accum:0, start:state.keyMidi};
+    } else return;
+    try{ dialSvg.setPointerCapture(e.pointerId); }catch(_){}
+    e.preventDefault();
   });
+  window.addEventListener("pointermove",e=>{
+    if(!dialDrag) return;
+    const {ang}=polarAt(dialSvg,e);
+    if(dialDrag.wheel==="inner"){
+      let c=clamp(ang/1.8,-100,100);
+      if(Math.abs(c-dialDrag.prev)>120) c=dialDrag.prev>0?100:-100;   // don't teleport across the bottom
+      dialDrag.prev=c; commitBend(c);
+    } else {
+      let d=ang-dialDrag.last; if(d>180)d-=360; else if(d<-180)d+=360;
+      dialDrag.accum+=d; dialDrag.last=ang;
+      commitKey(dialDrag.start+Math.round(dialDrag.accum/30));   // 30° == one semitone snap
+    }
+  });
+  window.addEventListener("pointerup",()=>{ dialDrag=null; });
+  window.addEventListener("pointercancel",()=>{ dialDrag=null; });
+
+  // ---- chord-root dial: a single discrete wheel (matched to the key dial), 12 scale degrees ----
+  // Cyclic (wraps mod 12); the center shows the picked degree + the note it lands on in the current key.
+  const rootDialSvg=document.getElementById("rootdial");
+  function drawRootDial(){
+    const idx=((state.rootIdx%12)+12)%12, a0=idx*30;
+    const rootFreq=effKey()*rval(DEGREES[idx].r);
+    let s="";
+    s+=`<circle cx="${DCX}" cy="${DCY}" r="${R_OUT_HI}" fill="#241a0d" stroke="#6b5128" stroke-width="1.5"/>`;
+    s+=`<circle cx="${DCX}" cy="${DCY}" r="${R_OUT_LO}" fill="#140d06" stroke="#4a3820" stroke-width="1"/>`;  // big core
+    for(let i=0;i<12;i++){
+      const a=i*30, sel=i===idx;
+      const t1=DP(a,R_OUT_HI-2), t2=DP(a,R_OUT_HI-11);
+      s+=`<line x1="${t1[0].toFixed(1)}" y1="${t1[1].toFixed(1)}" x2="${t2[0].toFixed(1)}" y2="${t2[1].toFixed(1)}" stroke="${sel?"#e26a10":"#7d6743"}" stroke-width="${sel?2:1}"/>`;
+      const [lx,ly]=DP(a,R_NOTE);
+      s+=`<text x="${lx.toFixed(1)}" y="${(ly+4).toFixed(1)}" text-anchor="middle" font-size="13" font-weight="${sel?800:600}" fill="${sel?"#ffb347":"#a98a55"}">${DEGREES[i].lab}</text>`;
+    }
+    s+=tri(a0, R_OUT_HI-3, R_OUT_LO+8, 7, "#e26a10");
+    s+=`<text x="${DCX}" y="${DCY+14}" text-anchor="middle" font-size="40" font-weight="800" fill="#ffce87">${DEGREES[idx].lab}</text>`;
+    rootDialSvg.innerHTML=s;
+  }
+  function commitRoot(idx){
+    idx=((idx%12)+12)%12;
+    if(idx!==state.rootIdx){ state.rootIdx=idx; recomputeChord(); }
+    drawRootDial();
+  }
+  let rootDrag=null;
+  rootDialSvg.addEventListener("pointerdown",e=>{
+    const {ang,rad}=polarAt(rootDialSvg,e);
+    if(rad>R_NOTE+12) return;
+    rootDrag={last:ang, accum:0, start:state.rootIdx};
+    try{ rootDialSvg.setPointerCapture(e.pointerId); }catch(_){}
+    e.preventDefault();
+  });
+  window.addEventListener("pointermove",e=>{
+    if(!rootDrag) return;
+    const {ang}=polarAt(rootDialSvg,e);
+    let d=ang-rootDrag.last; if(d>180)d-=360; else if(d<-180)d+=360;
+    rootDrag.accum+=d; rootDrag.last=ang;
+    commitRoot(rootDrag.start+Math.round(rootDrag.accum/30));   // 30° == one degree snap
+  });
+  window.addEventListener("pointerup",()=>{ rootDrag=null; });
+  window.addEventListener("pointercancel",()=>{ rootDrag=null; });
+
   const chordsEl=document.getElementById("chords");
   CHORDS.forEach((c,i)=>{
     const b=document.createElement("button"); b.className="chip"; b.textContent=c.name;
@@ -1116,22 +1235,14 @@
       })),
     };
   }
-  function selectClosestKey(freq){                 // snap to the nearest available key option
-    let best=0, bd=Infinity;
-    for(let i=0;i<keyEl.options.length;i++){
-      const d=Math.abs(parseFloat(keyEl.options[i].value)-freq);
-      if(d<bd){ bd=d; best=i; }
-    }
-    keyEl.selectedIndex=best; state.keyFreq=parseFloat(keyEl.value);
-  }
   function applySnapshot(raw){
     const snap = normalizeSnapshot(raw, appDefaults());
     suppressSync = true;
     try {
-      selectClosestKey(snap.key);
+      setKeyFromFreq(snap.key);   // stored as a frequency → nearest dial note (bend restored separately below)
       state.rootIdx  = clamp(snap.root,  0, DEGREES.length-1);
       state.chordIdx = clamp(snap.chord, 0, CHORDS.length-1);
-      markSel(rootsEl, state.rootIdx); markSel(chordsEl, state.chordIdx);
+      markSel(chordsEl, state.chordIdx);
 
       state.et = snap.et;
       tuningBtn.classList.toggle("on", !state.et);
@@ -1155,8 +1266,8 @@
       voices.forEach(v => { v.soloed = false; if(v.ui && v.ui.solo) setSoloUI(v); });  // solo is a live control, not persisted
 
       // global bend: stored redundantly per voice — take the first (all equal for new saves)
-      state.bendCents = clamp(Math.round(snap.voices[0].bend), -100, 100);
-      bendEl.value = state.bendCents; bendLab();   // applyFreqs() at the end applies it to every voice
+      state.bendCents = clamp(snap.voices[0].bend, -100, 100);
+      drawKeyDial(); drawRootDial();   // reflect key/bend/root on the dials; applyFreqs() at the end applies it to every voice
 
       snap.voices.forEach((sv,k) => {
         const v = voices[k];
@@ -1209,10 +1320,10 @@
   // ============================================================ init
   for(let k=0;k<4;k++) buildVoice(k);
   buildStrips();
-  markSel(rootsEl,state.rootIdx);
   markSel(chordsEl,state.chordIdx);
   lab();
-  bendLab();
+  drawKeyDial();
+  drawRootDial();
   recomputeChord();
   drawSharedChart();
   // restore a shared/saved state if present, then arm URL syncing (so init itself never stamps a URL)
