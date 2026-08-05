@@ -431,7 +431,8 @@
     playing:false,
     et:false,                // false = just intonation, true = 12-tone equal temperament (chord root pinned)
     fundHz:null,             // implied (JI-ideal) fundamental of the current chord, in Hz
-    moveAll:true,            // default ON: per-voice controls gang across all four voices
+    moveAll:true,            // default ON: sliders + vowel-chart drags gang across all four voices
+                             // (mute/solo are always per-voice — this only governs *moving* things)
   };
   const DEFAULT_SRCEXP=1.2, DEFAULT_BWFRAC=0.06;
   // typical ranges for the per-voice falloff × bandwidth pads (axes limited to realistic values)
@@ -1051,10 +1052,11 @@
 
   // Clicking mute. Always drops the solo, because every mute a user can reach from a soloed state
   // is otherwise illegal: muting the soloed voice leaves 4 mutes + a solo, unmuting any other
-  // leaves fewer than 3. `gang` is the move-all toggle — it drives every voice to the new value.
-  function applyMute(st, i, gang){
+  // leaves fewer than 3. Per-voice, like solo: the move-all toggle governs moving sliders and the
+  // vowel chart, not silencing voices.
+  function applyMute(st, i){
     const on = !st[i].muted;
-    return {states: st.map((s,k)=>({muted:(gang||k===i)?on:s.muted, soloed:false})), saved:null};
+    return {states: st.map((s,k)=>({muted: k===i ? on : s.muted, soloed:false})), saved:null};
   }
 
   // Is this one of the two legal shapes above? (Used by the tests to check every transition.)
@@ -1114,9 +1116,10 @@
         v.ui[p.key].sl.addEventListener("dblclick",()=>resetParam(p,k));
         v.ui[p.key].pv.textContent=p.fmt(v);
       });
+      // Both are per-voice regardless of move-all: ganging either is meaningless — muting all four
+      // is just silence, and soloing all four is the same as soloing none.
       const mb=row.querySelector(".mute"); v.ui.mute=mb;
-      mb.addEventListener("click",()=>commitMuteSolo(applyMute(muteSoloStates(), k, state.moveAll)));
-      // Solo is always per-voice (ganging it would be pointless — soloing all == soloing none).
+      mb.addEventListener("click",()=>commitMuteSolo(applyMute(muteSoloStates(), k)));
       const sb=row.querySelector(".solo"); v.ui.solo=sb;
       sb.addEventListener("click",()=>commitMuteSolo(applySolo(muteSoloStates(), k, preSoloMutes)));
       setMuteUI(v); setSoloUI(v);                // reflect state the strips were rebuilt from

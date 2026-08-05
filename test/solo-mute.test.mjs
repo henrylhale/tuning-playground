@@ -69,7 +69,7 @@ test('un-soloing with no snapshot unmutes everything', () => {
 
 test('muting the soloed voice clears the solo and leaves four mutes', () => {
   const soloed = applySolo(allOff(), 0, null).states;
-  const { states } = applyMute(soloed, 0, false);
+  const { states } = applyMute(soloed, 0);
   assert.equal(nSoloed(states), 0);
   assert.equal(nMuted(states), 4);
   assert.ok(isLegalState(states));
@@ -77,26 +77,26 @@ test('muting the soloed voice clears the solo and leaves four mutes', () => {
 
 test('unmuting another voice while soloed clears the solo', () => {
   const soloed = applySolo(allOff(), 0, null).states;      // 0 audible, 1–3 muted
-  const { states } = applyMute(soloed, 2, false);          // let voice 2 back in
+  const { states } = applyMute(soloed, 2);          // let voice 2 back in
   assert.equal(nSoloed(states), 0);
   assert.deepEqual(mutesOf(states), [false, true, false, true]);
   assert.ok(isLegalState(states));
 });
 
-test('mute toggles just that voice, and ganged mute drives all four', () => {
-  const one = applyMute(allOff(), 1, false).states;
+test('mute toggles only the voice clicked', () => {
+  const one = applyMute(allOff(), 1).states;
   assert.deepEqual(mutesOf(one), [false, true, false, false]);
-  const ganged = applyMute(one, 0, true).states;           // voice 0 was unmuted → all mute
-  assert.deepEqual(mutesOf(ganged), [true, true, true, true]);
-  assert.deepEqual(mutesOf(applyMute(ganged, 0, true).states), [false, false, false, false]);
+  const two = applyMute(one, 3).states;
+  assert.deepEqual(mutesOf(two), [false, true, false, true]);
+  assert.deepEqual(mutesOf(applyMute(two, 1).states), [false, false, false, true], 'toggles back off');
 });
 
-test('ganged mute out of a solo is still legal', () => {
-  const soloed = applySolo(allOff(), 3, null).states;      // 3 unmuted, rest muted
-  const { states } = applyMute(soloed, 3, true);           // clicking its mute, ganged → all mute
-  assert.deepEqual(mutesOf(states), [true, true, true, true]);
-  assert.equal(nSoloed(states), 0);
-  assert.ok(isLegalState(states));
+// The move-all toggle governs moving sliders and the vowel chart. It used to gang mute too, which
+// meant one click could silence the whole quartet; mute is per-voice now, like solo.
+test('mute takes no ganging argument', () => {
+  assert.equal(applyMute.length, 2, 'applyMute(st, i) — no third `gang` parameter');
+  const st = applyMute(allOff(), 2, true).states;          // a stray extra arg must be inert
+  assert.deepEqual(mutesOf(st), [false, false, true, false]);
 });
 
 test('exhaustive: no sequence of clicks can reach an illegal state', () => {
@@ -110,8 +110,7 @@ test('exhaustive: no sequence of clicks can reach an illegal state', () => {
     for (let i = 0; i < N; i++) {
       for (const next of [
         applySolo(st, i, saved),
-        applyMute(st, i, false),
-        applyMute(st, i, true),
+        applyMute(st, i),
       ]) {
         assert.ok(isLegalState(next.states),
           `illegal state ${JSON.stringify(next.states)} reached from ${JSON.stringify(st)}`);
