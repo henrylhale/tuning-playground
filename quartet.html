@@ -463,7 +463,36 @@
     for(let n=1;n<=N;n++) imag[n]=Math.pow(n,-srcExp);
     return ctx.createPeriodicWave(real,imag);
   }
+  //#region audio-session — PURE, DOM-FREE: iOS silent-switch policy. Node-testable
+  // (test/audio-session.test.mjs slices this region out of the HTML and evals it.)
+  //
+  // iOS hands every page an "ambient" audio session, and the ringer/silent switch mutes ambient
+  // audio. So with the switch flipped an iPhone plays nothing from Web Audio, while native apps
+  // and plain <audio> elements keep sounding — which is the bug this fixes. Declaring "playback"
+  // (Safari 16.4+) puts us in the session native media players use, which the switch doesn't
+  // touch. There is no way to ask for this from the AudioContext itself.
+  //
+  // Re-asserted on every ensureAudio() rather than set once at load, because iOS can hand the
+  // page back an ambient session after an interruption (a call, Siri, another app taking audio
+  // focus). Assignment is skipped when we already hold a playback session.
+  //
+  // The return value is diagnostic only — the app ignores it, the tests pin it down:
+  //   "unsupported" — no AudioSession API (non-Safari browsers, iOS < 16.4)
+  //   "already"     — the page is already in a playback session, nothing to do
+  //   "set"         — we moved it into one
+  //   "failed"      — the setter threw, or the type didn't take
+  function requestPlaybackSession(nav){
+    const session = nav && nav.audioSession;
+    if(!session || typeof session.type !== "string") return "unsupported";
+    if(session.type === "playback") return "already";
+    try{ session.type = "playback"; }
+    catch(e){ return "failed"; }
+    return session.type === "playback" ? "set" : "failed";
+  }
+  //#endregion audio-session
+
   function ensureAudio(){
+    requestPlaybackSession(window.navigator);
     if(!ctx){
       ctx=new (window.AudioContext||window.webkitAudioContext)();
       masterOut=ctx.createGain(); masterOut.gain.value=0; masterOut.connect(ctx.destination);

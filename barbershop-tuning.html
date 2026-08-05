@@ -222,7 +222,22 @@ let actx = null, master = null;
 const activeVoices = new Map(); // key -> {osc, g, p}
 const VOICE_GAIN = 0.16;
 
+// iOS mutes a page's default "ambient" audio session with the ringer switch, so Web Audio goes
+// silent while native apps keep sounding. Declaring "playback" (Safari 16.4+) opts into the
+// session the switch doesn't touch. Re-asserted on every interaction because iOS can hand back
+// an ambient session after an interruption. Kept identical to the `audio-session` region in
+// quartet.html, which test/audio-session.test.mjs tests and pins all three copies against.
+function requestPlaybackSession(nav){
+  const session = nav && nav.audioSession;
+  if(!session || typeof session.type !== "string") return "unsupported";
+  if(session.type === "playback") return "already";
+  try{ session.type = "playback"; }
+  catch(e){ return "failed"; }
+  return session.type === "playback" ? "set" : "failed";
+}
+
 function ensureAudio(){
+  requestPlaybackSession(window.navigator);
   if(actx) return;
   actx = new (window.AudioContext || window.webkitAudioContext)();
   master = actx.createGain();
@@ -420,7 +435,10 @@ bwEl.addEventListener("input", () => { bwOut.textContent = bwEl.value; state.max
 
 let rT;
 window.addEventListener("resize", () => { clearTimeout(rT); rT = setTimeout(layout, 80); });
-document.body.addEventListener("pointerdown", () => { if(actx && actx.state === "suspended") actx.resume(); });
+document.body.addEventListener("pointerdown", () => {
+  requestPlaybackSession(window.navigator);   // an interruption can have reset us to ambient
+  if(actx && actx.state === "suspended") actx.resume();
+});
 
 /* ---------- init ---------- */
 buildFundamentalOptions();
