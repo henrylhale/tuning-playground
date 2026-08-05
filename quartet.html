@@ -1023,12 +1023,64 @@
   function resetParam(p,k){
     if(state.moveAll) voices.forEach(w=>applyParam(p,w,p.def)); else applyParam(p,voices[k],p.def);
   }
+  //#region solo-mute — PURE, DOM-FREE: legal mute/solo transitions. Node-testable
+  // (test/solo-mute.test.mjs slices this region out of the HTML and evals it.)
+  //
+  // Only two shapes are legal:
+  //   no voice soloed  → any subset of the voices muted (0–4 mute buttons lit)
+  //   one voice soloed → that voice unmuted and ALL others muted (1 solo + 3 mutes lit)
+  //
+  // So `muted` alone decides what is audible; `soloed` only records how we got there, which is
+  // why deliberately hand-muting three voices does NOT light the fourth voice's solo button.
+  const soloIndex = st => st.findIndex(s => s.soloed);
+
+  // The mute pattern that a solo on voice `i` forces.
+  const soloedStates = (n,i) => Array.from({length:n}, (_,k) => ({muted: k!==i, soloed: k===i}));
+
+  // Clicking solo. `saved` carries the mute pattern from before the solo, so switching solo back
+  // off restores what the user had rather than blanket-unmuting; null when nothing is soloed.
+  function applySolo(st, i, saved){
+    const cur = soloIndex(st);
+    if(cur === i){                                    // solo off → put the old mutes back
+      const m = saved || st.map(()=>false);
+      return {states: st.map((s,k)=>({muted:!!m[k], soloed:false})), saved:null};
+    }
+    // solo on, or moved to a different voice — only snapshot on the way in, not when moving
+    return {states: soloedStates(st.length,i), saved: cur === -1 ? st.map(s=>s.muted) : saved};
+  }
+
+  // Clicking mute. Always drops the solo, because every mute a user can reach from a soloed state
+  // is otherwise illegal: muting the soloed voice leaves 4 mutes + a solo, unmuting any other
+  // leaves fewer than 3. `gang` is the move-all toggle — it drives every voice to the new value.
+  function applyMute(st, i, gang){
+    const on = !st[i].muted;
+    return {states: st.map((s,k)=>({muted:(gang||k===i)?on:s.muted, soloed:false})), saved:null};
+  }
+
+  // Is this one of the two legal shapes above? (Used by the tests to check every transition.)
+  function isLegalState(st){
+    const i = soloIndex(st);
+    if(i === -1) return true;
+    return st.filter(s=>s.soloed).length === 1 && st.every((s,k)=>s.muted === (k!==i));
+  }
+  //#endregion solo-mute
+
   function setMuteUI(v){ v.ui.mute.classList.toggle("on",v.muted); v.ui.mute.textContent=v.muted?"muted":"mute"; }
   function setSoloUI(v){ v.ui.solo.classList.toggle("on",v.soloed); }
-  // A voice is heard iff it isn't muted and — when any voice is soloed — it's one of the soloed ones.
-  const anySolo = () => voices.some(w=>w.soloed);
-  const isAudible = v => !v.muted && (!anySolo() || v.soloed);
-  // Re-level every voice's gain to its current audibility (mute/solo can flip several at once).
+  // Legality is enforced above, so `muted` alone tells us what is heard.
+  const isAudible = v => !v.muted;
+  let preSoloMutes = null;                       // mutes to restore when solo is switched off
+  const muteSoloStates = () => voices.map(v=>({muted:v.muted, soloed:v.soloed}));
+  // Push a computed {muted,soloed} set onto the voices — either click can flip all four at once.
+  function commitMuteSolo(res){
+    preSoloMutes = res.saved;
+    res.states.forEach((s,k)=>{
+      const w=voices[k]; w.muted=s.muted; w.soloed=s.soloed; setMuteUI(w); setSoloUI(w);
+    });
+    refreshGains();
+    scheduleUrlSync();                           // solo moves mutes, and mutes are persisted
+  }
+  // Re-level every voice's gain to its current audibility.
   function refreshGains(){
     if(!ctx) return; const now=ctx.currentTime;
     voices.forEach(w=>w.voiceGain.gain.setTargetAtTime(isAudible(w)?w.level:0,now,0.03));
@@ -1063,15 +1115,11 @@
         v.ui[p.key].pv.textContent=p.fmt(v);
       });
       const mb=row.querySelector(".mute"); v.ui.mute=mb;
-      mb.addEventListener("click",()=>{
-        const ns=!v.muted, targets=state.moveAll?voices:[v];
-        targets.forEach(w=>{ w.muted=ns; setMuteUI(w); });
-        refreshGains();
-        scheduleUrlSync();
-      });
+      mb.addEventListener("click",()=>commitMuteSolo(applyMute(muteSoloStates(), k, state.moveAll)));
       // Solo is always per-voice (ganging it would be pointless — soloing all == soloing none).
       const sb=row.querySelector(".solo"); v.ui.solo=sb;
-      sb.addEventListener("click",()=>{ v.soloed=!v.soloed; setSoloUI(v); refreshGains(); });
+      sb.addEventListener("click",()=>commitMuteSolo(applySolo(muteSoloStates(), k, preSoloMutes)));
+      setMuteUI(v); setSoloUI(v);                // reflect state the strips were rebuilt from
       updateVoiceInfo(v);
     });
   }
@@ -1263,7 +1311,9 @@
       shimBtn.classList.toggle("on", shimOn); shimBtn.textContent = shimOn ? "on" : "off";
       lab();
       if(ctx) voices.forEach(v => v.vibDepth && v.vibDepth.gain.setTargetAtTime(state.vibCents, ctx.currentTime, 0.02));
-      voices.forEach(v => { v.soloed = false; if(v.ui && v.ui.solo) setSoloUI(v); });  // solo is a live control, not persisted
+      // solo is a live control, not persisted — a load lands on "mutes, no solo", always legal
+      voices.forEach(v => { v.soloed = false; if(v.ui && v.ui.solo) setSoloUI(v); });
+      preSoloMutes = null;                      // the pre-solo mutes belong to the old state
 
       // global bend: stored redundantly per voice — take the first (all equal for new saves)
       state.bendCents = clamp(snap.voices[0].bend, -100, 100);
