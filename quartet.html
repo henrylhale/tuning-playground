@@ -32,19 +32,20 @@
   .val{color:var(--ink);font-size:12px;min-width:30px;font-weight:600}
 
   /* keycaps */
-  button.play,.chip,.mute,.wave,.octbtns button,.toggle{
+  button.play,.chip,.mute,.solo,.wave,.octbtns button,.toggle{
     appearance:none;cursor:pointer;color:var(--ink);font-family:inherit;font-weight:700;
     background:linear-gradient(180deg,var(--keycap-hi),var(--keycap) 55%,var(--keycap-edge));
     border:1px solid var(--bezel-lo);border-radius:4px;
     box-shadow:inset 0 1px 0 rgba(255,255,255,.6),0 2px 0 var(--keycap-edge),0 2px 4px rgba(60,40,15,.22);
     transition:transform .06s,box-shadow .06s,filter .1s}
-  button.play:hover,.chip:hover,.mute:hover,.wave:hover,.octbtns button:hover,.toggle:hover{filter:brightness(1.05)}
-  button.play:active,.chip:active,.mute:active,.wave:active,.octbtns button:active,.toggle:active{
+  button.play:hover,.chip:hover,.mute:hover,.solo:hover,.wave:hover,.octbtns button:hover,.toggle:hover{filter:brightness(1.05)}
+  button.play:active,.chip:active,.mute:active,.solo:active,.wave:active,.octbtns button:active,.toggle:active{
     transform:translateY(2px);box-shadow:inset 0 2px 4px rgba(60,40,15,.4)}
   button.play{padding:9px 18px;font-size:14px}
   .chip{padding:5px 8px;font-size:12px;min-width:30px;text-align:center}
   .grid .chip{font-size:11px;padding:6px 4px}
   .mute{color:var(--muted);padding:4px 9px;font-size:11px}
+  .solo{color:var(--muted);padding:4px 9px;font-size:11px}
   .wave{color:var(--muted);padding:4px 8px;font-size:11px}
   .octbtns button{width:24px;height:20px;font-size:11px;line-height:1;padding:0}
   .toggle{padding:5px 11px;font-size:11px}
@@ -55,10 +56,16 @@
     box-shadow:inset 0 1px 0 rgba(255,231,195,.6),0 0 11px rgba(226,106,16,.5),0 2px 0 var(--accent-deep)}
   .mute.on{background:linear-gradient(180deg,#e98a7a,#c0473a);color:#fff0ec;border-color:#9c3327;
     box-shadow:inset 0 1px 0 rgba(255,200,190,.5),0 0 9px rgba(192,71,58,.5),0 2px 0 #9c3327}
+  .solo.on{background:linear-gradient(180deg,#a9e6b4,#43a35e 60%,#2f7d45);color:#08240f;border-color:#2f7d45;
+    box-shadow:inset 0 1px 0 rgba(210,255,220,.5),0 0 9px rgba(67,163,94,.5),0 2px 0 #2f7d45}
 
   .selector{display:grid;grid-template-columns:auto auto 1fr auto;gap:14px;align-items:start}
   .sp{min-width:0}
   .btnrow{display:flex;flex-wrap:wrap;gap:4px;max-width:230px}
+  .keybend{display:flex;align-items:center;gap:8px;margin-top:8px;max-width:250px}
+  .keybend label{color:var(--muted);font-size:11px;font-weight:600}
+  .keybend input[type=range]{flex:1;width:auto;min-width:60px}
+  .keybend .kv{color:var(--ink);font-size:11px;font-weight:600;white-space:nowrap}
   .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
 
   .vrow{display:flex;gap:10px}
@@ -125,12 +132,19 @@
     <button id="play" class="play">▶ Play quartet</button>
     <div class="ctl"><label>Tuning</label><button id="tuning" class="toggle on" title="Swap between just intonation and 12-tone equal temperament (chord root pinned)">Just</button></div>
     <div class="ctl"><label>Vibrato</label><input id="vib" type="range" min="0" max="8" step="0.5" value="3"><span id="vibval" class="val"></span></div>
+    <div class="ctl"><label>Jitter</label><button id="jit" class="toggle on" title="Random per-note pitch drift (±4¢)">on</button></div>
+    <div class="ctl"><label>Shimmer</label><button id="shim" class="toggle on" title="Random per-note amplitude drift (±4%)">on</button></div>
   </div>
 
   <div class="panel selector">
     <div class="sp">
       <h3>Key center</h3>
       <select id="key"></select>
+      <div class="keybend">
+        <label for="bend">bend</label>
+        <input id="bend" type="range" min="-100" max="100" step="1" value="0" title="Global pitch bend — fine-tunes the whole quartet's key center (double-click to reset)">
+        <span id="bendval" class="kv"></span>
+      </div>
     </div>
     <div class="sp">
       <h3>Chord root</h3>
@@ -368,6 +382,7 @@
     {name:"Maj7",      r:["1/1","5/4","3/2","15/8"]},
     {name:"Dom7 ♭5",   r:["1/1","5/4","7/5","7/4"]},
     {name:"Aug",       r:["1/1","5/4","8/5","1/1"]},
+    {name:"Dom9 no5",  r:["1/1","5/4","7/4","9/8"]},   // fifthless dominant 9th — 4:5:7:9 over the root (appended to keep older shared-URL chord indices stable)
   ];
   // chord-root scale degrees relative to key center
   const DEGREES = [
@@ -410,6 +425,7 @@
   // ============================================================ global state
   const state = {
     keyFreq: 220,            // A3
+    bendCents: 0,            // global pitch bend (cents) — presented as fine-tuning the key center
     rootIdx: 0,              // degree index
     chordIdx: 1,             // Dom7 bbs
     voicing: [],             // [{tone, octave}] left->right
@@ -435,6 +451,8 @@
   // to ~-2 dBFS (never clips), while one voice at the slider's -48 dB floor lands ~-65 dBFS (the
   // quietest still-audible level at full system volume). Per-voice level range is set to match.
   const MASTER_GAIN=0.36;
+  // Jitter & shimmer are now global on/off toggles; these are their "on" magnitudes (0 when off).
+  const JITTER_AMT=4, SHIMMER_AMT=0.04;
 
   // ============================================================ audio
   let ctx=null, masterOut=null, masterBus=null, humanTimer=null;
@@ -537,8 +555,8 @@
     const now=ctx.currentTime;
     voices.forEach(v=>{
       if(!v.osc) return;
-      v.osc.detune.setTargetAtTime(v.bend + (Math.random()*2-1)*state.jitterCents, now, 0.05);
-      const target = v.muted?0:v.level*(1+(Math.random()*2-1)*state.shimmer);
+      v.osc.detune.setTargetAtTime((Math.random()*2-1)*state.jitterCents, now, 0.05);   // bend is now global (folded into key freq); detune carries only jitter
+      const target = isAudible(v)?v.level*(1+(Math.random()*2-1)*state.shimmer):0;
       v.voiceGain.gain.setTargetAtTime(Math.max(0,target), now, 0.06);
     });
   }
@@ -553,11 +571,11 @@
       v.osc.connect(v.sourceBus);
       v.vibDepth.disconnect(); v.vibDepth.connect(v.osc.detune);
       v.osc.detune.setValueAtTime(-40,now);
-      v.osc.detune.linearRampToValueAtTime(v.bend,now+0.12);
+      v.osc.detune.linearRampToValueAtTime(0,now+0.12);   // pitch-up attack settling to 0 (global bend lives in the key freq)
       v.osc.start();
       v.voiceGain.gain.cancelScheduledValues(now);
       v.voiceGain.gain.setValueAtTime(0,now);
-      v.voiceGain.gain.linearRampToValueAtTime(v.muted?0:v.level, now+0.07);
+      v.voiceGain.gain.linearRampToValueAtTime(isAudible(v)?v.level:0, now+0.07);
       syncFormants(v);
     });
     masterOut.gain.cancelScheduledValues(now);
@@ -691,7 +709,7 @@
     });
     let den=1; fr.forEach(([,b])=> den=lcm(den,b));         // common denominator across voices
     let num=0; fr.forEach(([a,b])=> num=gcd(num,a*(den/b))); // greatest common rational = num/den
-    return state.keyFreq * num/den;
+    return effKey() * num/den;
   }
   function defaultVoicing(pcs){
     const idx=[0,1,2,3].sort((a,b)=>pcs[a]-pcs[b]);
@@ -704,7 +722,11 @@
     const sh=-Math.round(meanLog); slots.forEach(sl=>sl.octave+=sh);
     return slots;
   }
-  function slotFreq(slot){ return state.keyFreq * state.absPcs[slot.tone] * Math.pow(2,slot.octave); }
+  // effective key center = the selected key, fine-tuned by the global pitch bend (cents).
+  // Folding the bend in here (rather than per-voice detune) makes it a true transpose of the
+  // whole quartet, so every note name / Hz readout reflects it as a shifted key center.
+  const effKey = () => state.keyFreq * Math.pow(2, state.bendCents/1200);
+  function slotFreq(slot){ return effKey() * state.absPcs[slot.tone] * Math.pow(2,slot.octave); }
   // distinct chord pitch classes, ascending, each with a representative tone index
   function chordPcs(){
     const seen=new Map();
@@ -745,7 +767,16 @@
     if(m===57)o.selected=true;
     keyEl.appendChild(o);
   }
-  keyEl.addEventListener("change",()=>{ state.keyFreq=parseFloat(keyEl.value); applyFreqs(); });
+  keyEl.addEventListener("change",()=>{ state.keyFreq=parseFloat(keyEl.value); bendLab(); applyFreqs(); });
+
+  // global pitch bend — shown as a fine adjustment to the key center (note names/Hz track it everywhere)
+  const bendEl=document.getElementById("bend"), bendVal=document.getElementById("bendval");
+  function bendLab(){
+    const c=state.bendCents;
+    bendVal.textContent=`${c>0?"+":""}${c}¢ · ${effKey().toFixed(1)} Hz`;
+  }
+  bendEl.addEventListener("input",()=>{ state.bendCents=parseFloat(bendEl.value); bendLab(); applyFreqs(); renderVoicing(); });
+  bendEl.addEventListener("dblclick",()=>{ state.bendCents=0; bendEl.value=0; bendLab(); applyFreqs(); renderVoicing(); });
 
   const rootsEl=document.getElementById("roots");
   DEGREES.forEach((d,i)=>{
@@ -832,7 +863,7 @@
   let activeDrag=null; // {kind:'chart'|'chartAll', ...}
   function buildVoice(k){
     voices.push({ formants: JSON.parse(JSON.stringify(DEFAULT_FORMANTS)), freq:state.keyFreq,
-      muted:false, level:1, mode:"voice", bend:0, srcExp:DEFAULT_SRCEXP, bwFrac:DEFAULT_BWFRAC });
+      muted:false, soloed:false, level:1, mode:"voice", srcExp:DEFAULT_SRCEXP, bwFrac:DEFAULT_BWFRAC });
   }
 
   // per-voice slider params shown in each strip. When "move: all voices" is on, dragging one
@@ -855,12 +886,8 @@
     {key:"vol",lab:"vol",min:-48,max:0,step:0.2,def:0,
       get:v=>v.level>0 ? 20*Math.log10(v.level) : -48,
       set:(v,x)=>v.level=Math.pow(10, x/20),
-      apply:v=>{ if(ctx) v.voiceGain.gain.setTargetAtTime(v.muted?0:v.level,ctx.currentTime,0.03); },
+      apply:v=>{ if(ctx) v.voiceGain.gain.setTargetAtTime(isAudible(v)?v.level:0,ctx.currentTime,0.03); },
       fmt:v=>{ const dB=v.level>0?20*Math.log10(v.level):-48; return `${dB>=0?"+":""}${dB.toFixed(1)} dB`; }},
-    {key:"bend",lab:"bend",min:-15,max:15,step:0.5,def:0,
-      get:v=>v.bend, set:(v,x)=>v.bend=x,
-      apply:v=>{ if(ctx&&v.osc) v.osc.detune.setTargetAtTime(v.bend,ctx.currentTime,0.03); },
-      fmt:v=>`${v.bend>0?"+":""}${v.bend}¢`},
   ];
   function applyParam(p,v,val){
     const cv=clamp(val,p.min,p.max); p.set(v,cv); p.apply(v);
@@ -878,6 +905,15 @@
     if(state.moveAll) voices.forEach(w=>applyParam(p,w,p.def)); else applyParam(p,voices[k],p.def);
   }
   function setMuteUI(v){ v.ui.mute.classList.toggle("on",v.muted); v.ui.mute.textContent=v.muted?"muted":"mute"; }
+  function setSoloUI(v){ v.ui.solo.classList.toggle("on",v.soloed); }
+  // A voice is heard iff it isn't muted and — when any voice is soloed — it's one of the soloed ones.
+  const anySolo = () => voices.some(w=>w.soloed);
+  const isAudible = v => !v.muted && (!anySolo() || v.soloed);
+  // Re-level every voice's gain to its current audibility (mute/solo can flip several at once).
+  function refreshGains(){
+    if(!ctx) return; const now=ctx.currentTime;
+    voices.forEach(w=>w.voiceGain.gain.setTargetAtTime(isAudible(w)?w.level:0,now,0.03));
+  }
 
   // one strip per voice (beside the chart): status line + bright/nasal/F3/vol/bend sliders + mute
   const stripsEl=document.getElementById("strips");
@@ -895,7 +931,7 @@
       const row=document.createElement("div"); row.className="vstrip";
       row.innerHTML=
         `<div class="vhd"><span class="nm" style="color:${col}">${VOICE_NAMES[k]}</span>`+
-        `<span class="vinfo"></span><button class="mute">mute</button></div>`+
+        `<span class="vinfo"></span><button class="solo">solo</button><button class="mute">mute</button></div>`+
         `<div class="params">${topRow}</div>`+
         `<div class="params volrow">${volRow}</div>`;
       stripsEl.appendChild(row);
@@ -910,10 +946,13 @@
       const mb=row.querySelector(".mute"); v.ui.mute=mb;
       mb.addEventListener("click",()=>{
         const ns=!v.muted, targets=state.moveAll?voices:[v];
-        targets.forEach(w=>{ w.muted=ns; setMuteUI(w);
-          if(ctx) w.voiceGain.gain.setTargetAtTime(w.muted?0:w.level,ctx.currentTime,0.03); });
+        targets.forEach(w=>{ w.muted=ns; setMuteUI(w); });
+        refreshGains();
         scheduleUrlSync();
       });
+      // Solo is always per-voice (ganging it would be pointless — soloing all == soloing none).
+      const sb=row.querySelector(".solo"); v.ui.solo=sb;
+      sb.addEventListener("click",()=>{ v.soloed=!v.soloed; setSoloUI(v); refreshGains(); });
       updateVoiceInfo(v);
     });
   }
@@ -1006,8 +1045,19 @@
 
   // ============================================================ global timbre controls
   const vibEl=document.getElementById("vib"), vibVal=document.getElementById("vibval");
-  // Jitter & shimmer stay implemented (tickHuman reads state.jitterCents/state.shimmer live and the
-  // save-state codec still carries them); their sliders are just no longer exposed in the UI.
+  // Jitter & shimmer are global on/off toggles (tickHuman reads state.jitterCents/state.shimmer live);
+  // "on" = the default magnitude, "off" = 0. The save-state codec still carries the numeric values.
+  const jitBtn=document.getElementById("jit"), shimBtn=document.getElementById("shim");
+  jitBtn.addEventListener("click",()=>{
+    const on=!jitBtn.classList.contains("on");
+    jitBtn.classList.toggle("on",on); jitBtn.textContent=on?"on":"off";
+    state.jitterCents=on?JITTER_AMT:0; scheduleUrlSync();
+  });
+  shimBtn.addEventListener("click",()=>{
+    const on=!shimBtn.classList.contains("on");
+    shimBtn.classList.toggle("on",on); shimBtn.textContent=on?"on":"off";
+    state.shimmer=on?SHIMMER_AMT:0; scheduleUrlSync();
+  });
 
   function lab(){
     vibVal.textContent=state.vibCents<=0?"off":`±${state.vibCents}¢`;
@@ -1059,7 +1109,9 @@
       voicing: state.voicing.map(s => [s.tone, s.octave]),
       voices: voices.map(v => ({
         bri:v.srcExp, nas:v.bwFrac, f3:v.formants[2].F,
-        lvl:v.level, bend:v.bend, mode:v.mode, mute:v.muted,
+        // bend is global now, but the wire format has a per-voice bend float — store the global
+        // in every voice so the codec is unchanged and older per-voice URLs still round-trip.
+        lvl:v.level, bend:state.bendCents, mode:v.mode, mute:v.muted,
         f1:v.formants[0].F, f2:v.formants[1].F,
       })),
     };
@@ -1092,11 +1144,19 @@
       // master volume has no slider — it's pinned; ignore any stored vol so gain-staging always holds
       state.volume = MASTER_GAIN;
       vibEl.value = snap.vib;  state.vibCents = parseFloat(vibEl.value);  // set slider, read back to clamp
-      // jitter/shimmer have no slider anymore — clamp to their former ranges directly
-      state.jitterCents = clamp(snap.jit, 0, 15);
-      state.shimmer     = clamp(snap.shim, 0, 0.2);
+      // jitter/shimmer are on/off toggles now — any stored positive amount reads as "on" (at the default magnitude)
+      const jitOn = snap.jit > 0, shimOn = snap.shim > 0;
+      state.jitterCents = jitOn ? JITTER_AMT   : 0;
+      state.shimmer     = shimOn ? SHIMMER_AMT : 0;
+      jitBtn.classList.toggle("on", jitOn);   jitBtn.textContent  = jitOn  ? "on" : "off";
+      shimBtn.classList.toggle("on", shimOn); shimBtn.textContent = shimOn ? "on" : "off";
       lab();
       if(ctx) voices.forEach(v => v.vibDepth && v.vibDepth.gain.setTargetAtTime(state.vibCents, ctx.currentTime, 0.02));
+      voices.forEach(v => { v.soloed = false; if(v.ui && v.ui.solo) setSoloUI(v); });  // solo is a live control, not persisted
+
+      // global bend: stored redundantly per voice — take the first (all equal for new saves)
+      state.bendCents = clamp(Math.round(snap.voices[0].bend), -100, 100);
+      bendEl.value = state.bendCents; bendLab();   // applyFreqs() at the end applies it to every voice
 
       snap.voices.forEach((sv,k) => {
         const v = voices[k];
@@ -1107,10 +1167,8 @@
         applyParam(PBYKEY.nasal,  v, sv.nas);      // clamped to its slider range and the strip UI
         applyParam(PBYKEY.f3,     v, sv.f3);       // + readouts stay in sync
         applyParam(PBYKEY.vol,    v, sv.lvl>0 ? 20*Math.log10(sv.lvl) : PBYKEY.vol.min);  // lvl stored linear → dB
-
-        applyParam(PBYKEY.bend,   v, sv.bend);
         v.muted = sv.mute; setMuteUI(v);
-        if(ctx) v.voiceGain.gain.setTargetAtTime(v.muted?0:v.level, ctx.currentTime, 0.03);
+        if(ctx) v.voiceGain.gain.setTargetAtTime(isAudible(v)?v.level:0, ctx.currentTime, 0.03);
         applyOscType(v); syncFormants(v);
       });
 
@@ -1154,6 +1212,7 @@
   markSel(rootsEl,state.rootIdx);
   markSel(chordsEl,state.chordIdx);
   lab();
+  bendLab();
   recomputeChord();
   drawSharedChart();
   // restore a shared/saved state if present, then arm URL syncing (so init itself never stamps a URL)
