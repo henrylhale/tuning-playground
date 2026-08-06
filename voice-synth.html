@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Glottal Source + Formants — Voice Synth</title>
+<title>LF Source + Estill Figures — Voice Synth</title>
 <style>
   :root{
     --case:#bfa97f; --panel:#d9c7a1; --keycap:#e7d8b7; --keycap-hi:#f7eed7; --keycap-edge:#b39868;
@@ -22,14 +22,18 @@
   }
   h1{font-size:17px;font-weight:800;margin:0;letter-spacing:1.5px;text-transform:uppercase;
     color:#3a2810; text-shadow:0 1px 0 var(--bezel-hi)}
-  .sub{color:var(--muted);font-size:12.5px;margin-top:-12px;text-align:center;max-width:560px}
+  .sub{color:var(--muted);font-size:12.5px;margin-top:-12px;text-align:center;max-width:660px}
   .panel{
     background:linear-gradient(180deg,#e3d4af,#d2bf98);
     border:1px solid var(--bezel-lo); border-radius:5px;
     box-shadow:inset 0 1px 0 var(--bezel-hi), 0 2px 7px rgba(60,40,15,.22);
-    padding:20px 22px; display:flex; flex-direction:column; gap:18px;
-    width:780px; max-width:100%;
+    padding:20px 22px; display:flex; flex-direction:column; gap:16px;
+    width:900px; max-width:100%;
   }
+  .panel.narrow{width:520px}
+  .ptitle{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+  .ptitle b{font-weight:700}
+  .ptitle .note{color:var(--muted);font-size:12px;font-weight:400}
   .toprow{display:flex;align-items:center;gap:18px 20px;flex-wrap:wrap}
   .ctl{display:flex;align-items:center;gap:10px}
   label{color:var(--muted);font-size:12.5px;font-weight:600}
@@ -57,15 +61,39 @@
     color:#2a1400; border-color:var(--accent-deep);
     box-shadow:inset 0 1px 0 rgba(255,231,195,.6), 0 0 12px rgba(226,106,16,.55), 0 2px 0 var(--accent-deep);
   }
+  button.wave[disabled]{opacity:.42; cursor:not-allowed; box-shadow:none}
   .waves{display:flex;gap:6px;flex-wrap:wrap}
   svg{display:block;width:100%;height:auto;touch-action:none;user-select:none}
   .screen{
     background:var(--display); border-radius:3px; padding:6px;
     box-shadow:inset 0 2px 9px rgba(0,0,0,.6), inset 0 0 0 2px #0e0904, 0 1px 0 var(--bezel-hi);
   }
-  canvas.screen{padding:0}
+  canvas.screen{padding:0;width:100%;height:auto;display:block;background:#120c06;border-radius:3px}
   .meta{color:var(--muted);font-size:12px;text-align:center}
   .meta b{color:var(--ink);font-weight:700}
+
+  /* --- Estill figure controls --- */
+  .figs{display:grid;grid-template-columns:1fr 1fr;gap:14px 26px}
+  .figcol{display:flex;flex-direction:column;gap:9px}
+  .figcol > h3{margin:0;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;
+    color:var(--muted);font-weight:800;border-bottom:1px solid rgba(143,118,73,.4);padding-bottom:4px}
+  .fig{display:grid;grid-template-columns:112px 1fr 44px;align-items:center;gap:8px}
+  .fig > .nm{font-size:12.5px;font-weight:600;color:var(--ink)}
+  .fig input[type=range]{width:100%;max-width:none}
+  .fig > .val{font-size:11.5px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+  .fig > .ends{grid-column:2;font-size:10px;color:var(--muted);display:flex;
+    justify-content:space-between;margin-top:-7px}
+  .presets{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .readout{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:6px 14px;
+    background:#120c06;border-radius:3px;padding:10px 12px;
+    box-shadow:inset 0 2px 9px rgba(0,0,0,.6)}
+  .readout div{font-size:11.5px;color:#a98a55;font-variant-numeric:tabular-nums}
+  .readout b{color:var(--amber);font-weight:700}
+  .readout .warn b{color:#ff8a5a}
+  @media (max-width:760px){
+    .figs{grid-template-columns:1fr}
+    .fig{grid-template-columns:100px 1fr 40px}
+  }
   @media (max-width:600px){
     body{padding:16px 10px; gap:14px}
     .panel{padding:14px 13px; gap:14px}
@@ -76,8 +104,11 @@
 </style>
 </head>
 <body>
-  <h1>Glottal Source + Formants</h1>
-  <div class="sub">A harmonic buzz shaped by up to five formant resonances. Each rail is a formant: drag the center mark to move F within its allowed range. One bandwidth slider widens/narrows all formants together (scaled by center frequency). F4 and F5 have fixed centers. Toggle a formant with its button on the left. The amber dot is the fundamental.</div>
+  <h1>LF Source + Estill Figures</h1>
+  <div class="sub">A Liljencrants–Fant glottal source driving a five-formant tract, parameterized by
+  Estill figures rather than by waveform shape. The source generates the <i>flow derivative</i>, so
+  lip radiation is already baked in — there is no brightness knob. The six voice qualities are test
+  fixtures: they must <i>emerge</i> from the figure settings, not be presets with their own code path.</div>
 
   <div class="panel">
     <div class="toprow">
@@ -86,7 +117,12 @@
         <select id="fund"></select>
       </div>
       <div class="ctl">
-        <label for="vol">Volume</label>
+        <label for="ee">E<sub>e</sub></label>
+        <input id="ee" type="range" min="0.05" max="1" step="0.01" value="0.6">
+        <span id="eeval" style="color:var(--ink);font-size:12px;min-width:64px"></span>
+      </div>
+      <div class="ctl">
+        <label for="vol">Output</label>
         <input id="vol" type="range" min="0" max="1" step="0.01" value="0.45">
       </div>
       <button id="play" class="play">▶ Start</button>
@@ -99,9 +135,14 @@
         <span id="vibval" style="color:var(--ink);font-size:12px;min-width:78px"></span>
       </div>
       <div class="ctl">
+        <label for="bwtrim">Bandwidth ×</label>
+        <input id="bwtrim" type="range" min="0.5" max="2" step="0.05" value="1">
+        <span id="bwval" style="color:var(--ink);font-size:12px;min-width:34px"></span>
+      </div>
+      <div class="ctl">
         <label>Source</label>
         <div class="waves" id="waves">
-          <button class="wave on" data-mode="voice">Voice</button>
+          <button class="wave on" data-mode="voice">LF voice</button>
           <button class="wave" data-mode="sine">Sine</button>
           <button class="wave" data-mode="sawtooth">Saw</button>
           <button class="wave" data-mode="triangle">Triangle</button>
@@ -110,46 +151,375 @@
       </div>
     </div>
 
-    <svg id="plot" class="screen" viewBox="0 0 760 345" preserveAspectRatio="xMidYMid meet"></svg>
-
-    <div class="meta" id="meta">Press Start to hear the buzz.</div>
-  </div>
-
-  <div class="panel" style="width:440px">
-    <div style="display:flex;justify-content:space-between;align-items:baseline">
-      <div style="font-weight:600">Vowel chart</div>
-      <div style="color:var(--muted);font-size:12px">drag the dot · click a vowel to snap</div>
-    </div>
-    <svg id="chart" class="screen" viewBox="0 0 380 300" preserveAspectRatio="xMidYMid meet"></svg>
-    <div class="meta" id="vmeta"></div>
-  </div>
-
-  <div class="panel" style="width:440px">
-    <div style="display:flex;justify-content:space-between;align-items:baseline">
-      <div style="font-weight:600">Falloff × bandwidth</div>
-      <div id="padval" style="color:var(--ink);font-size:12px">—</div>
-    </div>
-    <svg id="pad" class="screen" viewBox="0 0 360 270" preserveAspectRatio="xMidYMid meet"></svg>
-    <div class="meta">Drag to explore pairs · shaded box ≈ typical sung voice</div>
+    <div class="meta" id="meta">Press Start to hear the voice.</div>
   </div>
 
   <div class="panel">
-    <div style="display:flex;justify-content:space-between;align-items:baseline">
-      <div style="font-weight:600">Output <span style="color:var(--muted);font-weight:400;font-size:12px">— measured from the final mix</span></div>
+    <div class="ptitle">
+      <b>Thirteen Figures <span class="note">— eight modeled, two partial, three dropped</span></b>
+      <div class="note">0…1 per figure · qualities below are fixtures, not presets</div>
+    </div>
+
+    <div class="presets" id="presets"></div>
+
+    <div class="figs">
+      <div class="figcol" id="figs-source"><h3>Source figures</h3></div>
+      <div class="figcol" id="figs-filter"><h3>Filter figures</h3></div>
+    </div>
+
+    <div class="toprow">
+      <div class="ctl">
+        <label for="onset">Onset / offset</label>
+        <select id="onset">
+          <option value="glottal">Glottal (3 ms, ×1.25 overshoot)</option>
+          <option value="simultaneous" selected>Simultaneous (25 ms)</option>
+          <option value="aspirate" disabled>Aspirate — needs a noise channel</option>
+        </select>
+      </div>
+      <div class="ctl">
+        <label for="fcluster">AES cluster target</label>
+        <input id="fcluster" type="range" min="2400" max="3400" step="10" value="2900">
+        <span id="fcval" style="color:var(--ink);font-size:12px;min-width:52px"></span>
+      </div>
+    </div>
+
+    <div class="readout" id="readout"></div>
+  </div>
+
+  <div class="panel narrow">
+    <div class="ptitle">
+      <b>Vowel target</b>
+      <div class="note">drag the dot · click a vowel to snap</div>
+    </div>
+    <svg id="chart" class="screen" viewBox="0 0 380 300" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="ctl" style="justify-content:space-between">
+      <label for="f3t">F3 target <span style="font-weight:400">(rhoticity)</span></label>
+      <input id="f3t" type="range" min="1400" max="3200" step="10" value="2500" style="flex:1">
+      <span id="f3val" style="color:var(--ink);font-size:12px;min-width:80px;text-align:right"></span>
+    </div>
+    <div class="meta" id="vmeta"></div>
+  </div>
+
+  <div class="panel">
+    <div class="ptitle">
+      <b>Resonances</b>
+      <div class="note">ring = target · bar = after twang &amp; tract length</div>
+    </div>
+    <svg id="plot" class="screen" viewBox="0 0 760 345" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="meta">Drag F1–F3 to articulate, F4/F5 to re-voice the singer. Toggle a formant to isolate it.</div>
+  </div>
+
+  <div class="panel">
+    <div class="ptitle">
+      <b>Model spectra <span class="note">— computed from the parameters, not measured</span></b>
+      <div class="note">same dB-per-pixel in all three: panel 3 is panel 1 + panel 2</div>
+    </div>
+    <div>
+      <canvas id="srcSpec" class="screen" width="880" height="132"></canvas>
+      <div class="meta" style="margin-top:4px">1 · source |dU/dt| — glottal formant at R<sub>g</sub>·f₀, tilt knee at 1/2πt<sub>a</sub>, slope breaking −6 → −12 dB/oct</div>
+    </div>
+    <div>
+      <canvas id="tractSpec" class="screen" width="880" height="132"></canvas>
+      <div class="meta" style="margin-top:4px">2 · vocal tract |H(f)| — F1–F5, the AES cluster, and the nasal pole/zero pair</div>
+    </div>
+    <div>
+      <canvas id="outSpec" class="screen" width="880" height="132"></canvas>
+      <div class="meta" style="margin-top:4px">3 · radiated spectrum — harmonics of f₀ against the tract envelope</div>
+    </div>
+    <div>
+      <canvas id="lfWave" class="screen" width="880" height="132"></canvas>
+      <div class="meta" style="margin-top:4px">Flow derivative, one period — closure at t<sub>e</sub> (depth E<sub>e</sub>) is the excitation, not opening</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="ptitle">
+      <b>Output <span class="note">— measured from the final mix</span></b>
       <div id="cliplbl" style="font-size:12px;color:var(--muted)">level —</div>
     </div>
     <div>
-      <canvas id="scope" class="screen" width="760" height="150" style="width:100%;height:auto;display:block;background:#120c06;border-radius:3px"></canvas>
-      <div class="meta" style="margin-top:6px">Waveform — peaks flattening at the dashed ±1 lines (and turning red) is clipping</div>
+      <canvas id="scope" class="screen" width="880" height="150"></canvas>
+      <div class="meta" style="margin-top:6px">Radiated pressure — a decaying formant ringing retriggered at every glottal closure. Peaks flattening at the dashed ±1 lines (and turning red) is clipping.</div>
     </div>
     <div>
-      <canvas id="spectrum" class="screen" width="760" height="150" style="width:100%;height:auto;display:block;background:#120c06;border-radius:3px"></canvas>
-      <div class="meta" style="margin-top:6px">Spectrum (log frequency) — peaks are overtones; amber marks show the formant centers</div>
+      <canvas id="spectrum" class="screen" width="880" height="150"></canvas>
+      <div class="meta" style="margin-top:6px">Measured spectrum (log frequency) — amber marks are the effective formant centers</div>
     </div>
   </div>
 
 <script>
 (() => {
+  //#region math-utils
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  //#endregion math-utils
+
+  //#region lf-source
+  // Liljencrants–Fant glottal source, generating the flow *derivative* dU/dt.
+  //
+  // Radiated pressure at the lips is proportional to d/dt of the volume flow leaving them.
+  // Differentiation and the tract filter are both LTI, so they commute and the derivative can
+  // move upstream of the filter — which means generating dU/dt here bakes lip radiation in and
+  // no separate radiation stage exists anywhere downstream. (The model this replaced used a
+  // 1/n^e harmonic stack, which is the spectrum of glottal *flow*, and never applied the
+  // derivative: it was ~6 dB/oct too dark everywhere. The old `brightness` knob was silently
+  // compensating for that, which is why it is gone rather than remapped.)
+  //
+  // One period, with Ee normalized to 1:
+  //   open   0 ≤ t ≤ te :  E(t) = E0·e^(αt)·sin(ω_g t),  ω_g = π/tp
+  //   return te ≤ t ≤ tc:  E(t) = −(1/(ε·ta))·[e^(−ε(t−te)) − e^(−ε(tc−te))]
+  // α is solved so net flow over the cycle is zero; ε from the return-phase area constraint.
+  // Both are numerical solves done once per parameter change, never per sample.
+
+  // Timing landmarks from {f0, OQ, Rk, Ra}. Note te lands at exactly OQ·T:
+  //   te = tp(1+Rk), tp = 1/(2·Rg·f0), Rg = (1+Rk)/(2·OQ)  ⟹  te = OQ/f0.
+  function lfTiming(f0, OQ, Rk, Ra) {
+    const T = 1 / f0;
+    const Rg = (1 + Rk) / (2 * OQ);
+    const tp = 1 / (2 * Rg * f0);
+    const te = tp * (1 + Rk);
+    const Ta = T - te;                       // the window the return phase has to finish in
+    // ε only has a root when ta fits inside that window, i.e. Ra < 1−OQ. A high open quotient
+    // therefore caps how much spectral tilt is reachable; clamp and report it rather than NaN.
+    const taWanted = Ra * T;
+    const ta = Math.min(taWanted, 0.9 * Ta);
+    return { T, Rg, tp, te, ta, tc: T, Ta, taClamped: ta < taWanted - 1e-15 };
+  }
+
+  // ε·ta = 1 − e^(−ε·Ta). f is >0 for small ε and <0 at ε = 1/ta, so the root is bracketed.
+  function solveEpsilon(ta, Ta) {
+    let lo = 1e-12, hi = 1 / ta;
+    for (let i = 0; i < 90; i++) {
+      const m = 0.5 * (lo + hi);
+      if (1 - Math.exp(-m * Ta) - m * ta > 0) lo = m; else hi = m;
+    }
+    return 0.5 * (lo + hi);
+  }
+
+  // ∫ of the return phase (always negative: the derivative climbs from −Ee back to 0).
+  function returnArea(eps, ta, Ta) {
+    const e = Math.exp(-eps * Ta);
+    return -(1 / (eps * ta)) * ((1 - e) / eps - Ta * e);
+  }
+
+  // ∫ of the open phase, with E0 folded in so the e^(αte) factors cancel and nothing overflows.
+  function openArea(a, te, wg) {
+    const s = Math.sin(wg * te), c = Math.cos(wg * te);
+    return -((a * s - wg * c) + wg * Math.exp(-a * te)) / (s * (a * a + wg * wg));
+  }
+
+  // Net flow over the cycle is zero ⟺ openArea(α) + returnArea = 0. Monotone decreasing in α
+  // over the bracket, so bisection is both simpler and more robust here than Newton.
+  function solveAlpha(te, wg, Aret) {
+    const g = a => openArea(a, te, wg) + Aret;
+    let lo = -300 / te, hi = 300 / te;
+    for (let i = 0; i < 120; i++) {
+      const m = 0.5 * (lo + hi);
+      if (g(m) > 0) lo = m; else hi = m;
+    }
+    return 0.5 * (lo + hi);
+  }
+
+  function lfShape(f0, OQ, Rk, Ra) {
+    const t = lfTiming(f0, OQ, Rk, Ra);
+    const wg = Math.PI / t.tp;
+    const eps = solveEpsilon(t.ta, t.Ta);
+    const alpha = solveAlpha(t.te, wg, returnArea(eps, t.ta, t.Ta));
+    return Object.assign(t, { wg, eps, alpha, expEpsTa: Math.exp(-eps * t.Ta), OQ, Rk, Ra });
+  }
+
+  // dU/dt at time t within one period, with Ee = 1 (so E(te) = −1 exactly).
+  function lfSample(p, t) {
+    if (t <= p.te) {
+      // Written as e^(α(t−te)) rather than E0·e^(αt) so the exponent is never positive.
+      return -Math.sin(p.wg * t) / Math.sin(p.wg * p.te) * Math.exp(p.alpha * (t - p.te));
+    }
+    return -(1 / (p.eps * p.ta)) * (Math.exp(-p.eps * (t - p.te)) - p.expEpsTa);
+  }
+
+  // Fant's single shape parameter, kept only as a readout: it says how far a configuration sits
+  // from natural-speech statistics. Deliberately NOT used as an input — collapsing {OQ, Rk, Ra}
+  // onto one axis would re-impose exactly the covariance a trained voice is able to break.
+  const rdDiagnostic = Ra => (Ra * 100 + 1) / 4.8;
+
+  // --- one period → harmonic amplitudes ------------------------------------------------------
+  // The tract is a bank of IIR biquads, which argues for a time-domain source. But a sample-wise
+  // LF generator in Web Audio needs an AudioWorklet, and these apps must open from a bare file://
+  // with no module fetch. So: sample one period, FFT it, and hand the harmonics to a
+  // PeriodicWave. That is exact up to band-limiting — and band-limiting is a feature here,
+  // because the LF corner at te is sharp enough that a naive time-domain generator would alias.
+  const LF_FFT = 4096;
+  const twC = new Float64Array(LF_FFT / 2), twS = new Float64Array(LF_FFT / 2);
+  for (let i = 0; i < LF_FFT / 2; i++) {
+    twC[i] = Math.cos(-2 * Math.PI * i / LF_FFT);
+    twS[i] = Math.sin(-2 * Math.PI * i / LF_FFT);
+  }
+  function fftInPlace(re, im) {
+    const n = re.length;
+    for (let i = 1, j = 0; i < n; i++) {
+      let bit = n >> 1;
+      for (; j & bit; bit >>= 1) j ^= bit;
+      j ^= bit;
+      if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+    }
+    for (let len = 2; len <= n; len <<= 1) {
+      const half = len >> 1, step = n / len;
+      for (let i = 0; i < n; i += len) {
+        for (let k = 0, ti = 0; k < half; k++, ti += step) {
+          const cr = twC[ti], ci = twS[ti];
+          const xr = re[i + k + half], xi = im[i + k + half];
+          const vr = xr * cr - xi * ci, vi = xr * ci + xi * cr;
+          const ur = re[i + k], ui = im[i + k];
+          re[i + k] = ur + vr; im[i + k] = ui + vi;
+          re[i + k + half] = ur - vr; im[i + k + half] = ui - vi;
+        }
+      }
+    }
+  }
+
+  // Cosine/sine coefficients for harmonics 1..nMax, in PeriodicWave's {real, imag} convention.
+  const fftRe = new Float64Array(LF_FFT), fftIm = new Float64Array(LF_FFT);
+  function lfHarmonics(p, nMax) {
+    const re = fftRe, im = fftIm;
+    im.fill(0);
+    for (let i = 0; i < LF_FFT; i++) re[i] = lfSample(p, i / LF_FFT * p.T);
+    fftInPlace(re, im);
+    const n = Math.min(nMax, LF_FFT / 2 - 1);
+    const real = new Float32Array(n + 1), imag = new Float32Array(n + 1);
+    for (let k = 1; k <= n; k++) { real[k] = 2 * re[k] / LF_FFT; imag[k] = -2 * im[k] / LF_FFT; }
+    return { real, imag, n };
+  }
+  //#endregion lf-source
+
+  //#region estill-map
+  // Estill figures → signal parameters. The organizing assumption is orthogonality: the pedagogy
+  // asserts each structure is separately controllable by a trained singer, so the couplings a
+  // real larynx shows are deliberately suppressed here. Every such suppression is commented, so
+  // that a later reader does not "fix" one back in.
+
+  const F0_REF = 220.0;      // Hz
+  const K_DRIFT = 0.15;      // OQ rise per octave in an untrained voice
+  const PULL_FLOOR = 2200.0; // below this a resonance is articulatory and will not join the cluster
+
+  // 4.1 body_cover (0 thick → 1 thin): primarily OQ, secondarily Rk.
+  // 4.2 thyroid_tilt (0 vertical → 1 tilted): Ra alone. In a real larynx tilt also raises OQ;
+  //     that coupling is suppressed so tilt stays a pure spectral-tilt axis.
+  // 4.3 cricoid_tilt: not a parameter at all — a constraint relaxation. Untrained voices thin
+  //     out as they ascend (OQ drifts up with f0); cricoid tilt is permission to hold OQ low at
+  //     pitch. Belt has to *emerge* from this plus thick folds, high larynx and narrow AES.
+  function sourceFromFigures(fig, f0) {
+    const OQbase = lerp(0.45, 0.68, fig.body_cover);
+    const Rk = lerp(0.25, 0.45, fig.body_cover);
+    const Ra = lerp(0.004, 0.075, fig.thyroid_tilt);
+    const drift = Math.max(0, K_DRIFT * Math.log2(f0 / F0_REF) * (1 - fig.cricoid_tilt));
+    return { OQbase, drift, Rk, Ra, OQ: clamp(OQbase + drift, 0.35, 0.95) };
+  }
+
+  // 4.4 onset_type: envelope timing on Ee. Aspirate is unavailable without a noise channel.
+  // Glottal onset also starts with OQ depressed and relaxes over ~30 ms — that transient
+  // pressedness is the audible part of a hard attack. Offset mirrors onset.
+  const ONSETS = {
+    glottal:      { ms: 3,  overshoot: 1.25, oqDip: 0.10 },
+    simultaneous: { ms: 25, overshoot: 1.0,  oqDip: 0 },
+  };
+
+  // 5.2 Proximity weight: a resonance held low by articulation does not join the AES cluster.
+  // 1.0 for a plain vowel, 0.0 for an American /r/.
+  const pull = F => F >= PULL_FLOOR ? 1 : Math.max(0, 1 - (PULL_FLOOR - F) / 500);
+
+  // 5.1 larynx_height is a tract-length scale, at full weight on F1/F2 and half weight on the
+  //     F3/F4/F5 cluster (the epilarynx tube's length changes less than the whole tract).
+  //     Modeled as pure length: it ignores the hypopharynx widening a low larynx also produces,
+  //     so low-larynx qualities come out a little thin.
+  // 5.4 lip_protrusion lengthens the tract too — an effect (F1,F2) alone cannot express. Weighted
+  //     down on F1, which is dominated by the back cavity.
+  // 5.2 twang narrows the aryepiglottic sphincter: the epilarynx tube decouples and resonates
+  //     near 3 kHz, and F3/F4/F5 converge on it. Three moderate peaks in one band sum to one
+  //     large one, and because the epilarynx sits upstream of the tongue the peak survives vowel
+  //     changes — which is why F1, F2 and any articulatorily-held F3 must be left alone.
+  // 8.1 velum separates a permanently-present nasal pole/zero pair rather than switching filter
+  //     sections in. Continuity is required by the pedagogy, not just by DSP hygiene: velum has
+  //     three positions and mid is a real trained option.
+  function tractFromFigures(fig, vowel, singer) {
+    const sLar = 1.0 + 0.12 * (2 * fig.larynx_height - 1);   // 0.88 … 1.12
+    const sLip = 1.0 - 0.05 * fig.lip_protrusion;
+    const half = 1 + 0.5 * (sLar - 1);
+    const lipW = w => 1 + w * (sLip - 1);
+    const tw = fig.twang;
+
+    const F1 = vowel.F1 * sLar * lipW(0.4);
+    const F2 = vowel.F2 * sLar * lipW(1.0);
+    const F3a = vowel.F3 * half * sLip;        // articulatory F3 target, length-scaled
+    const F4n = singer.F4 * half * sLip;
+    const F5n = singer.F5 * half * sLip;
+    const Fc = singer.Fcluster * half * sLip;
+
+    const w3 = pull(F3a);
+    const F = [F1, F2, lerp(F3a, Fc - 200, tw * w3), lerp(F4n, Fc + 50, tw), lerp(F5n, Fc + 350, tw)];
+
+    const B = singer.B.slice();
+    B[0] = lerp(B[0], B[0] * 2.4, fig.velum);   // nasal coupling really does add damping…
+    B[2] = lerp(B[2], B[2] * 0.6, tw * w3);     // …and the cluster narrows as it forms
+    B[3] = lerp(B[3], B[3] * 0.6, tw);
+    B[4] = lerp(B[4], B[4] * 0.6, tw);
+
+    return {
+      F, B: B.map(b => b * singer.bwTrim), w3,
+      // What was asked for, before tract-length scaling and the twang pull — i.e. what the
+      // resonance rails' drag handles set. Keeping these raw is what makes a handle stay under
+      // the pointer instead of snapping back by the length scale on the next redraw.
+      Ftarget: [vowel.F1, vowel.F2, vowel.F3, singer.F4, singer.F5],
+      // Coincident pole and zero multiply to exactly 1. Nasality is introduced by separating
+      // them, so velum = 0 is a true bypass with no click and no residual coloration.
+      nasal: { FNP: 270.0, FNZ: lerp(270.0, 450.0, fig.velum), Q: 2.7, dB: 9.0 },
+      gainCorrection: lerp(1.0, 0.85, fig.velum),
+      // Narrowing the epilarynx raises the tract's inertive reactance, so the folds swing wider
+      // for the same subglottal pressure. A one-way source→filter chain cannot derive this, so
+      // it is a hardcoded lookup standing in for physics — legitimate only under the
+      // trained-singer assumption, and the whole point of twang: loud output, cheap effort.
+      eeBonus: 1.0 + 0.7 * tw,
+    };
+  }
+
+  // Recipes, not implementations. Each must sound like its quality with no quality-specific code
+  // path anywhere. Belt at f0 = 440 is the critical one: OQ must stay near 0.45, which only
+  // happens if cricoid_tilt is wired as a constraint relaxation rather than as a knob of its own.
+  // lip_protrusion is not part of the fixture table and is left wherever the user put it.
+  const QUALITIES = {
+    "Speech":    { body_cover: 0.0, thyroid_tilt: 0.0, cricoid_tilt: 0.0, larynx_height: 0.50, twang: 0.20, velum: 0.0 },
+    "Sob / Cry": { body_cover: 1.0, thyroid_tilt: 1.0, cricoid_tilt: 0.0, larynx_height: 0.15, twang: 0.10, velum: 0.0 },
+    "Twang":     { body_cover: 0.3, thyroid_tilt: 0.0, cricoid_tilt: 0.0, larynx_height: 0.70, twang: 1.00, velum: 0.3 },
+    "Opera":     { body_cover: 0.8, thyroid_tilt: 1.0, cricoid_tilt: 1.0, larynx_height: 0.15, twang: 0.80, velum: 0.0 },
+    "Belt":      { body_cover: 0.0, thyroid_tilt: 0.0, cricoid_tilt: 1.0, larynx_height: 0.85, twang: 0.90, velum: 0.2 },
+  };
+  //#endregion estill-map
+
+  //#region biquad-response
+  // RBJ cookbook coefficients, matching what Web Audio builds for `bandpass` and `peaking`, so
+  // the plotted tract response is the response of the actual filter chain rather than an idealization.
+  function bandpassCoefs(F, Q, sr) {
+    const w0 = 2 * Math.PI * F / sr, al = Math.sin(w0) / (2 * Q), a0 = 1 + al;
+    return { b0: al / a0, b1: 0, b2: -al / a0, a1: -2 * Math.cos(w0) / a0, a2: (1 - al) / a0 };
+  }
+  function peakingCoefs(F, Q, dB, sr) {
+    const A = Math.pow(10, dB / 40);
+    const w0 = 2 * Math.PI * F / sr, al = Math.sin(w0) / (2 * Q), a0 = 1 + al / A;
+    return { b0: (1 + al * A) / a0, b1: -2 * Math.cos(w0) / a0, b2: (1 - al * A) / a0,
+             a1: -2 * Math.cos(w0) / a0, a2: (1 - al / A) / a0 };
+  }
+  function biquadResp(c, w) {
+    const cw = Math.cos(w), sw = Math.sin(w), c2 = Math.cos(2 * w), s2 = Math.sin(2 * w);
+    const nr = c.b0 + c.b1 * cw + c.b2 * c2, ni = -(c.b1 * sw + c.b2 * s2);
+    const dr = 1 + c.a1 * cw + c.a2 * c2, di = -(c.a1 * sw + c.a2 * s2);
+    const dd = dr * dr + di * di;
+    return { re: (nr * dr + ni * di) / dd, im: (ni * dr - nr * di) / dd };
+  }
+  //#endregion biquad-response
+
+  // ---------- singer configuration (voice-type constants, not per-note parameters) ----------
+  // Ballpark adult-male values. F4/F5 are draggable on the resonance rails; tune by ear.
+  const singer = { F4: 3500, F5: 4500, Fcluster: 2900, bwTrim: 1, B: [50, 70, 110, 170, 250] };
+
   // ---------- pitch dropdown (12-TET / A440, C2..C6, default A3=220) ----------
   const NOTE_NAMES = ["C","C♯","D","D♯","E","F","F♯","G","G♯","A","A♯","B"];
   const midiToFreq = m => 440 * Math.pow(2, (m - 69) / 12);
@@ -164,20 +534,48 @@
     fundEl.appendChild(opt);
   }
 
-  // ---------- formant state ----------  index 0 = red (bottom) ... 4 = blue (top)
+  // ---------- figure state ----------
+  const FIGURE_DEFS = [
+    { id: "body_cover",     col: "source", nm: "Body–cover",     lo: "thick",    hi: "thin",      def: 0.0 },
+    { id: "thyroid_tilt",   col: "source", nm: "Thyroid tilt",   lo: "vertical", hi: "tilted",    def: 0.0 },
+    { id: "cricoid_tilt",   col: "source", nm: "Cricoid tilt",   lo: "vertical", hi: "tilted",    def: 0.0 },
+    { id: "larynx_height",  col: "filter", nm: "Larynx height",  lo: "low",      hi: "high",      def: 0.5 },
+    { id: "twang",          col: "filter", nm: "AES / twang",    lo: "wide",     hi: "narrow",    def: 0.2 },
+    { id: "velum",          col: "filter", nm: "Velum",          lo: "raised",   hi: "lowered",   def: 0.0 },
+    { id: "lip_protrusion", col: "filter", nm: "Lip protrusion", lo: "spread",   hi: "protruded", def: 0.0 },
+  ];
+  const fig = {};
+  const figInputs = {}, figVals = {};
+  for (const d of FIGURE_DEFS) fig[d.id] = d.def;
+  let onsetType = "simultaneous";
+  let oqDip = 0;                      // transient OQ depression during a glottal onset
+
+  // vowel target: F1/F2 come from the chart, F3 from its own slider (it carries rhoticity)
+  const vowel = { F1: 500, F2: 1500, F3: 2500 };
+
+  // ---------- formant display state ----------  index 0 = red (bottom) ... 4 = blue (top)
   const COLORS = ["#e5484d", "#f2870a", "#f5cf3d", "#5dd28f", "#5b9cf2"];
   const GRAY = "#6e5a3a", GRAY_TXT = "#a98a55";
-  const formants = [
-    { F: 500,  min: 250,  max: 900,  fixed: false, on: true },  // red
-    { F: 1500, min: 700,  max: 2300, fixed: false, on: true },  // orange
-    { F: 2500, min: 1800, max: 3000, fixed: false, on: true },  // yellow
-    { F: 3500, min: 3500, max: 3500, fixed: true,  on: true },  // green
-    { F: 4500, min: 4500, max: 4500, fixed: true,  on: true },  // blue
+  // Drag ranges for each rail. F1–F3 move the vowel target; F4/F5 move the singer's neutrals.
+  const RAILS = [
+    { min: 250,  max: 900,  set: v => vowel.F1 = v },
+    { min: 700,  max: 2400, set: v => vowel.F2 = v },
+    { min: 1400, max: 3200, set: v => vowel.F3 = v },
+    { min: 2800, max: 4600, set: v => singer.F4 = v },
+    { min: 3600, max: 5800, set: v => singer.F5 = v },
   ];
-  let bwFrac = 0.06;                                   // bandwidth as fraction of center F
-  const BW_FLOOR = 60;                                 // min formant bandwidth (Hz) — keeps low formants from going razor-sharp
-  const bwOf = fm => Math.max(BW_FLOOR, fm.F * bwFrac); // formant bandwidth in Hz
-  const REF_FORMANTS = formants.map(f => f.F);          // default centers = the loudness-reference vowel
+  const formantOn = [true, true, true, true, true];
+
+  // Derived every frame from the figures; `tract` is the single source of truth for the filters.
+  let src = null, tract = null;
+
+  function recompute() {
+    const f0 = parseFloat(fundEl.value);
+    src = sourceFromFigures(fig, f0);
+    src.OQ = clamp(src.OQ - oqDip, 0.35, 0.95);
+    tract = tractFromFigures(fig, vowel, singer);
+    return f0;
+  }
 
   // ---------- geometry / frequency scale (log) ----------
   const VBW = 760, X0 = 70, X1 = 730;
@@ -194,8 +592,6 @@
     return xToFreq((clientX - r.left) / r.width * VBW);
   };
 
-  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-
   // ---------- vowel chart (F1 vertical, F2 horizontal — IPA orientation) ----------
   const chartSvg = document.getElementById("chart");
   const vmetaEl = document.getElementById("vmeta");
@@ -206,69 +602,63 @@
   const cxOfF2 = f2 => CX0 + (F2HI - clamp(f2, F2LO, F2HI)) / (F2HI - F2LO) * (CX1 - CX0);
   const cyOfF1 = f1 => CY0 + (clamp(f1, F1LO, F1HI) - F1LO) / (F1HI - F1LO) * (CY1 - CY0);
 
-  // American English vowels — F1/F2 in Hz (Hillenbrand et al. 1995, adult-male means)
+  // American English vowels — F1/F2/F3 in Hz (Hillenbrand et al. 1995, adult-male means).
+  // F3 matters now that it is a vowel target rather than a fixed resonance: /ɝ/'s low F3 is a
+  // front-cavity resonance, and it is what keeps a rhotic out of the twang cluster.
   const VOWELS = [
-    { ipa: "i",  word: "heed",  f1: 342, f2: 2322 },
-    { ipa: "ɪ",  word: "hid",   f1: 427, f2: 2034 },
-    { ipa: "eɪ", word: "hayed", f1: 476, f2: 2089 },
-    { ipa: "ɛ",  word: "head",  f1: 580, f2: 1799 },
-    { ipa: "æ",  word: "had",   f1: 588, f2: 1952 },
-    { ipa: "ɑ",  word: "hod",   f1: 768, f2: 1333 },
-    { ipa: "ɔ",  word: "hawed", f1: 652, f2: 997  },
-    { ipa: "oʊ", word: "hoed",  f1: 497, f2: 910  },
-    { ipa: "ʊ",  word: "hood",  f1: 469, f2: 1122 },
-    { ipa: "u",  word: "who'd", f1: 378, f2: 997  },
-    { ipa: "ʌ",  word: "hud",   f1: 623, f2: 1200 },
-    { ipa: "ɝ",  word: "heard", f1: 474, f2: 1379 },
-    { ipa: "ə",  word: "schwa", f1: 500, f2: 1500 },
+    { ipa: "i",  word: "heed",  f1: 342, f2: 2322, f3: 3057 },
+    { ipa: "ɪ",  word: "hid",   f1: 427, f2: 2034, f3: 2636 },
+    { ipa: "eɪ", word: "hayed", f1: 476, f2: 2089, f3: 2691 },
+    { ipa: "ɛ",  word: "head",  f1: 580, f2: 1799, f3: 2556 },
+    { ipa: "æ",  word: "had",   f1: 588, f2: 1952, f3: 2601 },
+    { ipa: "ɑ",  word: "hod",   f1: 768, f2: 1333, f3: 2522 },
+    { ipa: "ɔ",  word: "hawed", f1: 652, f2: 997,  f3: 2538 },
+    { ipa: "oʊ", word: "hoed",  f1: 497, f2: 910,  f3: 2459 },
+    { ipa: "ʊ",  word: "hood",  f1: 469, f2: 1122, f3: 2434 },
+    { ipa: "u",  word: "who'd", f1: 378, f2: 997,  f3: 2341 },
+    { ipa: "ʌ",  word: "hud",   f1: 623, f2: 1200, f3: 2530 },
+    { ipa: "ɝ",  word: "heard", f1: 474, f2: 1379, f3: 1571 },
+    { ipa: "ə",  word: "schwa", f1: 500, f2: 1500, f3: 2500 },
   ];
 
   function drawChart() {
     let s = "";
-    // plot box
     s += `<rect x="${CX0}" y="${CY0}" width="${CX1-CX0}" height="${CY1-CY0}" fill="#120c06" stroke="#5a4324" stroke-width="1"/>`;
-    // F2 gridlines + bottom ticks
     for (const t of [2200,1800,1400,1000]) {
       const x = cxOfF2(t);
       s += `<line x1="${x}" y1="${CY0}" x2="${x}" y2="${CY1}" stroke="#2c2010" stroke-width="1"/>`;
       s += `<text x="${x}" y="${CY1+14}" fill="${GRAY_TXT}" font-size="9.5" text-anchor="middle">${t}</text>`;
     }
-    // F1 gridlines + left ticks
     for (const t of [300,400,500,600,700,800]) {
       const y = cyOfF1(t);
       s += `<line x1="${CX0}" y1="${y}" x2="${CX1}" y2="${y}" stroke="#2c2010" stroke-width="1"/>`;
       s += `<text x="${CX0-6}" y="${y+3}" fill="${GRAY_TXT}" font-size="9.5" text-anchor="end">${t}</text>`;
     }
-    // axis labels
     s += `<text x="${(CX0+CX1)/2}" y="${CY0-6}" fill="var(--muted)" font-size="10.5" text-anchor="middle">F2 — front ← → back</text>`;
     s += `<text transform="translate(13,${(CY0+CY1)/2}) rotate(-90)" fill="var(--muted)" font-size="10.5" text-anchor="middle">F1 — close ↑ open ↓</text>`;
 
-    // fixed vowel reference points
     for (const v of VOWELS) {
       const cx = cxOfF2(v.f2), cy = cyOfF1(v.f1);
-      s += `<g data-vowel="1" data-f1="${v.f1}" data-f2="${v.f2}" style="cursor:pointer">`;
-      s += `<circle cx="${cx}" cy="${cy}" r="3.5" fill="#9c8154"><title>${v.ipa} — ${v.word} (F1 ${v.f1}, F2 ${v.f2})</title></circle>`;
+      s += `<g data-vowel="1" data-f1="${v.f1}" data-f2="${v.f2}" data-f3="${v.f3}" style="cursor:pointer">`;
+      s += `<circle cx="${cx}" cy="${cy}" r="3.5" fill="#9c8154"><title>${v.ipa} — ${v.word} (F1 ${v.f1}, F2 ${v.f2}, F3 ${v.f3})</title></circle>`;
       s += `<text x="${cx+6}" y="${cy+4}" fill="#d8c39a" font-size="12" font-weight="600">${v.ipa}</text></g>`;
     }
 
-    // current point (driven by F1 = formants[0], F2 = formants[1])
-    const f1 = formants[0].F, f2 = formants[1].F;
-    const px = cxOfF2(f2), py = cyOfF1(f1);
+    const px = cxOfF2(vowel.F2), py = cyOfF1(vowel.F1);
     s += `<circle cx="${px}" cy="${py}" r="7.5" fill="#ffb347" fill-opacity="0.25" stroke="#ffb347" stroke-width="2"/>`;
     s += `<circle cx="${px}" cy="${py}" r="2.5" fill="#ffb347"/>`;
 
     chartSvg.innerHTML = s;
-    vmetaEl.innerHTML = `F1 <b>${Math.round(f1)}</b> Hz · F2 <b>${Math.round(f2)}</b> Hz`;
+    const rhotic = tract.w3 < 1;
+    vmetaEl.innerHTML = `F1 <b>${Math.round(vowel.F1)}</b> · F2 <b>${Math.round(vowel.F2)}</b> · F3 <b>${Math.round(vowel.F3)}</b> Hz` +
+      (rhotic ? ` · <b style="color:var(--accent)">F3 is ${(100*(1-tract.w3)).toFixed(0)}% exempt from the cluster</b>` : "");
   }
 
-  // ---------- render ----------
-  const NS = "http://www.w3.org/2000/svg";
+  // ---------- resonance rails ----------
   const fmtHz = v => v >= 1000 ? (v / 1000).toFixed(v % 1000 === 0 ? 0 : 1) + "k" : String(Math.round(v));
 
-  function redraw() {
+  function drawRails() {
     let s = "";
-
-    // frequency axis
     s += `<line x1="${X0}" y1="${AXIS_Y}" x2="${X1}" y2="${AXIS_Y}" stroke="#5a4324" stroke-width="1.5"/>`;
     for (const t of [100,200,300,500,700,1000,2000,3000,5000,8000]) {
       const x = freqToX(t);
@@ -277,56 +667,49 @@
     }
     s += `<text x="${X1}" y="${LABEL_Y+13}" fill="${GRAY_TXT}" font-size="9.5" text-anchor="end">Hz (log)</text>`;
 
-    // fundamental guide + dot
     const f0 = parseFloat(fundEl.value);
     const xf = freqToX(f0);
     s += `<line x1="${xf}" y1="34" x2="${xf}" y2="${AXIS_Y}" stroke="#ffb347" stroke-opacity="0.18" stroke-width="1" stroke-dasharray="3 4"/>`;
-    s += `<circle cx="${xf}" cy="${AXIS_Y}" r="5" fill="${'#ffb347'}" stroke="#2a1400" stroke-width="1"/>`;
+    s += `<circle cx="${xf}" cy="${AXIS_Y}" r="5" fill="#ffb347" stroke="#2a1400" stroke-width="1"/>`;
     s += `<text x="${xf}" y="${AXIS_Y-9}" fill="#ffb347" font-size="10" text-anchor="middle">f₀</text>`;
 
-    // rails
-    for (let i = formants.length - 1; i >= 0; i--) {
-      const fm = formants[i], cy = RAIL_CY[i], B = bwOf(fm);
-      const col = fm.on ? COLORS[i] : GRAY;
-      const txt = fm.on ? COLORS[i] : GRAY_TXT;
-      const lx = freqToX(fm.F - B / 2);
-      const mx = freqToX(fm.F);
-      const rx = freqToX(fm.F + B / 2);
+    // AES cluster target — where twang is pulling F3/F4/F5
+    if (fig.twang > 0.02) {
+      const xc = freqToX(singer.Fcluster);
+      s += `<line x1="${xc}" y1="24" x2="${xc}" y2="${RAIL_CY[0]+24}" stroke="#5b9cf2" stroke-opacity="${0.15+0.35*fig.twang}" stroke-width="1" stroke-dasharray="2 5"/>`;
+      s += `<text x="${xc}" y="20" fill="#5b9cf2" fill-opacity="${0.4+0.6*fig.twang}" font-size="9.5" text-anchor="middle">AES cluster</text>`;
+    }
 
-      // faint marker of the allowed center range (draggable formants only)
-      if (!fm.fixed) {
-        s += `<line x1="${freqToX(fm.min)}" y1="${cy+17}" x2="${freqToX(fm.max)}" y2="${cy+17}" stroke="${col}" stroke-opacity="0.25" stroke-width="1.5" stroke-dasharray="2 3"/>`;
-      }
+    for (let i = RAILS.length - 1; i >= 0; i--) {
+      const cy = RAIL_CY[i], on = formantOn[i];
+      const F = tract.F[i], Ft = tract.Ftarget[i], B = tract.B[i];
+      const col = on ? COLORS[i] : GRAY;
+      const txt = on ? COLORS[i] : GRAY_TXT;
+      const lx = freqToX(F - B / 2), mx = freqToX(F), rx = freqToX(F + B / 2), tx = freqToX(Ft);
 
-      // toggle button (left gutter)
+      s += `<line x1="${freqToX(RAILS[i].min)}" y1="${cy+17}" x2="${freqToX(RAILS[i].max)}" y2="${cy+17}" stroke="${col}" stroke-opacity="0.25" stroke-width="1.5" stroke-dasharray="2 3"/>`;
+
       s += `<g data-toggle="1" data-i="${i}" style="cursor:pointer">`;
-      s += `<rect x="8" y="${cy-15}" width="44" height="30" rx="8" fill="${fm.on ? col : '#241a0c'}" stroke="${col}" stroke-width="1.5"/>`;
-      s += `<text x="30" y="${cy+4}" fill="${fm.on ? '#120c06' : txt}" font-size="12" font-weight="700" text-anchor="middle">F${i+1}</text></g>`;
+      s += `<rect x="8" y="${cy-15}" width="44" height="30" rx="8" fill="${on ? col : '#241a0c'}" stroke="${col}" stroke-width="1.5"/>`;
+      s += `<text x="30" y="${cy+4}" fill="${on ? '#120c06' : txt}" font-size="12" font-weight="700" text-anchor="middle">F${i+1}</text></g>`;
 
-      // shaded span between whiskers
+      // target → effective displacement (twang pull + tract-length scaling)
+      if (Math.abs(tx - mx) > 1.5) {
+        s += `<line x1="${tx}" y1="${cy}" x2="${mx}" y2="${cy}" stroke="${col}" stroke-opacity="0.5" stroke-width="1" stroke-dasharray="2 2"/>`;
+      }
       s += `<line x1="${lx}" y1="${cy}" x2="${rx}" y2="${cy}" stroke="${col}" stroke-opacity="0.45" stroke-width="7" stroke-linecap="round"/>`;
-      // whisker ticks
       s += `<line x1="${lx}" y1="${cy-12}" x2="${lx}" y2="${cy+12}" stroke="${col}" stroke-width="2"/>`;
       s += `<line x1="${rx}" y1="${cy-12}" x2="${rx}" y2="${cy+12}" stroke="${col}" stroke-width="2"/>`;
-      // median (center) tick + grip
       s += `<line x1="${mx}" y1="${cy-20}" x2="${mx}" y2="${cy+20}" stroke="${col}" stroke-width="2.5"/>`;
-      if (fm.fixed) {
-        s += `<circle cx="${mx}" cy="${cy-22}" r="6" fill="none" stroke="${col}" stroke-width="2"/>`;
-      } else {
-        s += `<circle cx="${mx}" cy="${cy-22}" r="7" fill="${col}" stroke="#120c06" stroke-width="1.5"/>`;
-      }
+      s += `<circle cx="${tx}" cy="${cy-22}" r="7" fill="#120c06" stroke="${col}" stroke-width="2" style="cursor:ew-resize"/>`;
 
-      // label
-      s += `<text x="${X1}" y="${cy-22}" fill="${txt}" font-size="10.5" text-anchor="end">F=${Math.round(fm.F)}${fm.fixed ? " (fixed)" : ""}  B=${Math.round(B)}</text>`;
-
-      // hit target for center drag (only when not fixed)
-      if (!fm.fixed) {
-        s += `<rect data-handle="1" data-i="${i}" data-type="median" x="${mx-10}" y="${cy-32}" width="20" height="56" fill="transparent" style="cursor:ew-resize"/>`;
-      }
+      const shifted = Math.abs(Ft - F) > 2;
+      s += `<text x="${X1}" y="${cy-22}" fill="${txt}" font-size="10.5" text-anchor="end">` +
+           `${shifted ? Math.round(Ft) + "→" : ""}F=${Math.round(F)}  B=${Math.round(B)}</text>`;
+      s += `<rect data-handle="1" data-i="${i}" x="${tx-11}" y="${cy-33}" width="22" height="58" fill="transparent" style="cursor:ew-resize"/>`;
     }
 
     svg.innerHTML = s;
-    drawChart();
   }
 
   // ---------- audio ----------
@@ -334,42 +717,38 @@
   let ctx = null, osc = null, master = null, playing = false;
   let analyser = null, scopeRAF = null, timeBuf = null, freqBuf = null;
   // source-filter graph nodes
+  let srcGain = null, nasalPole = null, nasalZero = null, nasalTrim = null;
   let sourceBus = null, formantMix = null, dryGain = null;
-  let oscMode = "voice";  // "voice" = glottal source+formants; else a plain "sine"/"sawtooth"/"triangle"/"square" (formants bypassed)
-  let vibLFO = null, vibDepth = null, humanTimer = null;
+  let oscMode = "voice";  // "voice" = LF source + formants; else a plain oscillator (formants bypassed)
+  let vibLFO = null, vibDepth = null, humanTimer = null, onsetTimers = [];
   const bp = [], fg = [];                 // per-formant bandpass + gain nodes
-  // humanization constants
+  // The parallel bank sums branches, so relative sign matters. F1/F2 alternate (Klatt's trick for
+  // keeping the valley between two well-separated formants from notching); F3/F4/F5 share a sign
+  // so that when twang collapses them onto one frequency they *add* instead of cancelling.
+  const FORMANT_SIGN = [1, -1, 1, 1, 1];
+  const FORMANT_LEVEL = 0.8;
+  // The unfiltered source is far hotter than anything the bandpass bank puts out (its energy is
+  // a narrow spike, not a resonance), so the bypass is padded to land in the same ballpark —
+  // otherwise switching every formant off jumps ~20 dB and clips.
+  const DRY_LEVEL = 0.12;
+  // A fixed trim, deliberately not a per-vowel loudness fixup: twang's Ee bonus and the source's
+  // own level changes are findings, not artifacts to be normalized away. Chosen so that the
+  // loudest configuration in the space (a tilted, twanged voice whose F1 lands on f0) just
+  // reaches full scale at the default Ee and output level — roughly 20 dB above the quietest.
+  const OUTPUT_TRIM = 5.5;
   const VIB_RATE = 5.5;                   // vibrato rate (Hz)
   const JITTER_CENTS = 4;                 // random cycle-drift pitch wobble (± cents)
   const SHIMMER = 0.04;                   // random amplitude wobble (± fraction)
-  const FORMANT_LEVEL = 0.8;             // per-formant output level
   const playBtn = document.getElementById("play");
   const volEl = document.getElementById("vol");
+  const eeEl = document.getElementById("ee");
   const metaEl = document.getElementById("meta");
-  const padSvg = document.getElementById("pad");
-  const padValEl = document.getElementById("padval");
   const vibEl = document.getElementById("vib");
   const vibValEl = document.getElementById("vibval");
 
   let vibCents = parseFloat(vibEl.value);
-  function updateVibLabel() {
-    vibValEl.textContent = vibCents <= 0 ? "off" : `±${vibCents}¢ @ ${VIB_RATE}Hz`;
-  }
-  updateVibLabel();
-
-  let srcExp = 1.2;     // source spectral falloff exponent (bwFrac declared up top)
-
-  // The glottal source is a plain harmonic spectrum (1/n^e); the formants
-  // are real biquad filters downstream.
-  function computeWave(f0) {
-    const nyquist = ctx.sampleRate / 2;
-    const top = Math.min(HEARING_TOP, nyquist);
-    const N = Math.max(1, Math.floor(top / f0));
-    const real = new Float32Array(N + 1);
-    const imag = new Float32Array(N + 1);
-    for (let n = 1; n <= N; n++) imag[n] = Math.pow(n, -srcExp); // glottal source ∝ n^(−e)
-    return { wave: ctx.createPeriodicWave(real, imag), N };
-  }
+  const eeOf = () => parseFloat(eeEl.value);
+  const eeEffective = () => eeOf() * tract.eeBonus;
 
   // iOS mutes a page's default "ambient" audio session with the ringer switch, so Web Audio goes
   // silent while native apps keep sounding. Declaring "playback" (Safari 16.4+) opts into the
@@ -399,13 +778,26 @@
       master.connect(analyser);
 
       formantMix = ctx.createGain();
-      formantMix.gain.value = 1;
+      formantMix.gain.value = OUTPUT_TRIM;
       formantMix.connect(master);
 
-      // shared input bus -> parallel formant bandpass bank -> mix
+      // Ee lives on its own node so the onset envelope and the twang bonus both act on the
+      // excitation strength rather than on the output level.
+      srcGain = ctx.createGain();
+      srcGain.gain.value = 0;
+
+      // Nasal pole/zero pair, in series ahead of the formant bank. Both are `peaking` sections:
+      // RBJ peaking with gain A and 1/A at the same frequency and Q are exact inverses, so with
+      // the velum raised they cancel to unity and nasality is a pure separation of the two.
+      nasalPole = ctx.createBiquadFilter(); nasalPole.type = "peaking";
+      nasalZero = ctx.createBiquadFilter(); nasalZero.type = "peaking";
+      nasalTrim = ctx.createGain(); nasalTrim.gain.value = 1;
+      srcGain.connect(nasalPole); nasalPole.connect(nasalZero); nasalZero.connect(nasalTrim);
+
       sourceBus = ctx.createGain();
       sourceBus.gain.value = 1;
-      for (let i = 0; i < formants.length; i++) {
+      nasalTrim.connect(sourceBus);
+      for (let i = 0; i < RAILS.length; i++) {
         const f = ctx.createBiquadFilter();
         f.type = "bandpass";
         const filterGain = ctx.createGain();
@@ -416,8 +808,9 @@
         bp[i] = f; fg[i] = filterGain;
       }
 
-      // dry bypass: lets the raw buzz through when no formant is active,
-      // so "all formants off" passes the source rather than muting it.
+      // dry bypass: lets the raw source through when no formant is active, so "all formants
+      // off" passes the source rather than muting it — which is how you hear the LF waveform
+      // itself, with no tract in the way.
       dryGain = ctx.createGain();
       dryGain.gain.value = 0;
       sourceBus.connect(dryGain);
@@ -432,101 +825,62 @@
       vibLFO.connect(vibDepth);
       vibLFO.start();
 
-      syncFormants();
+      syncFilters();
     }
     if (ctx.state === "suspended") ctx.resume();
   }
 
-  // push formant centers / bandwidths / on-states into the biquad bank.
-  // alternating output signs reduce phase-cancellation notches between formants.
-  function syncFormants() {
+  // push the derived tract into the biquad bank
+  function syncFilters() {
     if (!ctx) return;
     const now = ctx.currentTime;
-    for (let i = 0; i < formants.length; i++) {
-      const fm = formants[i], B = bwOf(fm);
-      bp[i].frequency.setTargetAtTime(fm.F, now, 0.02);
-      bp[i].Q.setTargetAtTime(fm.F / B, now, 0.02);
-      const sign = (i % 2 === 0) ? 1 : -1;
-      const active = oscMode === "voice" && fm.on;          // basic waveforms bypass the formant bank
-      fg[i].gain.setTargetAtTime(active ? sign * FORMANT_LEVEL : 0, now, 0.02);
+    for (let i = 0; i < RAILS.length; i++) {
+      bp[i].frequency.setTargetAtTime(tract.F[i], now, 0.02);
+      bp[i].Q.setTargetAtTime(tract.F[i] / tract.B[i], now, 0.02);
+      const active = oscMode === "voice" && formantOn[i];   // basic waveforms bypass the bank
+      fg[i].gain.setTargetAtTime(active ? FORMANT_SIGN[i] * FORMANT_LEVEL : 0, now, 0.02);
     }
-    // dry bypass: always on for basic waveforms, and for the voice when every formant is off
-    const anyOn = oscMode === "voice" && formants.some(f => f.on);
-    dryGain.gain.setTargetAtTime(anyOn ? 0 : 1, now, 0.02);
-    formantMix.gain.setTargetAtTime(normGain(), now, 0.03);  // keep loudness steady across vowels
+    const anyOn = oscMode === "voice" && formantOn.some(Boolean);
+    dryGain.gain.setTargetAtTime(anyOn ? 0 : DRY_LEVEL, now, 0.02);
+
+    // Nasality is a filter figure, so a plain test oscillator gets the pair collapsed (bypassed).
+    const n = tract.nasal, voice = oscMode === "voice";
+    nasalPole.frequency.setTargetAtTime(n.FNP, now, 0.02);
+    nasalPole.Q.setTargetAtTime(n.Q, now, 0.02);
+    nasalPole.gain.setTargetAtTime(voice ? n.dB : 0, now, 0.02);
+    nasalZero.frequency.setTargetAtTime(voice ? n.FNZ : n.FNP, now, 0.02);
+    nasalZero.Q.setTargetAtTime(n.Q, now, 0.02);
+    nasalZero.gain.setTargetAtTime(voice ? -n.dB : 0, now, 0.02);
+    nasalTrim.gain.setTargetAtTime(voice ? tract.gainCorrection : 1, now, 0.02);
+
+    if (playing) srcGain.gain.setTargetAtTime(eeEffective(), now, 0.03);
   }
 
-  // Estimated RMS power of the filtered glottal source for a formant config.
-  // Sums the bandpass magnitude responses across harmonics (phase ignored — fine
-  // for a level estimate). |H_bp(f)| for a unity-peak bandpass with Q = F/B.
-  function spectralPower(fms, f0) {
-    const top = Math.min(HEARING_TOP, (ctx ? ctx.sampleRate : 48000) / 2);
-    const N = Math.max(1, Math.floor(top / f0));
-    let P = 0;
-    for (let n = 1; n <= N; n++) {
-      const f = n * f0, A = Math.pow(n, -srcExp);
-      let H = 0, any = false;
-      for (const fm of fms) {
-        if (!fm.on) continue;
-        any = true;
-        const B = Math.max(BW_FLOOR, fm.F * bwFrac), Q = fm.F / B, r = f / fm.F;
-        const d = 1 - r * r, e = r / Q;
-        H += FORMANT_LEVEL * e / Math.sqrt(d * d + e * e);
-      }
-      if (!any) H = 1;                       // dry bypass passes the source flat
-      const val = A * H;
-      P += val * val;
-    }
-    return P;
+  // build the PeriodicWave for the current source parameters
+  function computeWave(f0) {
+    const nyquist = ctx.sampleRate / 2;
+    const nMax = Math.max(1, Math.floor(Math.min(HEARING_TOP, nyquist) / f0));
+    const p = lfShape(f0, src.OQ, src.Rk, src.Ra);
+    const h = lfHarmonics(p, nMax);
+    return { wave: ctx.createPeriodicWave(h.real, h.imag, { disableNormalization: true }), n: h.n, p };
   }
 
-  // intrinsic power (Σ of squared harmonic amplitudes) of each built-in waveform,
-  // so a plain oscillator can be matched to the voice's level.
-  const WAVE_POWER = { sine: 1, sawtooth: 2/3, square: 2, triangle: 2/3 };
-
-  // Compensating gain so the output stays ~constant as the vowel (formant config)
-  // changes, normalized to the default formant centers as the reference vowel.
-  // Plain waveforms are matched to that same reference-vowel level too.
-  function normGain() {
-    const f0 = parseFloat(fundEl.value);
-    const ref = spectralPower(formants.map((f, i) => ({ F: REF_FORMANTS[i], on: true })), f0);
-    const src = oscMode === "voice" ? spectralPower(formants, f0) : (WAVE_POWER[oscMode] || 1);
-    if (src <= 0) return 1;
-    return Math.max(0.1, Math.min(8, Math.sqrt(ref / src)));
-  }
-
-  // apply the current source type to the live oscillator
   function applyOscType() {
     if (!osc) return;
     if (oscMode === "voice") osc.setPeriodicWave(computeWave(parseFloat(fundEl.value)).wave);
     else osc.type = oscMode;
   }
 
-  function updateMeta() {
-    const f0 = parseFloat(fundEl.value);
-    const on = formants.filter(f => f.on).length;
-    if (playing) {
-      if (oscMode !== "voice") {
-        metaEl.innerHTML = `<b>${oscMode}</b> oscillator · fundamental <b>${f0.toFixed(1)} Hz</b> · formants bypassed`;
-      } else {
-        const N = Math.floor(Math.min(HEARING_TOP, (ctx?.sampleRate || 48000) / 2) / f0);
-        metaEl.innerHTML = `<b>${N}</b> harmonics · fundamental <b>${f0.toFixed(1)} Hz</b> · <b>${on}</b>/5 formants active`;
-      }
-    } else {
-      metaEl.textContent = "Press Start to hear the buzz.";
-    }
-  }
-
   function rebuildSource() {
-    if (!playing || !osc) return;
+    if (!playing || !osc || !ctx) return;
     const f0 = parseFloat(fundEl.value);
     if (oscMode === "voice") osc.setPeriodicWave(computeWave(f0).wave);
     osc.frequency.setTargetAtTime(f0, ctx.currentTime, 0.02);
-    if (formantMix) formantMix.gain.setTargetAtTime(normGain(), ctx.currentTime, 0.03);  // f0/falloff shift the level too
-    updateMeta();
+    srcGain.gain.setTargetAtTime(eeEffective(), ctx.currentTime, 0.03);
   }
 
-  // rAF throttle for source-wave rebuilds (srcExp / fundamental sweeps)
+  // rAF throttle: the LF solve + FFT is a few hundred microseconds, but there is no reason to
+  // run it more than once per frame while a slider is being dragged.
   let pending = false;
   function scheduleSource() {
     if (pending) return;
@@ -544,52 +898,281 @@
     master.gain.setTargetAtTime(Math.max(0, v), now, 0.06);
   }
 
+  function clearOnsetTimers() { onsetTimers.forEach(clearTimeout); onsetTimers = []; }
+
+  // Glottal onset starts pressed and relaxes to target OQ over ~30 ms. A PeriodicWave can't be
+  // automated, so the dip is stepped; under the attack ramp the steps are inaudible.
+  function scheduleOnsetTransient(dip) {
+    if (dip <= 0) return;
+    const steps = 5;
+    for (let i = 1; i <= steps; i++) {
+      onsetTimers.push(setTimeout(() => {
+        oqDip = dip * (1 - i / steps);
+        apply();
+      }, i * 30 / steps));
+    }
+  }
+
   function start() {
     ensureCtx();
+    const o = ONSETS[onsetType];
+    oqDip = o.oqDip;
+    recompute();
+
     const f0 = parseFloat(fundEl.value);
     osc = ctx.createOscillator();
     osc.frequency.value = f0;
     applyOscType();
-    osc.connect(sourceBus);
+    osc.connect(srcGain);
 
-    // vibrato (re)connection to this oscillator's detune
     vibDepth.disconnect();
     vibDepth.connect(osc.detune);
 
     const now = ctx.currentTime;
-    // soft onset with a slight pitch scoop
-    osc.detune.setValueAtTime(-40, now);
+    osc.detune.setValueAtTime(onsetType === "glottal" ? 0 : -40, now);
     osc.detune.linearRampToValueAtTime(0, now + 0.12);
     osc.start();
-    syncFormants();
+    playing = true;
+    syncFilters();
+
+    // Ee envelope: rise over onset_ms to onset_overshoot·Ee, then settle to Ee.
+    const ee = eeEffective();
+    srcGain.gain.cancelScheduledValues(now);
+    srcGain.gain.setValueAtTime(0, now);
+    srcGain.gain.linearRampToValueAtTime(ee * o.overshoot, now + o.ms / 1000);
+    srcGain.gain.setTargetAtTime(ee, now + o.ms / 1000, 0.05);
 
     master.gain.cancelScheduledValues(now);
-    master.gain.setValueAtTime(0, now);
-    master.gain.linearRampToValueAtTime(parseFloat(volEl.value), now + 0.07);
+    master.gain.setValueAtTime(parseFloat(volEl.value), now);
 
-    playing = true;
+    clearOnsetTimers();
+    scheduleOnsetTransient(o.oqDip);
+
     humanTimer = setInterval(tickHuman, 110);
     startScope();
     playBtn.classList.add("on");
     playBtn.textContent = "■ Stop";
-    updateMeta();
+    scheduleDraw();
   }
 
   function stop() {
     if (!playing) return;
     clearInterval(humanTimer); humanTimer = null;
+    clearOnsetTimers();
+    oqDip = 0;
     stopScope();
+    // Offset mirrors onset with the same time constant: a glottal release is an audible cutoff.
+    const secs = ONSETS[onsetType].ms / 1000;
     const now = ctx.currentTime;
-    master.gain.cancelScheduledValues(now);
-    master.gain.setValueAtTime(master.gain.value, now);
-    master.gain.linearRampToValueAtTime(0, now + 0.08);
+    srcGain.gain.cancelScheduledValues(now);
+    srcGain.gain.setValueAtTime(srcGain.gain.value, now);
+    srcGain.gain.linearRampToValueAtTime(0, now + secs);
     const dying = osc;
-    setTimeout(() => { try { dying.stop(); dying.disconnect(); } catch (e) {} }, 140);
+    setTimeout(() => { try { dying.stop(); dying.disconnect(); } catch (e) {} }, secs * 1000 + 120);
     osc = null;
     playing = false;
     playBtn.classList.remove("on");
     playBtn.textContent = "▶ Start";
-    updateMeta();
+    apply();
+  }
+
+  // ---------- model spectra (computed, not measured) ----------
+  const SPEC = { W: 880, H: 132, L: 46, R: 12, T: 8, B: 20, FMIN: 50, FMAX: 10000, SPAN: 78 };
+  const specX = f => SPEC.L + (Math.log10(clamp(f, SPEC.FMIN, SPEC.FMAX)) - Math.log10(SPEC.FMIN)) /
+    (Math.log10(SPEC.FMAX) - Math.log10(SPEC.FMIN)) * (SPEC.W - SPEC.L - SPEC.R);
+  const specY = (db, top) => SPEC.T + (top - db) / SPEC.SPAN * (SPEC.H - SPEC.T - SPEC.B);
+  const dB = v => 20 * Math.log10(Math.max(1e-9, v));
+
+  function specFrame(g, top, label) {
+    g.clearRect(0, 0, SPEC.W, SPEC.H);
+    g.font = "9px sans-serif"; g.lineWidth = 1;
+    g.strokeStyle = "#2c2010"; g.fillStyle = "#a07f4c"; g.textAlign = "center";
+    for (const f of [100, 200, 500, 1000, 2000, 5000, 10000]) {
+      const x = specX(f);
+      g.beginPath(); g.moveTo(x, SPEC.T); g.lineTo(x, SPEC.H - SPEC.B); g.stroke();
+      g.fillText(f >= 1000 ? (f / 1000) + "k" : f, x, SPEC.H - 7);
+    }
+    g.textAlign = "right";
+    for (let d = top; d > top - SPEC.SPAN; d -= 20) {
+      const y = specY(d, top);
+      g.strokeStyle = "#241a0c";
+      g.beginPath(); g.moveTo(SPEC.L, y); g.lineTo(SPEC.W - SPEC.R, y); g.stroke();
+      g.fillStyle = "#7d6438"; g.fillText(d + " dB", SPEC.L - 5, y + 3);
+    }
+    g.textAlign = "left"; g.fillStyle = "#c9a76a"; g.font = "10px sans-serif";
+    g.fillText(label, SPEC.L + 4, SPEC.T + 11);
+  }
+
+  // Tract magnitude at frequency f, from the same coefficients Web Audio is running.
+  function tractMag(f, sr) {
+    const w = 2 * Math.PI * f / sr;
+    if (w >= Math.PI) return 0;
+    let re = 0, im = 0, any = false;
+    for (let i = 0; i < 5; i++) {
+      if (!formantOn[i]) continue;
+      any = true;
+      const r = biquadResp(bandpassCoefs(tract.F[i], tract.F[i] / tract.B[i], sr), w);
+      const s = FORMANT_SIGN[i] * FORMANT_LEVEL;
+      re += s * r.re; im += s * r.im;
+    }
+    if (!any) { re = DRY_LEVEL; im = 0; }        // the bypass, so the plot follows what you hear
+    const n = tract.nasal;
+    const p = biquadResp(peakingCoefs(n.FNP, n.Q, n.dB, sr), w);
+    const z = biquadResp(peakingCoefs(n.FNZ, n.Q, -n.dB, sr), w);
+    return Math.hypot(re, im) * Math.hypot(p.re, p.im) * Math.hypot(z.re, z.im) * tract.gainCorrection;
+  }
+
+  const srcCv = document.getElementById("srcSpec"), tractCv = document.getElementById("tractSpec");
+  const outCv = document.getElementById("outSpec"), lfCv = document.getElementById("lfWave");
+
+  function drawModelSpectra() {
+    const sr = ctx ? ctx.sampleRate : 48000;
+    const f0 = parseFloat(fundEl.value);
+    const p = lfShape(f0, src.OQ, src.Rk, src.Ra);
+    const nMax = Math.max(1, Math.floor(Math.min(HEARING_TOP, sr / 2) / f0));
+    const h = lfHarmonics(p, nMax);
+    const mag = k => Math.hypot(h.real[k], h.imag[k]);
+
+    // --- panel 1: source ---
+    let g = srcCv.getContext("2d");
+    const h1 = dB(mag(1));
+    specFrame(g, 6, "1 · source |dU/dt|   (0 dB = H1)");
+    // glottal formant + tilt knee
+    const gf = p.Rg * f0, knee = 1 / (2 * Math.PI * p.ta);
+    for (const [f, col, lbl] of [[gf, "#5dd28f", "Rg·f₀"], [knee, "#5b9cf2", "1/2πta"]]) {
+      if (f < SPEC.FMIN || f > SPEC.FMAX) continue;
+      const x = specX(f);
+      g.strokeStyle = col; g.globalAlpha = 0.45;
+      g.beginPath(); g.moveTo(x, SPEC.T); g.lineTo(x, SPEC.H - SPEC.B); g.stroke();
+      g.globalAlpha = 1; g.fillStyle = col; g.font = "9px sans-serif";
+      // The tilt knee runs off the right edge at low Ra — flip the label inside the plot there.
+      const flip = x > SPEC.W - SPEC.R - 44;
+      g.textAlign = flip ? "right" : "left";
+      g.fillText(lbl, x + (flip ? -3 : 3), SPEC.H - SPEC.B - 3);
+    }
+    g.strokeStyle = "#ff8a2e"; g.fillStyle = "#ffb347";
+    for (let k = 1; k <= h.n; k++) {
+      const f = k * f0; if (f > SPEC.FMAX) break;
+      const x = specX(f), y = specY(dB(mag(k)) - h1, 6);
+      if (y > SPEC.H - SPEC.B) continue;
+      g.globalAlpha = 0.75;
+      g.beginPath(); g.moveTo(x, SPEC.H - SPEC.B); g.lineTo(x, y); g.stroke();
+      g.globalAlpha = 1;
+      g.fillRect(x - 1.2, y - 1.2, 2.4, 2.4);
+    }
+
+    // --- panel 2: tract ---
+    g = tractCv.getContext("2d");
+    specFrame(g, 24, "2 · vocal tract |H(f)|");
+    g.strokeStyle = "#5dd28f"; g.lineWidth = 1.6; g.beginPath();
+    for (let x = SPEC.L; x <= SPEC.W - SPEC.R; x++) {
+      const f = Math.pow(10, Math.log10(SPEC.FMIN) + (x - SPEC.L) / (SPEC.W - SPEC.L - SPEC.R) *
+        (Math.log10(SPEC.FMAX) - Math.log10(SPEC.FMIN)));
+      const y = clamp(specY(dB(tractMag(f, sr)), 24), SPEC.T - 20, SPEC.H - SPEC.B);
+      x === SPEC.L ? g.moveTo(x, y) : g.lineTo(x, y);
+    }
+    g.stroke(); g.lineWidth = 1;
+    // nasal pole/zero markers, only once they have separated
+    if (tract.nasal.FNZ - tract.nasal.FNP > 2) {
+      for (const [f, col, lbl] of [[tract.nasal.FNP, "#f5cf3d", "pole"], [tract.nasal.FNZ, "#e5484d", "zero"]]) {
+        const x = specX(f);
+        g.strokeStyle = col; g.globalAlpha = 0.5;
+        g.beginPath(); g.moveTo(x, SPEC.T); g.lineTo(x, SPEC.H - SPEC.B); g.stroke();
+        g.globalAlpha = 1; g.fillStyle = col; g.textAlign = "center";
+        g.fillText(lbl, x, SPEC.T + 9);
+      }
+    }
+
+    // --- panel 3: output ---
+    g = outCv.getContext("2d");
+    let peak = -1e9;
+    const out = new Float64Array(h.n + 1);
+    for (let k = 1; k <= h.n; k++) {
+      out[k] = dB(mag(k)) + dB(tractMag(k * f0, sr));
+      if (k * f0 <= SPEC.FMAX && out[k] > peak) peak = out[k];
+    }
+    specFrame(g, 4, "3 · radiated spectrum   (source + tract, dB)");
+    // tract envelope, shifted to sit with the harmonics
+    g.strokeStyle = "rgba(93,210,143,0.45)"; g.beginPath();
+    for (let x = SPEC.L; x <= SPEC.W - SPEC.R; x++) {
+      const f = Math.pow(10, Math.log10(SPEC.FMIN) + (x - SPEC.L) / (SPEC.W - SPEC.L - SPEC.R) *
+        (Math.log10(SPEC.FMAX) - Math.log10(SPEC.FMIN)));
+      const y = clamp(specY(dB(tractMag(f, sr)) + h1 - peak + 4, 4), SPEC.T - 20, SPEC.H - SPEC.B);
+      x === SPEC.L ? g.moveTo(x, y) : g.lineTo(x, y);
+    }
+    g.stroke();
+    g.strokeStyle = "#ff8a2e"; g.fillStyle = "#ffb347";
+    for (let k = 1; k <= h.n; k++) {
+      const f = k * f0; if (f > SPEC.FMAX) break;
+      const x = specX(f), y = specY(out[k] - peak + 4, 4);
+      if (y > SPEC.H - SPEC.B) continue;
+      g.globalAlpha = 0.75;
+      g.beginPath(); g.moveTo(x, SPEC.H - SPEC.B); g.lineTo(x, y); g.stroke();
+      g.globalAlpha = 1;
+      g.fillRect(x - 1.2, y - 1.2, 2.4, 2.4);
+    }
+
+    drawLfPeriod(p);
+  }
+
+  function drawLfPeriod(p) {
+    const g = lfCv.getContext("2d"), W = SPEC.W, H = SPEC.H, L = 46, R = 12, T = 12, Bm = 20;
+    g.clearRect(0, 0, W, H);
+    const x0 = L, x1 = W - R, mid = T + (H - T - Bm) * 0.42, amp = (H - T - Bm) * 0.42;
+    const xt = t => x0 + t / p.T * (x1 - x0);
+    const yv = v => mid - v * amp;
+
+    g.strokeStyle = "#2c2010"; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(x0, yv(0)); g.lineTo(x1, yv(0)); g.stroke();
+
+    // landmarks
+    g.font = "9px sans-serif"; g.textAlign = "center";
+    for (const [t, col, lbl] of [[p.tp, "#5dd28f", "tp"], [p.te, "#e5484d", "te"], [p.te + p.ta, "#5b9cf2", "te+ta"]]) {
+      const x = clamp(xt(t), x0, x1);
+      g.strokeStyle = col; g.globalAlpha = 0.45;
+      g.beginPath(); g.moveTo(x, T); g.lineTo(x, H - Bm); g.stroke();
+      g.globalAlpha = 1; g.fillStyle = col;
+      g.fillText(lbl, x, H - 7);
+    }
+    // Ee depth
+    g.strokeStyle = "#e5484d"; g.setLineDash([3, 3]); g.globalAlpha = 0.5;
+    g.beginPath(); g.moveTo(x0, yv(-1)); g.lineTo(x1, yv(-1)); g.stroke();
+    g.setLineDash([]); g.globalAlpha = 1;
+    g.fillStyle = "#e5484d"; g.textAlign = "right"; g.fillText("−Ee", x0 - 4, yv(-1) + 3);
+    g.fillStyle = "#7d6438"; g.fillText("0", x0 - 4, yv(0) + 3);
+
+    g.strokeStyle = "#ffb347"; g.lineWidth = 1.8; g.beginPath();
+    for (let x = x0; x <= x1; x++) {
+      const t = (x - x0) / (x1 - x0) * p.T;
+      const y = clamp(yv(lfSample(p, t)), T - 30, H - Bm);
+      x === x0 ? g.moveTo(x, y) : g.lineTo(x, y);
+    }
+    g.stroke(); g.lineWidth = 1;
+    g.fillStyle = "#c9a76a"; g.font = "10px sans-serif"; g.textAlign = "left";
+    g.fillText(`dU/dt · one period (${(p.T * 1000).toFixed(2)} ms)`, L + 4, T + 2);
+  }
+
+  // ---------- readout ----------
+  const readoutEl = document.getElementById("readout");
+  function drawReadout() {
+    const f0 = parseFloat(fundEl.value);
+    const p = lfShape(f0, src.OQ, src.Rk, src.Ra);
+    const rd = rdDiagnostic(src.Ra);
+    const cells = [
+      ["OQ", src.OQ.toFixed(3), src.drift > 0.001 ? `base ${src.OQbase.toFixed(2)} + drift ${src.drift.toFixed(3)}` : "held at base"],
+      ["Rk", src.Rk.toFixed(3), ""],
+      ["Ra", src.Ra.toFixed(4), p.taClamped ? "clamped: Ra ≥ 1−OQ" : ""],
+      ["Rg", p.Rg.toFixed(2), ""],
+      ["glottal formant", (p.Rg * f0).toFixed(0) + " Hz", ""],
+      ["tilt knee", (1 / (2 * Math.PI * p.ta)).toFixed(0) + " Hz", ""],
+      ["tp / te", `${(p.tp * 1000).toFixed(2)} / ${(p.te * 1000).toFixed(2)} ms`, ""],
+      ["Ee → effective", `${eeOf().toFixed(2)} → ${eeEffective().toFixed(2)}`, `+${(20 * Math.log10(tract.eeBonus)).toFixed(1)} dB from twang`],
+      ["Rd (diagnostic)", rd.toFixed(2), rd < 0.3 || rd > 2.7 ? "outside speech statistics" : ""],
+      ["cluster members", `${(formantOn[2] ? tract.w3 : 0) > 0.5 ? 3 : 2}`, tract.w3 < 1 ? "F3 held low by /r/" : ""],
+    ];
+    readoutEl.innerHTML = cells.map(([k, v, note]) =>
+      `<div class="${/clamped|outside/.test(note) ? "warn" : ""}">${k} <b>${v}</b>` +
+      (note ? `<br><span style="opacity:.7">${note}</span>` : "") + `</div>`).join("");
   }
 
   // ---------- output visualization (live, from the analyser tap) ----------
@@ -647,9 +1230,9 @@
       g.beginPath(); g.moveTo(x, 0); g.lineTo(x, base); g.stroke();
       g.fillText(f >= 1000 ? (f / 1000) + "k" : f, x, H - 2);
     }
-    if (oscMode === "voice") for (const fm of formants) {            // formant centers
-      if (!fm.on) continue;
-      const x = xOf(fm.F);
+    if (oscMode === "voice") for (let i = 0; i < 5; i++) {            // effective formant centers
+      if (!formantOn[i]) continue;
+      const x = xOf(tract.F[i]);
       g.strokeStyle = "rgba(255,179,71,0.5)"; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, base); g.stroke();
     }
     g.beginPath();
@@ -663,34 +1246,73 @@
     g.lineTo(W, base); g.lineTo(0, base); g.closePath(); g.fillStyle = "rgba(255,138,46,0.16)"; g.fill();
   }
 
+  // ---------- meta ----------
+  function updateMeta() {
+    const f0 = parseFloat(fundEl.value);
+    const on = formantOn.filter(Boolean).length;
+    if (!playing) { metaEl.textContent = "Press Start to hear the voice."; return; }
+    if (oscMode !== "voice") {
+      metaEl.innerHTML = `<b>${oscMode}</b> oscillator · f₀ <b>${f0.toFixed(1)} Hz</b> · tract bypassed`;
+      return;
+    }
+    const N = Math.floor(Math.min(HEARING_TOP, (ctx?.sampleRate || 48000) / 2) / f0);
+    metaEl.innerHTML = `LF source · <b>${N}</b> harmonics · f₀ <b>${f0.toFixed(1)} Hz</b> · ` +
+      `OQ <b>${src.OQ.toFixed(2)}</b> · <b>${on}</b>/5 resonances active`;
+  }
+
+  // ---------- one place that redraws everything ----------
+  // Anything that moves a parameter calls apply(): the audio graph is updated synchronously (so
+  // a filter is never a frame behind the slider) while the drawing — which includes an LF solve
+  // and a 4096-point FFT — is coalesced to one pass per animation frame.
+  function apply() {
+    recompute();
+    syncFilters();
+    scheduleSource();
+    scheduleDraw();
+  }
+
+  let drawPending = false;
+  function scheduleDraw() {
+    if (drawPending) return;
+    drawPending = true;
+    requestAnimationFrame(() => { drawPending = false; drawAll(); });
+  }
+
+  function drawAll() {
+    drawRails();
+    drawChart();
+    drawReadout();
+    drawModelSpectra();
+    updateMeta();
+    updateSideLabels();
+  }
+
   // ---------- interaction ----------
   let drag = null;
   svg.addEventListener("pointerdown", e => {
     const tog = e.target.closest("[data-toggle]");
     if (tog) {
       const i = +tog.dataset.i;
-      formants[i].on = !formants[i].on;
-      redraw(); syncFormants();
+      formantOn[i] = !formantOn[i];
+      apply();
       return;
     }
     const h = e.target.closest("[data-handle]");
     if (!h) return;
-    drag = { i: +h.dataset.i, type: h.dataset.type };
+    drag = +h.dataset.i;
     e.preventDefault();
   });
   window.addEventListener("pointermove", e => {
-    if (drag) {
-      const f = clientXToFreq(e.clientX);
-      const fm = formants[drag.i];
-      fm.F = Math.max(fm.min, Math.min(fm.max, f));   // clamp to this formant's allowed range
-      redraw(); syncFormants();
+    if (drag !== null) {
+      const r = RAILS[drag];
+      r.set(clamp(clientXToFreq(e.clientX), r.min, r.max));
+      if (drag === 2) f3El.value = String(Math.round(vowel.F3));
+      apply();
     } else if (chartDrag) {
       setFromChart(e.clientX, e.clientY);
-    } else if (padDrag) {
-      setFromPad(e.clientX, e.clientY);
     }
   });
-  window.addEventListener("pointerup", () => { drag = null; chartDrag = false; padDrag = false; });
+  window.addEventListener("pointerup", () => { drag = null; chartDrag = false; });
 
   // ---------- vowel-chart interaction ----------
   let chartDrag = false;
@@ -698,18 +1320,18 @@
     const r = chartSvg.getBoundingClientRect();
     const x = (clientX - r.left) / r.width * CVBW;
     const y = (clientY - r.top) / r.height * CVBH;
-    const f2 = F2HI - (x - CX0) / (CX1 - CX0) * (F2HI - F2LO);
-    const f1 = F1LO + (y - CY0) / (CY1 - CY0) * (F1HI - F1LO);
-    formants[0].F = clamp(f1, formants[0].min, formants[0].max);
-    formants[1].F = clamp(f2, formants[1].min, formants[1].max);
-    redraw(); syncFormants();
+    vowel.F2 = clamp(F2HI - (x - CX0) / (CX1 - CX0) * (F2HI - F2LO), RAILS[1].min, RAILS[1].max);
+    vowel.F1 = clamp(F1LO + (y - CY0) / (CY1 - CY0) * (F1HI - F1LO), RAILS[0].min, RAILS[0].max);
+    apply();
   }
   chartSvg.addEventListener("pointerdown", e => {
     const v = e.target.closest("[data-vowel]");
     if (v) {
-      formants[0].F = clamp(+v.dataset.f1, formants[0].min, formants[0].max);
-      formants[1].F = clamp(+v.dataset.f2, formants[1].min, formants[1].max);
-      redraw(); syncFormants();
+      vowel.F1 = clamp(+v.dataset.f1, RAILS[0].min, RAILS[0].max);
+      vowel.F2 = clamp(+v.dataset.f2, RAILS[1].min, RAILS[1].max);
+      vowel.F3 = clamp(+v.dataset.f3, RAILS[2].min, RAILS[2].max);
+      f3El.value = String(Math.round(vowel.F3));
+      apply();
     } else {
       setFromChart(e.clientX, e.clientY);
     }
@@ -717,72 +1339,105 @@
     e.preventDefault();
   });
 
-  // ---------- falloff × bandwidth pad ----------
-  const PAD = { VBW: 360, VBH: 270, X0: 50, X1: 340, Y0: 20, Y1: 224, SMAX: 3, BLO: 0.02, BHI: 0.10 };
-  const padX = s => PAD.X0 + (s / PAD.SMAX) * (PAD.X1 - PAD.X0);
-  const padY = b => PAD.Y1 - ((b - PAD.BLO) / (PAD.BHI - PAD.BLO)) * (PAD.Y1 - PAD.Y0);
-  function drawPad() {
-    let s = "";
-    s += `<rect x="${PAD.X0}" y="${PAD.Y0}" width="${PAD.X1 - PAD.X0}" height="${PAD.Y1 - PAD.Y0}" fill="#120c06" stroke="#5a4324" stroke-width="1"/>`;
-    // typical sung-voice guide region: falloff ≈ 0.9–1.6 exp, bandwidth ≈ 5–8%
-    const gx0 = padX(0.9), gx1 = padX(1.6), gy0 = padY(0.08), gy1 = padY(0.05);
-    s += `<rect x="${gx0}" y="${gy0}" width="${gx1 - gx0}" height="${gy1 - gy0}" fill="rgba(93,210,143,0.10)" stroke="rgba(93,210,143,0.55)" stroke-dasharray="3 3" stroke-width="1"/>`;
-    s += `<text x="${(gx0 + gx1) / 2}" y="${gy0 - 4}" fill="rgba(93,210,143,0.85)" font-size="9" text-anchor="middle">typical</text>`;
-    for (const f of [0, 1, 2, 3]) {
-      const x = padX(f);
-      s += `<line x1="${x}" y1="${PAD.Y0}" x2="${x}" y2="${PAD.Y1}" stroke="#2c2010" stroke-width="1"/>`;
-      s += `<text x="${x}" y="${PAD.Y1 + 14}" fill="#a07f4c" font-size="9.5" text-anchor="middle">${(-6 * f).toFixed(0)}</text>`;
-    }
-    for (const b of [0.02, 0.04, 0.06, 0.08, 0.10]) {
-      const y = padY(b);
-      s += `<line x1="${PAD.X0}" y1="${y}" x2="${PAD.X1}" y2="${y}" stroke="#2c2010" stroke-width="1"/>`;
-      s += `<text x="${PAD.X0 - 6}" y="${y + 3}" fill="#a07f4c" font-size="9.5" text-anchor="end">${Math.round(b * 100)}%</text>`;
-    }
-    s += `<text x="${(PAD.X0 + PAD.X1) / 2}" y="${PAD.VBH - 4}" fill="#ab8c57" font-size="10.5" text-anchor="middle">source falloff (dB/oct) · bright ← → dark</text>`;
-    s += `<text transform="translate(12,${(PAD.Y0 + PAD.Y1) / 2}) rotate(-90)" fill="#ab8c57" font-size="10.5" text-anchor="middle">bandwidth · narrow ↓ wide ↑</text>`;
-    const cx = padX(srcExp), cy = padY(bwFrac);
-    s += `<line x1="${cx}" y1="${PAD.Y0}" x2="${cx}" y2="${PAD.Y1}" stroke="#ffb347" stroke-opacity="0.18" stroke-width="1"/>`;
-    s += `<line x1="${PAD.X0}" y1="${cy}" x2="${PAD.X1}" y2="${cy}" stroke="#ffb347" stroke-opacity="0.18" stroke-width="1"/>`;
-    s += `<circle cx="${cx}" cy="${cy}" r="8" fill="#ffb347" stroke="#2a1400" stroke-width="1.5" style="cursor:grab"/>`;
-    padSvg.innerHTML = s;
-    padValEl.textContent = `${(-6 * srcExp).toFixed(1)} dB/oct · ${Math.round(bwFrac * 100)}% bw`;
+  // ---------- figure sliders ----------
+  for (const d of FIGURE_DEFS) {
+    const row = document.createElement("div");
+    row.className = "fig";
+    row.innerHTML =
+      `<span class="nm">${d.nm}</span>` +
+      `<input type="range" min="0" max="1" step="0.01" value="${d.def}" id="fig-${d.id}">` +
+      `<span class="val" id="figv-${d.id}"></span>` +
+      `<span class="ends">${d.lo}<span>${d.hi}</span></span>`;
+    document.getElementById("figs-" + d.col).appendChild(row);
+    const input = row.querySelector("input");
+    figInputs[d.id] = input;
+    figVals[d.id] = row.querySelector(".val");
+    input.addEventListener("input", () => {
+      fig[d.id] = parseFloat(input.value);
+      figVals[d.id].textContent = fig[d.id].toFixed(2);
+      apply();
+    });
   }
-  let padDrag = false;
-  function setFromPad(clientX, clientY) {
-    const r = padSvg.getBoundingClientRect();
-    const px = (clientX - r.left) / r.width * PAD.VBW;
-    const py = (clientY - r.top) / r.height * PAD.VBH;
-    srcExp = clamp((px - PAD.X0) / (PAD.X1 - PAD.X0) * PAD.SMAX, 0, PAD.SMAX);
-    bwFrac = clamp(PAD.BLO + (PAD.Y1 - py) / (PAD.Y1 - PAD.Y0) * (PAD.BHI - PAD.BLO), PAD.BLO, PAD.BHI);
-    drawPad();
-    redraw();          // formant rails show bandwidth B
-    scheduleSource();  // rebuild source wave for the new falloff (+ re-normalize)
-    syncFormants();    // new Q for the new bandwidth (+ re-normalize)
+  function syncFigureInputs() {
+    for (const d of FIGURE_DEFS) {
+      figInputs[d.id].value = String(fig[d.id]);
+      figVals[d.id].textContent = fig[d.id].toFixed(2);
+    }
   }
-  padSvg.addEventListener("pointerdown", e => { padDrag = true; setFromPad(e.clientX, e.clientY); e.preventDefault(); });
 
-  playBtn.addEventListener("click", () => playing ? stop() : start());
-  document.getElementById("waves").addEventListener("click", e => {
-    const b = e.target.closest("[data-mode]");
-    if (!b) return;
-    oscMode = b.dataset.mode;
-    document.querySelectorAll("#waves .wave").forEach(w => w.classList.toggle("on", w === b));
-    applyOscType();
-    syncFormants();
-    updateMeta();
+  // ---------- quality fixtures ----------
+  const presetsEl = document.getElementById("presets");
+  presetsEl.innerHTML = `<span style="color:var(--muted);font-size:12px;font-weight:600;margin-right:2px">Qualities</span>`;
+  for (const name of Object.keys(QUALITIES)) {
+    const b = document.createElement("button");
+    b.className = "wave";
+    b.textContent = name;
+    b.addEventListener("click", () => {
+      Object.assign(fig, QUALITIES[name]);
+      syncFigureInputs();
+      apply();
+    });
+    presetsEl.appendChild(b);
+  }
+  const falsetto = document.createElement("button");
+  falsetto.className = "wave";
+  falsetto.textContent = "Falsetto";
+  falsetto.disabled = true;
+  falsetto.title = "Stiff folds need incomplete closure, DC flow offset and aspiration noise — out of scope.";
+  presetsEl.appendChild(falsetto);
+
+  // ---------- remaining controls ----------
+  const f3El = document.getElementById("f3t"), f3ValEl = document.getElementById("f3val");
+  const fcEl = document.getElementById("fcluster"), fcValEl = document.getElementById("fcval");
+  const bwEl = document.getElementById("bwtrim"), bwValEl = document.getElementById("bwval");
+  const eeValEl = document.getElementById("eeval");
+  const onsetEl = document.getElementById("onset");
+
+  function updateSideLabels() {
+    vibValEl.textContent = vibCents <= 0 ? "off" : `±${vibCents}¢ @ ${VIB_RATE}Hz`;
+    f3ValEl.textContent = `${Math.round(vowel.F3)} Hz` + (tract.w3 < 1 ? " · rhotic" : "");
+    fcValEl.textContent = `${singer.Fcluster} Hz`;
+    bwValEl.textContent = `×${singer.bwTrim.toFixed(2)}`;
+    eeValEl.textContent = `→ ${eeEffective().toFixed(2)}`;
+  }
+
+  f3El.addEventListener("input", () => {
+    vowel.F3 = parseFloat(f3El.value);
+    apply();
   });
+  fcEl.addEventListener("input", () => {
+    singer.Fcluster = parseFloat(fcEl.value);
+    apply();
+  });
+  bwEl.addEventListener("input", () => {
+    singer.bwTrim = parseFloat(bwEl.value);
+    apply();
+  });
+  onsetEl.addEventListener("change", () => { onsetType = onsetEl.value; });
+  eeEl.addEventListener("input", () => apply());
   volEl.addEventListener("input", () => {
     if (playing && ctx) master.gain.setTargetAtTime(parseFloat(volEl.value), ctx.currentTime, 0.01);
   });
   vibEl.addEventListener("input", () => {
     vibCents = parseFloat(vibEl.value);
-    updateVibLabel();
+    updateSideLabels();
     if (vibDepth && ctx) vibDepth.gain.setTargetAtTime(vibCents, ctx.currentTime, 0.02);
   });
-  fundEl.addEventListener("change", () => { redraw(); rebuildSource(); });
+  fundEl.addEventListener("change", () => apply());
 
-  redraw();
-  drawPad();
+  playBtn.addEventListener("click", () => playing ? stop() : start());
+  document.getElementById("waves").addEventListener("click", e => {
+    const b = e.target.closest("[data-mode]");
+    if (!b || b.disabled) return;
+    oscMode = b.dataset.mode;
+    document.querySelectorAll("#waves .wave[data-mode]").forEach(w => w.classList.toggle("on", w === b));
+    applyOscType();
+    apply();
+  });
+
+  syncFigureInputs();
+  recompute();
+  drawAll();
 })();
 </script>
 </body>
