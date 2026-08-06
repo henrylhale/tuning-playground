@@ -135,6 +135,15 @@
   .lane canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
   .lanelab{position:absolute;top:5px;left:8px;z-index:1;font-size:9px;letter-spacing:.4px;
     text-transform:uppercase;color:#6b5730;pointer-events:none}
+  /* the fourth "lane" is a big full-width Step button (a large touch target for advancing on mobile) */
+  .steprow{width:100%;height:80px;border-radius:5px;appearance:none;cursor:pointer;font-family:inherit;
+    font-size:20px;font-weight:800;letter-spacing:.5px;color:#2a1400;border:1px solid var(--accent-deep);
+    background:linear-gradient(180deg,#ffbf6f,var(--accent) 60%,var(--accent-deep));
+    box-shadow:inset 0 1px 0 rgba(255,231,195,.6),0 2px 0 var(--accent-deep),0 2px 6px rgba(0,0,0,.4);
+    transition:transform .06s,box-shadow .06s,filter .1s}
+  .steprow:hover{filter:brightness(1.05)}
+  .steprow:active{transform:translateY(2px);box-shadow:inset 0 2px 5px rgba(120,50,10,.5)}
+  .steprow:disabled{opacity:.35;filter:grayscale(.4);cursor:not-allowed;transform:none;box-shadow:none}
   /* extra padding so the selected tile's glow + the delete ✕ (which pokes outside the tile) aren't
      clipped by the horizontal-scroll container */
   .seqbar{display:flex;align-items:flex-start;gap:10px;overflow-x:auto;overflow-y:hidden;padding:14px 12px}
@@ -249,15 +258,15 @@
         <div id="voicing" class="vcol"></div>
         <div id="seqcanvas" class="seqcanvas">
           <div id="cliplbl" class="cliplbl">level —</div>
-          <!-- four analysis lanes: imported audio vs. synth output, waveform then spectrogram. The two
-               audio lanes are placeholders until Milestone 2's recording import lands. -->
+          <!-- three analysis lanes (audio waveform, audio spectrogram, synth spectrogram — the two audio
+               lanes are placeholders until Milestone 2's recording import lands), then a big full-width
+               Step button as the fourth row so touch users can walk the sequence. -->
           <div class="lanes">
             <div class="lane placeholder wf"><span class="lanelab">audio · waveform</span></div>
-            <div class="lane"><span class="lanelab">synth · waveform</span>
-              <canvas id="scope" width="1000" height="150"></canvas></div>
             <div class="lane placeholder"><span class="lanelab">audio · spectrogram</span></div>
             <div class="lane"><span class="lanelab">synth · spectrogram</span>
               <canvas id="spectrum" width="1000" height="150"></canvas></div>
+            <button id="seqnext" class="steprow" title="Advance to the next chord (or press Space / →)">Step ▶</button>
           </div>
           <div id="seqbar" class="seqbar"></div>            <!-- chords row (lyrics row will sit below) -->
         </div>
@@ -758,41 +767,27 @@
   }
 
   // ---------- output visualization (live, from the analyser tap on the final mix) ----------
-  const scopeCv=document.getElementById("scope"), spectrumCv=document.getElementById("spectrum");
+  const spectrumCv=document.getElementById("spectrum");
   const clipLbl=document.getElementById("cliplbl");
   function startScope(){
     if(!analyser||scopeRAF) return;
     timeBuf=new Float32Array(analyser.fftSize);
     freqBuf=new Uint8Array(analyser.frequencyBinCount);
-    const frame=()=>{ scopeRAF=requestAnimationFrame(frame); drawWave(); drawSpectrum(); };
+    const frame=()=>{ scopeRAF=requestAnimationFrame(frame); updateLevel(); drawSpectrum(); };
     frame();
   }
   function stopScope(){
     if(scopeRAF) cancelAnimationFrame(scopeRAF);
     scopeRAF=null;
-    scopeCv.getContext("2d").clearRect(0,0,scopeCv.width,scopeCv.height);
     spectrumCv.getContext("2d").clearRect(0,0,spectrumCv.width,spectrumCv.height);
     clipLbl.textContent="level —"; clipLbl.style.color="var(--muted)";
   }
-  function drawWave(){
-    const g=scopeCv.getContext("2d"), W=scopeCv.width, H=scopeCv.height, mid=H/2, amp=(H/2)*0.82;
+  // Peak level for the clip readout. (The synth-waveform lane this used to draw in was removed, but the
+  // clip/level meter is still worth keeping — so read the time domain and report the peak without drawing.)
+  function updateLevel(){
     analyser.getFloatTimeDomainData(timeBuf);
-    g.clearRect(0,0,W,H);
-    g.strokeStyle="#2c2010"; g.lineWidth=1;
-    g.beginPath(); g.moveTo(0,mid); g.lineTo(W,mid); g.stroke();
-    g.strokeStyle="#6b5128"; g.setLineDash([4,4]);
-    g.beginPath(); g.moveTo(0,mid-amp); g.lineTo(W,mid-amp); g.moveTo(0,mid+amp); g.lineTo(W,mid+amp); g.stroke();
-    g.setLineDash([]);
-    const N=timeBuf.length, step=N/W; let peak=0;
-    g.beginPath();
-    for(let x=0;x<W;x++){
-      const v=timeBuf[Math.floor(x*step)];
-      if(Math.abs(v)>peak) peak=Math.abs(v);
-      let y=mid-v*amp; if(y<0)y=0; else if(y>H)y=H;
-      x?g.lineTo(x,y):g.moveTo(x,y);
-    }
+    let peak=0; for(let i=0;i<timeBuf.length;i++){ const a=Math.abs(timeBuf[i]); if(a>peak) peak=a; }
     const clipped=peak>=1.0;
-    g.strokeStyle=clipped?"#ff5a4a":"#ffb347"; g.lineWidth=1.5; g.stroke();
     clipLbl.textContent=clipped?`peak ${peak.toFixed(2)} · CLIPPING`:`peak ${peak.toFixed(2)}`;
     clipLbl.style.color=clipped?"#ff5a5a":(peak>0.85?"#ffce54":"var(--muted)");
   }
@@ -1623,11 +1618,19 @@
     chordEditorEl.hidden = !on;
     renderVoicing();
   }
-  // No audio without a sequenced chord: Play is dead when the sequence is empty.
+  // No audio without a sequenced chord: Play (and the Step button) are dead when the sequence is empty.
   function updatePlayEnabled(){
     const has = seq.slots.length>0;
     playBtn.disabled = !has;
+    const nextBtn = document.getElementById("seqnext"); if(nextBtn) nextBtn.disabled = !has;
     if(!has && state.playing) stopAll();
+  }
+  // Advance to the next chord, wrapping at the end (shared by Space, → and the Step button — the latter
+  // gives touch users, who have no keyboard, a way to walk the sequence).
+  function seqAdvance(){
+    if(!seq.slots.length) return;
+    const cur = seq.active<0 ? 0 : seq.active;
+    seqStep((cur+1) % seq.slots.length);
   }
   // The key center is global to the whole sequence: pushing it on the dial rewrites every slot's key.
   function syncKeyAcrossSlots(){
@@ -1833,7 +1836,6 @@
     renderSeq(); scheduleAutosave();
   });
   glideEl.addEventListener("input", ()=>{ glideValEl.textContent = fmtGlide(readGlide()); });
-  // ← / → step through the sequence, unless a form control (a slider, etc.) has focus and wants them.
   // ← / → step through the sequence; SPACE steps forward too (repeatedly tapping walks the chords,
   // wrapping at the end) — this replaces spacebar play/pause. A focused form control keeps the keys.
   window.addEventListener("keydown", e=>{
@@ -1843,10 +1845,10 @@
     if(tag==="INPUT" || tag==="TEXTAREA" || tag==="SELECT") return;
     if(!seq.slots.length){ if(isSpace) e.preventDefault(); return; }
     e.preventDefault();                                   // also stops space from clicking a focused button / scrolling
-    const cur = seq.active<0 ? 0 : seq.active;
-    if(isSpace) seqStep((cur+1) % seq.slots.length);      // forward, cyclic
-    else        seqStep(clamp(cur + (e.key==="ArrowRight"?1:-1), 0, seq.slots.length-1));
+    if(isSpace) seqAdvance();                             // forward, cyclic
+    else{ const cur = seq.active<0 ? 0 : seq.active; seqStep(clamp(cur + (e.key==="ArrowRight"?1:-1), 0, seq.slots.length-1)); }
   });
+  document.getElementById("seqnext").addEventListener("click", seqAdvance);
 
   // ---- the JSON window: one toggle opens it; Copy/Paste use the clipboard; edits apply on blur ----
   const jsonWin = document.getElementById("jsonwin");
