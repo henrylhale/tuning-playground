@@ -212,6 +212,7 @@
   <div class="panel">
     <div class="seqhd">
       <button id="seqadd-top" class="toggle">＋ Add chord</button>
+      <button id="seqclear" class="toggle" title="Remove every chord from the sequence">Clear</button>
       <div class="ctl"><label>Glide</label><input id="glide" type="range" min="0" max="1.5" step="0.05" value="0"><span id="glideval" class="val">0 ms</span></div>
       <span class="grow"></span>
       <button id="tagtoggle" class="toggle" title="Import a Great Tags plain-text export as a sequence">Import tag</button>
@@ -1786,6 +1787,14 @@
     }catch(_){ return false; }
   }
   document.getElementById("seqadd-top").addEventListener("click", seqAdd);
+  // Clear the whole sequence → empty state (Play disabled, lattice grays out). Confirm first since
+  // there's no undo and the autosave will overwrite the cleared sequence.
+  document.getElementById("seqclear").addEventListener("click", ()=>{
+    if(seq.slots.length && !confirm("Clear all chords from the sequence?")) return;
+    seq.slots = []; seq.active = -1;
+    if(state.playing) stopAll();
+    renderSeq(); scheduleAutosave();
+  });
   glideEl.addEventListener("input", ()=>{ glideValEl.textContent = fmtGlide(readGlide()); });
   // ← / → step through the sequence, unless a form control (a slider, etc.) has focus and wants them.
   // ← / → step through the sequence; SPACE steps forward too (repeatedly tapping walks the chords,
