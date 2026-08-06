@@ -163,6 +163,7 @@
   .jsonwin[hidden]{display:none}
   .jsonwin-hd{display:flex;align-items:center;gap:8px;margin-bottom:8px}
   .jsonwin-title{margin-right:auto;font-size:10.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+  .tagmsg{font-size:11px;font-weight:600;margin-right:8px}
   .jsonwin textarea{width:100%;height:120px;font:11px/1.4 ui-monospace,Menlo,Consolas,monospace;
     background:var(--display);color:#c9b78f;border:1px solid var(--bezel-lo);border-radius:4px;padding:6px;resize:vertical}
   .waves{display:flex;gap:4px;flex-wrap:wrap}
@@ -213,6 +214,7 @@
       <button id="seqadd-top" class="toggle">＋ Add chord</button>
       <div class="ctl"><label>Glide</label><input id="glide" type="range" min="0" max="1.5" step="0.05" value="0"><span id="glideval" class="val">0 ms</span></div>
       <span class="grow"></span>
+      <button id="tagtoggle" class="toggle" title="Import a Great Tags plain-text export as a sequence">Import tag</button>
       <button id="jsontoggle" class="toggle" title="View, copy, paste, or edit the whole sequence as JSON">Copy · Paste · Edit JSON</button>
     </div>
     <div class="seqmain">
@@ -224,6 +226,16 @@
           <button id="jsonpaste" class="toggle" title="Paste JSON from your clipboard and load it">Paste</button>
         </div>
         <textarea id="seqjson" spellcheck="false" placeholder="Paste a sequence JSON here, or edit and click away to apply…"></textarea>
+      </div>
+      <!-- Import a Great Tags plain-text export → a sequence (chords detected; default timbre for now) -->
+      <div id="tagwin" class="jsonwin" hidden>
+        <div class="jsonwin-hd">
+          <span class="jsonwin-title">Import Great Tags text</span>
+          <span id="tagmsg" class="tagmsg"></span>
+          <button id="tagpaste" class="toggle" title="Paste from your clipboard">Paste</button>
+          <button id="tagload" class="toggle" title="Parse the text and load it as a sequence">Import →</button>
+        </div>
+        <textarea id="tagbox" spellcheck="false" placeholder="Paste a Great Tags plain-text export here, then click Import →"></textarea>
       </div>
       <!-- the voicing lattice keeps its vertical orientation but sits to the LEFT of the black canvas
            (shown only when a chord is focused); the canvas fills the remaining width -->
@@ -407,6 +419,61 @@
   }
   const toneColor = role => TONE_COLORS[toneClass(role)] || TONE_COLORS.other;
   //#endregion tonecolor
+
+  //#region tagimport — PURE, DOM-FREE: parse a Great Tags plain-text export + detect chords. Node-testable.
+  // The export stacks four voices per phrase with the lyric line in the middle: Tenor / Lead / <lyric> /
+  // Bari / Bass. A voice token is a major-scale degree 1–7, where '+'/'-' are sharp/flat accidentals and
+  // '↑'/'↓' are octave shifts (ignored here — only pitch class matters). The key is in [..] on line 1.
+  // parseTag → {key, chords:[{parts:[tenor,lead,bari,bass] as key-relative semitones 0–11]}]}. detectChord
+  // finds the best (root scale-degree 0–11, chord-quality index) in the app's vocabulary for a pitch set.
+  const TAG_MAJOR = {1:0, 2:2, 3:4, 4:5, 5:7, 6:9, 7:11};
+  const TAG_TOKEN = /^([↑↓]*)([+\-]*)(\d)$/;                 // octave arrows | +/- accidentals | scale degree
+  function tagToken(tok){                                    // → {pc: key-relative semitone, arr: net ↑/↓ octaves}
+    const m = TAG_TOKEN.exec(tok); if(!m) return null;
+    let pc = TAG_MAJOR[+m[3]]; if(pc==null) return null;
+    for(const c of m[2]) pc += (c==="+") ? 1 : -1;           // '+' sharp, '-' flat
+    let arr = 0; for(const c of m[1]) arr += (c==="↑") ? 1 : -1;
+    return { pc: ((pc%12)+12)%12, arr };
+  }
+  const tagTokenPC = tok => { const t = tagToken(tok); return t ? t.pc : null; };
+  const tagIsVoiceLine = l => { const t=l.trim().split(/\s+/); return t[0]!=="" && t.every(x=>TAG_TOKEN.test(x)); };
+  function parseTag(text){
+    const lines = String(text).replace(/\r/g,"").split("\n");
+    const km = /\[\s*([A-G][#b♭♯]?)\s*\]/.exec(lines[0]||"");
+    const chords = [];
+    let block = [];
+    const flush = () => {
+      const rows = block.filter(tagIsVoiceLine).slice(0,4).map(l=>l.trim().split(/\s+/));   // T,L,Ba,Bs
+      if(rows.length===4){
+        const n = Math.min(...rows.map(r=>r.length));
+        for(let i=0;i<n;i++){
+          const toks = rows.map(r=>tagToken(r[i]));
+          if(toks.every(t=>t)) chords.push({ parts: toks.map(t=>t.pc), arr: toks.map(t=>t.arr) });
+        }
+      }
+      block = [];
+    };
+    for(let i=1;i<lines.length;i++){ if(lines[i].trim()==="") flush(); else block.push(lines[i]); }
+    flush();
+    return { key: km ? km[1] : null, chords };
+  }
+  function detectChord(pcs, music){
+    const {CHORDS, rval, octRed} = music;
+    const want = [...new Set(pcs.map(p=>((p%12)+12)%12))];
+    const pcOf = r => (((Math.round(12*Math.log2(octRed(rval(r))))%12)+12)%12);
+    let best=null;
+    for(let root=0; root<12; root++){
+      for(let ci=0; ci<CHORDS.length; ci++){
+        const set = [...new Set(CHORDS[ci].r.map(r=>(pcOf(r)+root)%12))];
+        const missing = want.filter(p=>!set.includes(p)).length;   // chord tones we needed but don't have
+        const extra   = set.filter(p=>!want.includes(p)).length;   // chord tones present but not wanted
+        const score = missing*10 + extra*3 + ci*0.02;              // exact first, then fewest extras, then common chords
+        if(!best || score<best.score) best={root, chord:ci, score, exact:(missing===0 && extra===0)};
+      }
+    }
+    return best;
+  }
+  //#endregion tagimport
 
   //#region chip — PURE, DOM-FREE: derive a slot's stacked scale-degree display. Node-testable.
   // (test/chip.test.mjs slices this region out of the HTML and evals it.)
@@ -1638,6 +1705,76 @@
     renderSeq();
   }
 
+  // ---- import a Great Tags plain-text export as a sequence ------------------------------------
+  // Parsing + chord detection are pure (see #region tagimport). Here we turn each detected chord into
+  // a full snapshot: default timbre everywhere (the user tunes/ring-maxes later), the tag's key, and a
+  // close, register-centered voicing that keeps each part on the chord tone it actually sang.
+  function keyNameToMidi(name){
+    if(!name) return 58;                                       // fall back to B♭3
+    const base = {C:0,D:2,E:4,F:5,G:7,A:9,B:11}[name[0].toUpperCase()];
+    if(base==null) return 58;
+    let pc = base; const acc = name.slice(1);
+    if(acc==="#"||acc==="♯") pc++; else if(acc==="b"||acc==="♭") pc--;
+    return 48 + (((pc%12)+12)%12);                             // octave 3, matching the seed's B♭3
+  }
+  // Reconstruct the VERBATIM octave of every voice as absolute MIDI. The plaintext gives only scale
+  // degrees + octave arrows (↑/↓), so the register is implicit: seed the first chord as a close, no-crossing
+  // stack (Bass<Bari<Lead<Tenor) centered near the key, then move each voice to the nearest note of its next
+  // pitch class, applying any arrow as an octave override. Returns per chord [bass,bari,lead,tenor] MIDIs.
+  function reconstructMidis(chords, keyMidi){
+    const V = [[],[],[],[]];                                   // per tag voice (0=T,1=L,2=Ba,3=Bs)
+    const p0 = chords[0].parts;
+    let bs = keyMidi + p0[3];
+    let ba = keyMidi + p0[2]; while(ba < bs) ba += 12;
+    let ld = keyMidi + p0[1]; while(ld < ba) ld += 12;
+    let tn = keyMidi + p0[0]; while(tn < ld) tn += 12;
+    const shift = -12*Math.round(((bs+ba+ld+tn)/4 - keyMidi)/12);   // center the quartet near the key
+    bs+=shift; ba+=shift; ld+=shift; tn+=shift;
+    const prev = [tn, ld, ba, bs];                            // tag-voice order T,L,Ba,Bs
+    V[0].push(tn); V[1].push(ld); V[2].push(ba); V[3].push(bs);
+    for(let i=1;i<chords.length;i++){
+      for(let v=0; v<4; v++){
+        const base = keyMidi + chords[i].parts[v];
+        let m = base + 12*Math.round((prev[v]-base)/12);      // nearest octave to the previous note
+        m += 12*chords[i].arr[v];                             // ↑/↓ arrow = octave override
+        V[v].push(m); prev[v] = m;
+      }
+    }
+    return chords.map((_,i)=>[V[3][i], V[2][i], V[1][i], V[0][i]]);   // → app order bass..tenor
+  }
+  // Turn per-part absolute MIDIs into the app's {tone, octave} voicing for a detected chord.
+  function voicingFromMidis(root, chord, midis, keyMidi){
+    const rootRatio = rval(DEGREES[root].r);
+    const absPcs = CHORDS[chord].r.map(t => octRed(rootRatio * rval(t)));
+    const tonePC = ti => (((Math.round(12*Math.log2(absPcs[ti]))%12)+12)%12);
+    return midis.map(m => {
+      const pc = (((m - keyMidi)%12)+12)%12;
+      let bi=0, bd=99;
+      CHORDS[chord].r.forEach((_,ti)=>{ const d=Math.abs(((tonePC(ti)-pc+18)%12)-6); if(d<bd){ bd=d; bi=ti; } });
+      return [bi, Math.round((m - keyMidi)/12 - Math.log2(absPcs[bi]))];
+    });
+  }
+  function importTagText(text){
+    const parsed = parseTag(text);
+    if(!parsed.chords.length) return { ok:false, msg:"No chords found — paste a Great Tags plain-text export." };
+    const keyMidi = keyNameToMidi(parsed.key), keyFreq = midiToFreq(keyMidi);
+    const midis = reconstructMidis(parsed.chords, keyMidi);
+    const D = appDefaults();
+    let approx = 0;
+    seq.slots = parsed.chords.map((ch,i) => {
+      const det = detectChord(ch.parts, musicTables);
+      if(!det.exact) approx++;
+      return normalizeSnapshot({ key:keyFreq, root:det.root, chord:det.chord,
+                                 voicing:voicingFromMidis(det.root, det.chord, midis[i], keyMidi) }, D);
+    });
+    seq.active = 0;
+    renderSeq();
+    stepGlide = readGlide(); try{ applySnapshot(seq.slots[0]); } finally{ stepGlide = null; }
+    drawKeyDial(); drawRootDial();
+    scheduleAutosave();
+    return { ok:true, count:seq.slots.length, approx, key:parsed.key||"?" };
+  }
+
   // Copy to clipboard, robust on a bare file:// open (not a secure context, so navigator.clipboard is
   // unavailable there → fall back to a throwaway <textarea> + execCommand).
   async function copyText(txt){
@@ -1651,14 +1788,18 @@
   document.getElementById("seqadd-top").addEventListener("click", seqAdd);
   glideEl.addEventListener("input", ()=>{ glideValEl.textContent = fmtGlide(readGlide()); });
   // ← / → step through the sequence, unless a form control (a slider, etc.) has focus and wants them.
+  // ← / → step through the sequence; SPACE steps forward too (repeatedly tapping walks the chords,
+  // wrapping at the end) — this replaces spacebar play/pause. A focused form control keeps the keys.
   window.addEventListener("keydown", e=>{
-    if(e.key!=="ArrowLeft" && e.key!=="ArrowRight") return;
+    const isSpace = e.key===" " || e.code==="Space";
+    if(e.key!=="ArrowLeft" && e.key!=="ArrowRight" && !isSpace) return;
     const tag = document.activeElement && document.activeElement.tagName;
     if(tag==="INPUT" || tag==="TEXTAREA" || tag==="SELECT") return;
-    if(!seq.slots.length) return;
-    e.preventDefault();
+    if(!seq.slots.length){ if(isSpace) e.preventDefault(); return; }
+    e.preventDefault();                                   // also stops space from clicking a focused button / scrolling
     const cur = seq.active<0 ? 0 : seq.active;
-    seqStep(clamp(cur + (e.key==="ArrowRight"?1:-1), 0, seq.slots.length-1));
+    if(isSpace) seqStep((cur+1) % seq.slots.length);      // forward, cyclic
+    else        seqStep(clamp(cur + (e.key==="ArrowRight"?1:-1), 0, seq.slots.length-1));
   });
 
   // ---- the JSON window: one toggle opens it; Copy/Paste use the clipboard; edits apply on blur ----
@@ -1693,6 +1834,29 @@
   // pasting into the box (⌘V), or editing then clicking away, applies the JSON
   jsonBoxEl.addEventListener("paste", ()=> setTimeout(tryLoadFromBox, 0));
   jsonBoxEl.addEventListener("change", tryLoadFromBox);
+
+  // ---- the tag-import window: paste a Great Tags text export, Import → builds the sequence ----
+  const tagWin = document.getElementById("tagwin");
+  const tagToggleBtn = document.getElementById("tagtoggle");
+  const tagBoxEl = document.getElementById("tagbox");
+  const tagMsgEl = document.getElementById("tagmsg");
+  tagToggleBtn.addEventListener("click", ()=>{
+    tagWin.hidden = !tagWin.hidden;
+    tagToggleBtn.classList.toggle("on", !tagWin.hidden);
+  });
+  document.getElementById("tagpaste").addEventListener("click", async ()=>{
+    try{
+      if(!navigator.clipboard || !navigator.clipboard.readText) throw 0;
+      tagBoxEl.value = await navigator.clipboard.readText();
+    }catch(_){ tagBoxEl.focus(); tagBoxEl.select(); tagMsgEl.textContent = "Press ⌘V / Ctrl-V, then Import →"; tagMsgEl.style.color = "var(--muted)"; }
+  });
+  document.getElementById("tagload").addEventListener("click", ()=>{
+    const r = importTagText(tagBoxEl.value);
+    tagMsgEl.textContent = r.ok
+      ? `Imported ${r.count} chords in ${r.key}${r.approx ? ` · ${r.approx} approximated` : ""}.`
+      : r.msg;
+    tagMsgEl.style.color = r.ok ? "#2f7d45" : "#c0473a";
+  });
 
   // ============================================================ init
   for(let k=0;k<4;k++) buildVoice(k);
