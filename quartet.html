@@ -70,12 +70,11 @@
      sit on four pegs; drag a coloured dot to another peg to re-spell. Two voices may double one pitch
      → their dots are drawn tangent. Same 3-column grid for every row (parts | dot(s) | function/key/
      note) so pegs and voices align on the center line. */
-  /* the lattice is a FIXED-height, fixed-position scroll viewport; .latinner holds the whole (taller)
-     pitch range at a constant scale, so the shape never changes and stepping chords never reflows it */
-  .lattice{position:relative;height:360px;overflow-y:auto;overflow-x:hidden;margin:2px 0;touch-action:pan-y;
-    scrollbar-width:thin;scrollbar-color:#00000033 transparent}
+  /* the lattice fills the full height of its column (which stretches to the canvas), and .latinner
+     spans it, so the whole pitch range always runs top-to-bottom the same regardless of chord */
+  .lattice{position:relative;flex:1 1 auto;min-height:300px;overflow:hidden;touch-action:none}
   .lattice.nulled{opacity:.4;filter:grayscale(.6)}          /* no chord focused → grayed, label-less scaffold */
-  .latinner{position:relative;width:100%}
+  .latinner{position:relative;width:100%;height:100%}
   .lattice .lline{position:absolute;left:50%;top:0;bottom:0;width:2px;transform:translateX(-1px);
     background:linear-gradient(180deg,#00000012,#0000002e 8%,#0000002e 92%,#00000012)}
   .lattice .lrow{position:absolute;left:0;right:0;transform:translateY(-50%);pointer-events:none;
@@ -104,9 +103,10 @@
   .seqhd .grow{flex:1}
   /* JSON, then the [lattice | canvas] stage, then the focused chord's editor — stacked top to bottom */
   .seqmain{display:flex;flex-direction:column;gap:14px}
-  /* the stage: a slim vertical lattice pinned to the left, the black canvas taking all the rest */
-  .stage{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
-  .stage .vcol{flex:0 0 234px;min-width:210px}
+  /* the stage: a slim vertical lattice pinned to the left, the black canvas taking all the rest. The
+     lattice column stretches to the canvas's height so the lattice is always exactly as tall as it. */
+  .stage{display:flex;gap:10px;align-items:stretch;flex-wrap:wrap}
+  .stage .vcol{flex:0 0 234px;min-width:210px;display:flex;flex-direction:column}
   #seqcanvas{flex:1 1 460px;min-width:300px}
   .chordeditor{width:100%;padding:12px;border-radius:6px;
     background:linear-gradient(180deg,#e7d8b7,#d8c69f);border:1px solid var(--bezel-lo);
@@ -195,7 +195,6 @@
     .panel{padding:11px}
     .bar{gap:10px 14px}
     input[type=range]{width:110px}
-    .lattice{height:320px}
   }
 </style>
 </head>
@@ -965,14 +964,13 @@
 
   const voicingEl=document.getElementById("voicing");
 
-  // pitch → vertical position on the lattice. An ABSOLUTE pixel scale (px per semitone) over a fixed
-  // ~4-octave window (G1..A5), high notes up. Because the scale and window never change, the content is
-  // the SAME height and every pitch lands at the SAME offset for every chord — so stepping chords never
-  // reshapes or jumps the lattice. The window is taller than the viewport, so the viewport scrolls.
-  const LAT_MLO=31, LAT_MHI=81, LAT_PAD=14, PX_PER_SEMI=9;
-  const LAT_INNER_H = LAT_PAD*2 + (LAT_MHI-LAT_MLO)*PX_PER_SEMI;   // constant content height
+  // pitch → vertical position on the lattice, as a PERCENT down the content. The content fills the full
+  // (canvas-matched) lattice height, so the whole ~4-octave window (G1..A5) always spans the same box top
+  // to bottom, high notes near the top. Depends only on the fixed window, not the chord, so stepping
+  // chords never reshapes the lattice. A small top/bottom margin keeps the edge rows fully in view.
+  const LAT_MLO=31, LAT_MHI=81, LAT_PAD_PCT=3;
   const midiOf = f => 69 + 12*Math.log2(f/440);
-  const latYpx = f => LAT_PAD + (LAT_MHI - midiOf(f))*PX_PER_SEMI; // px from the top of the content
+  const latY = f => LAT_PAD_PCT + (LAT_MHI - midiOf(f))/(LAT_MHI-LAT_MLO)*(100-2*LAT_PAD_PCT);
   const MAX_PER_PITCH = 2;                                  // at most two voices may double one pitch
   const fkey = f => f.toFixed(2);                           // group voices/pegs that share a pitch
 
@@ -983,7 +981,7 @@
       const base=effKey()*pc;
       for(let o=Math.ceil(Math.log2(fLo/base)); o<=Math.floor(Math.log2(fHi/base)); o++){
         const f=base*Math.pow(2,o);
-        pegs.push({ tone:ti, octave:o, f, y:latYpx(f), role:(ITV[CHORDS[state.chordIdx].r[ti]]||"?") });
+        pegs.push({ tone:ti, octave:o, f, y:latY(f), role:(ITV[CHORDS[state.chordIdx].r[ti]]||"?") });
       }
     });
     return pegs;
@@ -992,13 +990,12 @@
   const latState={el:null, inner:null, pegs:[], drag:null};  // live lattice for the drag handlers
   const seqActive = () => seq.active>=0 && seq.active<seq.slots.length;   // is a chord focused?
   function renderVoicing(){
-    const prevScroll = latState.el ? latState.el.scrollTop : null;   // keep the same pitches on screen
     voicingEl.innerHTML="";
     const active = seqActive();
 
-    // viewport (fixed height, scrolls) → inner (fixed height, holds the whole pitch range)
+    // .lattice fills the canvas height (see CSS); .latinner spans it, holding the whole pitch range
     const lat=document.createElement("div"); lat.className="lattice"+(active?"":" nulled");
-    const inner=document.createElement("div"); inner.className="latinner"; inner.style.height=LAT_INNER_H+"px";
+    const inner=document.createElement("div"); inner.className="latinner";
     inner.innerHTML='<div class="lline"></div>';
     latState.el=lat; latState.inner=inner; latState.pegs=latticePegs();
 
@@ -1010,7 +1007,7 @@
     // in the null case the lattice is just a grayed, label-less scaffold.
     latState.pegs.forEach(p=>{
       if(occ.has(fkey(p.f))) return;                        // occupied → the voice row draws it instead
-      const row=document.createElement("div"); row.className="lrow lpeg"; row.style.top=p.y.toFixed(1)+"px";
+      const row=document.createElement("div"); row.className="lrow lpeg"; row.style.top=p.y.toFixed(2)+"%";
       row.dataset.f=fkey(p.f);
       row.innerHTML=`<span></span><span class="ldots"><span class="pegdot"></span></span>`+
                     (active?`<span class="linfo"><b class="peglab">${p.role}</b></span>`:`<span></span>`);
@@ -1023,7 +1020,7 @@
       const ratio=CHORDS[state.chordIdx].r[rep.tone], role=ITV[ratio]||ratio, col=toneColor(role);
       const keyDeg=DEGREES[(Math.round(12*Math.log2(state.absPcs[rep.tone]))%12+12)%12].lab;
       const f=slotFreq(rep);
-      const row=document.createElement("div"); row.className="lrow lvoice"; row.style.top=latYpx(f).toFixed(1)+"px";
+      const row=document.createElement("div"); row.className="lrow lvoice"; row.style.top=latY(f).toFixed(2)+"%";
       row.dataset.f=key;
       const parts=ks.map(k=>`<span class="lpart" style="color:${col}">${VOICE_NAMES[k]}</span>`).join("");
       const dots =ks.map(k=>`<span class="ldot" draggable="false" data-k="${k}" style="background:${col}"></span>`).join("");
@@ -1036,17 +1033,15 @@
     lat.appendChild(inner);
     inner.querySelectorAll(".ldot").forEach(d=>d.addEventListener("pointerdown",startDotDrag));
     voicingEl.appendChild(lat);
-    // same pitches stay under the same screen position across chord steps; first paint centers the range
-    lat.scrollTop = (prevScroll!=null) ? prevScroll : Math.max(0,(LAT_INNER_H - lat.clientHeight)/2);
   }
 
   // ---- drag a voice dot onto a peg (the only voicing edit) -------------------------------------
   // The dragged dot keeps its part; dropping sets that part's chord tone + octave to the target peg,
   // so its function (and colour) update. A pitch already holding MAX_PER_PITCH other voices is refused.
   function nearestPeg(clientY){
-    const top=latState.inner.getBoundingClientRect().top;   // inner rect already includes the scroll offset
+    const r=latState.inner.getBoundingClientRect();          // maps a peg's % position to a screen Y
     let best=null, bd=Infinity;
-    latState.pegs.forEach(p=>{ const d=Math.abs((top+p.y)-clientY); if(d<bd){ bd=d; best=p; } });
+    latState.pegs.forEach(p=>{ const d=Math.abs((r.top + p.y/100*r.height)-clientY); if(d<bd){ bd=d; best=p; } });
     return best;
   }
   function occupancyAt(key, exceptK){                       // how many OTHER voices sit on this pitch
