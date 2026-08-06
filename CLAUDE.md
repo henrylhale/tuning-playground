@@ -2,6 +2,42 @@
 
 See `README.md` for what the apps are. This file covers *how* to work here.
 
+## What this is and who it's for (the vision)
+
+These apps are instruments for **barbershop enthusiasts doing science on "ring."**
+Ring is the perceptual payoff of a chord sung in just intonation: when four voices
+lock their pitches to small-integer frequency ratios, their overtones coincide and
+reinforce, and the chord "rings" — you seem to hear extra voices (the reinforced
+harmonics, especially the implied fundamental below the chord). The community is
+opinionated about what produces it, and these tools exist to **investigate and
+demonstrate those claims**, not just to make sound.
+
+`quartet.html` is the flagship: a four-voice source-filter synthesizer that spells
+barbershop chords in 7-limit just intonation, with per-voice control over pitch,
+timbre (formants/vowel, brightness, nasality), and balance. It is a *laboratory
+bench*, not a toy keyboard — the point is to isolate a variable (a voicing, a
+vowel, one voice's level, the tuning of a seventh) and hear exactly what it does to
+the ring.
+
+Three directions of growth, in the owner's words:
+
+1. **Harmonic vocabulary** — display and choose chords/voicings better.
+2. **Sequencing + recording inspection** (the current build-out) — string chords
+   into a progression you can step through; *and* load a recording of a real
+   quartet, chop it into chords, and reverse-engineer it by matching the synth to
+   it by ear (with a DJ-style crossfade between recording and synth, and
+   spectrograms compared side by side). Two uses, one tool: craft an interpretation
+   from first principles, and reverse-engineer someone else's.
+3. **The voice model** — make the synthesized voice itself more realistic.
+
+A load-bearing consequence: the tool is meant to surface **prescriptive rules about
+how singing must change from chord to chord** — e.g. "get darker on the seventh,
+brighter again the next chord." That is why a sequence stores the *complete* state
+per chord (timbre included), and why the flagship interaction is flipping between
+two chords and A/B-ing how differently they must be sung. Keep that research purpose
+in view when designing features: favor things that let a user isolate, compare, and
+demonstrate an acoustic claim.
+
 ## Multiple Claude instances share this repo
 
 More than one Claude Code instance works on this checkout at a time. **Isolate
