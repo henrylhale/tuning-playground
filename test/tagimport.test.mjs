@@ -71,7 +71,29 @@ test('detectChord finds a plain triad and marks it exact', () => {
   assert.equal(det.exact, true);
 });
 
-test('a block without four voice lines contributes no chords', () => {
+test('a block without four voice lines contributes no chords, and warns', () => {
   const text = 'x [C]\n\n 1 2\n 3 4\nlyric only\n';   // only two voice lines
-  assert.equal(parseTag(text).chords.length, 0);
+  const { chords, warnings } = parseTag(text);
+  assert.equal(chords.length, 0);
+  assert.ok(warnings.length >= 1, 'should surface a warning');
+  assert.match(warnings[0], /expected 4/);
+});
+
+test('swipe: a voice moves through notes (X ~ Y) while the others hold (------)', () => {
+  // Columns must line up: the swipe run sits under the ------ holds. Tenor/Lead/Bass hold across the swipe.
+  const text = [
+    's [C]',
+    '',
+    ' 1  1 ------ 1',   // Tenor: 1, 1, [hold hold], 1
+    ' 3  3 ------ 3',   // Lead
+    'la la  swipe  x',  // lyric
+    ' 5  5  6 ~ 7  5',  // Bari: 5, 5, then swipe 6→7, then 5
+    ' 1  1 ------ 1',   // Bass
+  ].join('\n');
+  const { chords } = parseTag(text);
+  // beats: [1,3,5,1]  [1,3,5,1]  [hold,hold,6,hold]  [hold,hold,7,hold]  [1,3,5,1]
+  assert.equal(chords.length, 5);
+  assert.deepEqual(chords.map(c => c.parts[2]), [7, 7, 9, 11, 7]);   // bari: 5,5,6,7,5 in semitones
+  assert.deepEqual(chords[2].parts, [0, 4, 9, 0]);   // during the swipe T/L/Bs hold 1/3/1, bari on 6
+  assert.deepEqual(chords[3].parts, [0, 4, 11, 0]);  // bari swipes up to 7, others still holding
 });

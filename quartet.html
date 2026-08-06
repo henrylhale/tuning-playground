@@ -164,6 +164,10 @@
   .jsonwin-hd{display:flex;align-items:center;gap:8px;margin-bottom:8px}
   .jsonwin-title{margin-right:auto;font-size:10.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
   .tagmsg{font-size:11px;font-weight:600;margin-right:8px}
+  .tagwarn{margin-top:8px;padding:8px 10px;border-radius:4px;background:#f6e2c2;border:1px solid #d8a24a;
+    color:#7a4a12;font-size:11px;line-height:1.5}
+  .tagwarn[hidden]{display:none}
+  .tagwarn b{display:block;margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px;font-size:10px}
   .jsonwin textarea{width:100%;height:120px;font:11px/1.4 ui-monospace,Menlo,Consolas,monospace;
     background:var(--display);color:#c9b78f;border:1px solid var(--bezel-lo);border-radius:4px;padding:6px;resize:vertical}
   .waves{display:flex;gap:4px;flex-wrap:wrap}
@@ -237,6 +241,7 @@
           <button id="tagload" class="toggle" title="Parse the text and load it as a sequence">Import →</button>
         </div>
         <textarea id="tagbox" spellcheck="false" placeholder="Paste a Great Tags plain-text export here, then click Import →"></textarea>
+        <div id="tagwarn" class="tagwarn" hidden></div>
       </div>
       <!-- the voicing lattice keeps its vertical orientation but sits to the LEFT of the black canvas
            (shown only when a chord is focused); the canvas fills the remaining width -->
@@ -377,7 +382,7 @@
     {name:"Maj6",      r:["1/1","5/4","3/2","5/3"]},
     {name:"Min6",      r:["1/1","6/5","3/2","5/3"]},
     {name:"Half-dim7", r:["1/1","6/5","7/5","9/5"]},
-    {name:"Dim7",      r:["1/1","6/5","7/5","8/5"]},
+    {name:"Dim7",      r:["1/1","6/5","7/5","5/3"]},   // true fully-diminished 7th [0,3,6,9] in JI (top = 5/3)
     {name:"Maj7",      r:["1/1","5/4","3/2","15/8"]},
     {name:"Dom7 ♭5",   r:["1/1","5/4","7/5","7/4"]},
     {name:"Aug",       r:["1/1","5/4","8/5","1/1"]},
@@ -437,26 +442,56 @@
     return { pc: ((pc%12)+12)%12, arr };
   }
   const tagTokenPC = tok => { const t = tagToken(tok); return t ? t.pc : null; };
-  const tagIsVoiceLine = l => { const t=l.trim().split(/\s+/); return t[0]!=="" && t.every(x=>TAG_TOKEN.test(x)); };
+  const TAG_HOLD = /^-{2,}$/;                                // a run of dashes = "hold the previous note"
+  const tagIsVoiceLine = l => { const t=l.trim().split(/\s+/); return t[0]!=="" && t.every(x=>TAG_TOKEN.test(x) || TAG_HOLD.test(x) || x==="~"); };
+  // Voices are aligned by CHARACTER COLUMN, not token index, so swipes work: `------` (or just an absent
+  // token) means a voice HOLDS its last note while another voice moves through a run (its notes joined by
+  // `~`). Note columns are clustered into beats (within-beat spread ≤1 char, inter-beat gap ≥2); at each
+  // beat a voice with no note there repeats its previous pitch. A held note carries no octave arrow.
   function parseTag(text){
     const lines = String(text).replace(/\r/g,"").split("\n");
     const km = /\[\s*([A-G][#b♭♯]?)\s*\]/.exec(lines[0]||"");
-    const chords = [];
-    let block = [];
+    const chords = [], warnings = [];
+    let block = [], blockLine = 0;
     const flush = () => {
-      const rows = block.filter(tagIsVoiceLine).slice(0,4).map(l=>l.trim().split(/\s+/));   // T,L,Ba,Bs
-      if(rows.length===4){
-        const n = Math.min(...rows.map(r=>r.length));
-        for(let i=0;i<n;i++){
-          const toks = rows.map(r=>tagToken(r[i]));
-          if(toks.every(t=>t)) chords.push({ parts: toks.map(t=>t.pc), arr: toks.map(t=>t.arr) });
+      const vlines = block.filter(tagIsVoiceLine);              // T, L, Ba, Bs
+      if(block.length && vlines.length && vlines.length!==4){   // looked like music but didn't come out to 4 voices
+        const bad = block.filter(l => l.trim() && !tagIsVoiceLine(l) && !/[A-Za-z]{3}/.test(l));
+        warnings.push(`Line ${blockLine}: found ${vlines.length} voice line(s), expected 4 — skipped this block`
+          + (bad.length ? `. Unreadable: ${bad.map(l=>`"${l.trim().slice(0,24)}"`).join(", ")}` : "."));
+      }
+      if(vlines.length===4){
+        const vnotes = vlines.map(l => {                        // real notes only, with their column
+          const out=[], re=/\S+/g; let m;
+          while((m=re.exec(l))){ const t=tagToken(m[0]); if(t) out.push({col:m.index, pc:t.pc, arr:t.arr}); }
+          return out;
+        });
+        const cols = [...new Set(vnotes.flatMap(nl=>nl.map(n=>n.col)))].sort((a,b)=>a-b);
+        const beats=[];
+        for(const c of cols){ const b=beats[beats.length-1]; if(b && c-b.hi<=1) b.hi=c; else beats.push({lo:c,hi:c}); }
+        const prevPC=[null,null,null,null];
+        let dropped=0;
+        for(const b of beats){
+          const parts=[], arr=[]; let full=true;
+          for(let vi=0; vi<4; vi++){
+            const hit = vnotes[vi].filter(n=>n.col>=b.lo-1 && n.col<=b.hi+1);
+            if(hit.length){ const t=hit[hit.length-1]; prevPC[vi]=t.pc; parts.push(t.pc); arr.push(t.arr); }
+            else if(prevPC[vi]!=null){ parts.push(prevPC[vi]); arr.push(0); }   // hold: same pitch, no arrow
+            else { full=false; parts.push(null); arr.push(0); }
+          }
+          if(full) chords.push({parts, arr}); else dropped++;
         }
+        if(dropped) warnings.push(`Line ${blockLine}: ${dropped} column(s) couldn't be aligned across all four voices.`);
       }
       block = [];
     };
-    for(let i=1;i<lines.length;i++){ if(lines[i].trim()==="") flush(); else block.push(lines[i]); }
+    for(let i=1;i<lines.length;i++){
+      if(lines[i].trim()===""){ flush(); }
+      else { if(!block.length) blockLine = i+1; block.push(lines[i]); }
+    }
     flush();
-    return { key: km ? km[1] : null, chords };
+    if(!km) warnings.push('No key found in the title line (expected e.g. "[B♭]") — defaulting to B♭.');
+    return { key: km ? km[1] : null, chords, warnings };
   }
   function detectChord(pcs, music){
     const {CHORDS, rval, octRed} = music;
@@ -469,7 +504,9 @@
         const missing = want.filter(p=>!set.includes(p)).length;   // chord tones we needed but don't have
         const extra   = set.filter(p=>!want.includes(p)).length;   // chord tones present but not wanted
         const score = missing*10 + extra*3 + ci*0.02;              // exact first, then fewest extras, then common chords
-        if(!best || score<best.score) best={root, chord:ci, score, exact:(missing===0 && extra===0)};
+        // `covers` = every sung note is a chord tone (extra chord tones just mean an incomplete voicing,
+        // e.g. a unison or a triad with a doubling — that's faithful, not an approximation).
+        if(!best || score<best.score) best={root, chord:ci, score, exact:(missing===0 && extra===0), covers:(missing===0)};
       }
     }
     return best;
@@ -1757,14 +1794,14 @@
   }
   function importTagText(text){
     const parsed = parseTag(text);
-    if(!parsed.chords.length) return { ok:false, msg:"No chords found — paste a Great Tags plain-text export." };
+    if(!parsed.chords.length) return { ok:false, msg:"No chords found — paste a Great Tags plain-text export.", warnings:parsed.warnings };
     const keyMidi = keyNameToMidi(parsed.key), keyFreq = midiToFreq(keyMidi);
     const midis = reconstructMidis(parsed.chords, keyMidi);
     const D = appDefaults();
     let approx = 0;
     seq.slots = parsed.chords.map((ch,i) => {
       const det = detectChord(ch.parts, musicTables);
-      if(!det.exact) approx++;
+      if(!det.covers) approx++;                                // only count notes we couldn't represent at all
       return normalizeSnapshot({ key:keyFreq, root:det.root, chord:det.chord,
                                  voicing:voicingFromMidis(det.root, det.chord, midis[i], keyMidi) }, D);
     });
@@ -1773,7 +1810,7 @@
     stepGlide = readGlide(); try{ applySnapshot(seq.slots[0]); } finally{ stepGlide = null; }
     drawKeyDial(); drawRootDial();
     scheduleAutosave();
-    return { ok:true, count:seq.slots.length, approx, key:parsed.key||"?" };
+    return { ok:true, count:seq.slots.length, approx, key:parsed.key||"?", warnings:parsed.warnings };
   }
 
   // Copy to clipboard, robust on a bare file:// open (not a secure context, so navigator.clipboard is
@@ -1859,12 +1896,19 @@
       tagBoxEl.value = await navigator.clipboard.readText();
     }catch(_){ tagBoxEl.focus(); tagBoxEl.select(); tagMsgEl.textContent = "Press ⌘V / Ctrl-V, then Import →"; tagMsgEl.style.color = "var(--muted)"; }
   });
+  const tagWarnEl = document.getElementById("tagwarn");
+  const esc = s => s.replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
   document.getElementById("tagload").addEventListener("click", ()=>{
     const r = importTagText(tagBoxEl.value);
     tagMsgEl.textContent = r.ok
       ? `Imported ${r.count} chords in ${r.key}${r.approx ? ` · ${r.approx} approximated` : ""}.`
       : r.msg;
     tagMsgEl.style.color = r.ok ? "#2f7d45" : "#c0473a";
+    const warns = r.warnings || [];
+    tagWarnEl.hidden = warns.length===0;
+    tagWarnEl.innerHTML = warns.length
+      ? `<b>${warns.length} line${warns.length>1?"s":""} didn't parse cleanly</b>` + warns.map(w=>esc(w)).join("<br>")
+      : "";
   });
 
   // ============================================================ init
