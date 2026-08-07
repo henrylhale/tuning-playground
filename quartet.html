@@ -150,9 +150,7 @@
   .slot{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;flex:0 0 auto;
     background:linear-gradient(180deg,#241a0d,#181007);border:1px solid #3a2c17;border-radius:5px;
     padding:7px 9px 6px;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,220,150,.06),0 1px 3px rgba(0,0,0,.5);
-    min-width:40px;-webkit-user-select:none;user-select:none;touch-action:none}
-  .slot.drag{opacity:.4}
-  .slot.over{outline:2px dashed var(--accent);outline-offset:2px}
+    min-width:40px;-webkit-user-select:none;user-select:none;touch-action:pan-x}
   .slot.sel{outline:2px solid var(--accent);outline-offset:0;box-shadow:inset 0 2px 7px rgba(0,0,0,.5),0 0 11px rgba(226,106,16,.55)}
   .slot .stack{display:flex;flex-direction:column;align-items:center;line-height:1.18}
   .slot .stack b{font-size:15px;font-weight:800;color:#f3e3bf}
@@ -236,10 +234,12 @@
       <div id="jsonwin" class="jsonwin" hidden>
         <div class="jsonwin-hd">
           <span class="jsonwin-title">Sequence JSON</span>
+          <span id="jsonmsg" class="tagmsg"></span>
           <button id="jsoncopy" class="toggle" title="Copy this JSON to your clipboard">Copy</button>
-          <button id="jsonpaste" class="toggle" title="Paste JSON from your clipboard and load it">Paste</button>
+          <button id="jsonpaste" class="toggle" title="Paste JSON from your clipboard into the box">Paste</button>
+          <button id="jsonapply" class="toggle" title="Load the JSON in the box into the sequence">Apply →</button>
         </div>
-        <textarea id="seqjson" spellcheck="false" placeholder="Paste a sequence JSON here, or edit and click away to apply…"></textarea>
+        <textarea id="seqjson" spellcheck="false" placeholder="Paste a sequence JSON here, then click Apply →"></textarea>
       </div>
       <!-- Import a Great Tags plain-text export → a sequence (chords detected; default timbre for now) -->
       <div id="tagwin" class="jsonwin" hidden>
@@ -1691,14 +1691,6 @@
     if(wasActive && seq.active>=0){ stepGlide=readGlide(); try{ applySnapshot(seq.slots[seq.active]); } finally{ stepGlide=null; } }
     scheduleAutosave();
   }
-  function seqReorder(from,to){
-    const keep = seq.slots[seq.active];                           // track the active slot by identity
-    if(to>from) to--;
-    const [m] = seq.slots.splice(from,1);
-    seq.slots.splice(clamp(to,0,seq.slots.length),0,m);
-    seq.active = seq.slots.indexOf(keep);
-    renderSeq(); scheduleAutosave();
-  }
   // Writeback: mirror the live app state into the active slot + refresh just that chip (called on
   // every edit via onStateEdit). Guarded so it no-ops with no active slot or during a load/step.
   function seqCaptureActive(){
@@ -1713,36 +1705,14 @@
     syncJsonBox(); scheduleAutosave();
   }
 
-  // ---- drag-to-reorder / tap-to-step (pointer events; HTML5 DnD never fires on touch) ----
-  let sdrag=null;
-  function seqInsertIndex(clientX){
-    const boxes=realSlots();
-    for(let i=0;i<boxes.length;i++){ const r=boxes[i].getBoundingClientRect(); if(clientX < r.left + r.width/2) return i; }
-    return boxes.length;
-  }
-  const markSeqOver  = ins => realSlots().forEach((b,i)=>b.classList.toggle("over", i===ins));
-  const clearSeqOver = ()  => realSlots().forEach(b=>b.classList.remove("over"));
-  seqbarEl.addEventListener("pointerdown", e=>{
-    const slot = e.target.closest(".slot");
-    if(!slot || slot.classList.contains("seqadd") || e.target.closest(".del")) return;
-    sdrag = {i:+slot.dataset.i, x0:e.clientX, y0:e.clientY, moved:false, el:slot};
-    try{ slot.setPointerCapture(e.pointerId); }catch(_){}
-  });
-  seqbarEl.addEventListener("pointermove", e=>{
-    if(!sdrag) return;
-    if(!sdrag.moved && Math.hypot(e.clientX-sdrag.x0, e.clientY-sdrag.y0) < 6) return;
-    sdrag.moved = true; sdrag.el.classList.add("drag"); markSeqOver(seqInsertIndex(e.clientX));
-  });
-  seqbarEl.addEventListener("pointerup", e=>{
-    if(!sdrag) return;
-    const d=sdrag; sdrag=null; d.el.classList.remove("drag"); clearSeqOver();
-    if(d.moved) seqReorder(d.i, seqInsertIndex(e.clientX)); else seqStep(d.i);
-  });
-  seqbarEl.addEventListener("pointercancel", ()=>{ if(sdrag){ sdrag.el.classList.remove("drag"); clearSeqOver(); sdrag=null; } });
+  // ---- tap-to-step (chords no longer reorder — a horizontal drag scrolls the bar natively, since
+  // .slot is touch-action:pan-x; a real tap fires click, a scroll gesture does not, so they never fight).
   seqbarEl.addEventListener("click", e=>{
     const del=e.target.closest(".del");
     if(del){ e.stopPropagation(); seqRemove(+del.closest(".slot").dataset.i); return; }
-    if(e.target.closest(".seqadd")) seqAdd();
+    if(e.target.closest(".seqadd")){ seqAdd(); return; }
+    const slot=e.target.closest(".slot");
+    if(slot) seqStep(+slot.dataset.i);
   });
 
   // ---- JSON document: copy / download / upload / paste, + localStorage autosave ----
@@ -1888,10 +1858,22 @@
     jsonToggleBtn.classList.toggle("on", !jsonWin.hidden);
     if(!jsonWin.hidden) syncJsonBox();   // fill with the current sequence when opened
   });
-  // Load whatever is in the box into the app; returns true on success. Invalid JSON is left untouched.
-  function tryLoadFromBox(){
-    let doc; try{ doc = JSON.parse(jsonBoxEl.value); }catch(_){ return false; }
-    try{ loadDoc(doc); return true; }catch(_){ return false; }
+  // Editing the box no longer auto-applies on blur (that failed silently — e.g. pasting a new doc into
+  // the pre-filled box made invalid JSON and nothing happened). Loading is now an explicit Apply click
+  // with visible pass/fail feedback in #jsonmsg.
+  const jsonMsgEl = document.getElementById("jsonmsg");
+  let jsonMsgTimer=null;
+  function showJsonMsg(text, ok){
+    jsonMsgEl.textContent = text;
+    jsonMsgEl.style.color = ok ? "#2f7d45" : "#c0473a";
+    clearTimeout(jsonMsgTimer); jsonMsgTimer = setTimeout(()=>{ jsonMsgEl.textContent=""; }, 2600);
+  }
+  // Load whatever is in the box into the app, reporting the result; returns true on success.
+  function applyBox(){
+    let doc; try{ doc = JSON.parse(jsonBoxEl.value); }catch(_){ showJsonMsg("Not valid JSON", false); return false; }
+    try{ loadDoc(doc); }catch(_){ showJsonMsg("Not a sequence document", false); return false; }
+    showJsonMsg(`Loaded ${seq.slots.length} chord${seq.slots.length===1?"":"s"} ✓`, true);
+    return true;
   }
   const jsonCopyBtn = document.getElementById("jsoncopy");
   jsonCopyBtn.addEventListener("click", async ()=>{
@@ -1902,15 +1884,13 @@
     try{
       if(!navigator.clipboard || !navigator.clipboard.readText) throw 0;
       jsonBoxEl.value = await navigator.clipboard.readText();      // works over https (the hosted app)
-      flashBtn(jsonPasteBtn, tryLoadFromBox() ? "Loaded ✓" : "Not valid JSON");
+      applyBox();                                                  // paste = fill the box AND load it
     }catch(_){
       jsonBoxEl.focus(); jsonBoxEl.select();                       // file:// / denied: let them ⌘V into the box
-      flashBtn(jsonPasteBtn, "Press ⌘V / Ctrl-V");
+      showJsonMsg("Press ⌘V / Ctrl-V, then Apply →", false);
     }
   });
-  // pasting into the box (⌘V), or editing then clicking away, applies the JSON
-  jsonBoxEl.addEventListener("paste", ()=> setTimeout(tryLoadFromBox, 0));
-  jsonBoxEl.addEventListener("change", tryLoadFromBox);
+  document.getElementById("jsonapply").addEventListener("click", applyBox);
 
   // ---- the tag-import window: paste a Great Tags text export, Import → builds the sequence ----
   const tagWin = document.getElementById("tagwin");
