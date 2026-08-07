@@ -1852,7 +1852,7 @@
   // Set SHARE_WORKER to the deployed Worker origin (e.g. "https://quartet-share.<sub>.workers.dev") to
   // get short hosted #id= links. While it's empty, Share still works offline by inlining the whole state
   // into a self-contained #s= link (fine for small/medium sequences; too-long ones say so).
-  const SHARE_WORKER = "";
+  const SHARE_WORKER = "https://quartet-share.henrylhale.workers.dev";
 
   // --- byte helpers: deflate-raw via native streams (version byte: 1=deflated, 0=raw utf8 fallback) ---
   const concatBytes = (a,b) => { const o=new Uint8Array(a.length+b.length); o.set(a,0); o.set(b,a.length); return o; };
