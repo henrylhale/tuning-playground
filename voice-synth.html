@@ -109,7 +109,8 @@
   .fig > .val{font-size:9.5px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
 
   /* ---- derived readout ---- */
-  .readout{display:grid;grid-template-columns:repeat(4,1fr);gap:1px 6px;
+  .readout{display:grid;grid-template-columns:1fr;gap:1px;align-content:start;flex:1 1 0;
+    min-height:0;overflow-y:auto;
     background:#120c06;border-radius:2px;padding:5px 6px;box-shadow:inset 0 1px 5px rgba(0,0,0,.6)}
   .readout div{font-size:8px;color:#a98a55;font-variant-numeric:tabular-nums;line-height:1.15}
   .readout b{color:var(--amber);font-weight:700}
@@ -123,7 +124,9 @@
   .cap{font-size:9px;color:var(--muted);line-height:1.2}
   /* the chart is sized by the height its panel has left over, not by a fixed aspect: its box
      fills the slot and preserveAspectRatio letterboxes whichever axis is slack */
-  .chartbox{flex:1 1 0; min-height:0; display:flex}
+  .vowelrow{display:flex; gap:5px; flex:1 1 0; min-height:0}
+  .chartbox{flex:1 1 0; min-width:0; min-height:0; display:flex}
+  .readoutcol{flex:0 0 150px; min-height:0; display:flex}
   #chart{flex:1 1 0; min-height:0; width:100%; height:100%}
 
   /* DEV-ONLY: direct source-shape controls, a strip under the rails */
@@ -225,12 +228,14 @@
           <div><b>Tongue, jaw, lip aperture</b></div>
         </div>
         </div>
-        <div class="u" data-n="readout"><div class="readout" id="readout"></div></div>
       </div>
 
       <div class="panel grow">
-        <div class="u chartbox" data-n="chart">
-          <svg id="chart" class="screen" viewBox="0 0 380 210" preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="vowelrow">
+          <div class="u chartbox" data-n="chart">
+            <svg id="chart" class="screen" viewBox="0 0 348 320" preserveAspectRatio="xMidYMid meet"></svg>
+          </div>
+          <div class="u readoutcol" data-n="readout"><div class="readout" id="readout"></div></div>
         </div>
         <div class="u ctlrow" data-n="f3t"><label for="f3t" class="wide">F3 (r-coloring)</label>
           <input id="f3t" type="range" min="1400" max="3200" step="10" value="2500">
@@ -770,7 +775,7 @@
 
   // ---------- vowel chart (F1 vertical, F2 horizontal — IPA orientation) ----------
   const chartSvg = document.getElementById("chart");
-  const CX0 = 46, CX1 = 356, CY0 = 14, CY1 = 182; // plot box
+  const CX0 = 66, CX1 = 330, CY0 = 22, CY1 = 286; // plot box — 264 x 264, square
   const F1LO = 250, F1HI = 900;   // top -> bottom (close -> open)
   const F2HI = 2400, F2LO = 700;  // left -> right (front -> back)
   const cxOfF2 = f2 => CX0 + (F2HI - clamp(f2, F2LO, F2HI)) / (F2HI - F2LO) * (CX1 - CX0);
@@ -797,30 +802,30 @@
 
   function drawChart() {
     let s = "";
-    s += `<rect x="${CX0}" y="${CY0}" width="${CX1-CX0}" height="${CY1-CY0}" fill="#120c06" stroke="#5a4324" stroke-width="1"/>`;
+    s += `<rect x="${CX0}" y="${CY0}" width="${CX1-CX0}" height="${CY1-CY0}" fill="#120c06" stroke="#5a4324" stroke-width="1.5"/>`;
     for (const t of [2200,1800,1400,1000]) {
       const x = cxOfF2(t);
-      s += `<line x1="${x}" y1="${CY0}" x2="${x}" y2="${CY1}" stroke="#2c2010" stroke-width="1"/>`;
-      s += `<text x="${x}" y="${CY1+13}" fill="${GRAY_TXT}" font-size="11" text-anchor="middle">${t}</text>`;
+      s += `<line x1="${x}" y1="${CY0}" x2="${x}" y2="${CY1}" stroke="#2c2010" stroke-width="1.5"/>`;
+      s += `<text x="${x}" y="${CY1+19}" fill="${GRAY_TXT}" font-size="18" text-anchor="middle">${t}</text>`;
     }
     for (const t of [300,400,500,600,700,800]) {
       const y = cyOfF1(t);
-      s += `<line x1="${CX0}" y1="${y}" x2="${CX1}" y2="${y}" stroke="#2c2010" stroke-width="1"/>`;
-      s += `<text x="${CX0-4}" y="${y+4}" fill="${GRAY_TXT}" font-size="11" text-anchor="end">${t}</text>`;
+      s += `<line x1="${CX0}" y1="${y}" x2="${CX1}" y2="${y}" stroke="#2c2010" stroke-width="1.5"/>`;
+      s += `<text x="${CX0-6}" y="${y+6}" fill="${GRAY_TXT}" font-size="18" text-anchor="end">${t}</text>`;
     }
-    s += `<text x="${(CX0+CX1)/2}" y="${CY0-4}" fill="#ab8c57" font-size="11" text-anchor="middle">F2 — front ← → back</text>`;
-    s += `<text transform="translate(12,${(CY0+CY1)/2}) rotate(-90)" fill="#ab8c57" font-size="11" text-anchor="middle">F1 — close ↑ open ↓</text>`;
+    s += `<text x="${(CX0+CX1)/2}" y="${CY0-7}" fill="#ab8c57" font-size="18" text-anchor="middle">F2 — front ← → back</text>`;
+    s += `<text transform="translate(20,${(CY0+CY1)/2}) rotate(-90)" fill="#ab8c57" font-size="18" text-anchor="middle">F1 — close ↑ open ↓</text>`;
 
     for (const v of VOWELS) {
       const cx = cxOfF2(v.f2), cy = cyOfF1(v.f1);
       s += `<g data-vowel="1" data-f1="${v.f1}" data-f2="${v.f2}" data-f3="${v.f3}" style="cursor:pointer">`;
-      s += `<circle cx="${cx}" cy="${cy}" r="3.5" fill="#9c8154"><title>${v.ipa} — ${v.word} (F1 ${v.f1}, F2 ${v.f2}, F3 ${v.f3})</title></circle>`;
-      s += `<text x="${cx+6}" y="${cy+5}" fill="#d8c39a" font-size="14" font-weight="600">${v.ipa}</text></g>`;
+      s += `<circle cx="${cx}" cy="${cy}" r="5" fill="#9c8154"><title>${v.ipa} — ${v.word} (F1 ${v.f1}, F2 ${v.f2}, F3 ${v.f3})</title></circle>`;
+      s += `<text x="${cx+9}" y="${cy+7}" fill="#d8c39a" font-size="22" font-weight="600">${v.ipa}</text></g>`;
     }
 
     const px = cxOfF2(vowel.F2), py = cyOfF1(vowel.F1);
-    s += `<circle cx="${px}" cy="${py}" r="8" fill="#ffb347" fill-opacity="0.25" stroke="#ffb347" stroke-width="2"/>`;
-    s += `<circle cx="${px}" cy="${py}" r="3" fill="#ffb347"/>`;
+    s += `<circle cx="${px}" cy="${py}" r="12" fill="#ffb347" fill-opacity="0.25" stroke="#ffb347" stroke-width="3"/>`;
+    s += `<circle cx="${px}" cy="${py}" r="4" fill="#ffb347"/>`;
 
     chartSvg.innerHTML = s;
   }
@@ -1206,7 +1211,7 @@
 
     // --- panel 1: source ---
     let c = srcCv.getContext("2d"), g = geomOf(srcCv);
-    specFrame(c, g, 6, "0 dB = H1");
+    specFrame(c, g, 6);
     for (const [f, col, lbl] of [[p.Rg * f0, "#5dd28f", "Rg·f₀"], [1 / (2 * Math.PI * p.ta), "#5b9cf2", "1/2πta"]]) {
       if (f < SPEC_FMIN || f > SPEC_FMAX) continue;
       const x = gx(g, f);
