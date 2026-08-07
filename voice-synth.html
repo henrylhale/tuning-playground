@@ -81,7 +81,6 @@
     color:#2a1400; border-color:var(--accent-deep);
   }
   button.wave[disabled]{opacity:.42; cursor:not-allowed}
-  .waves{display:flex;gap:3px;flex-wrap:wrap}
 
   svg{display:block;width:100%;height:auto;touch-action:none;user-select:none}
   .screen{background:var(--display); border-radius:2px;
@@ -216,16 +215,10 @@
             <span class="v" id="bwval"></span></div>
         </div>
         <div style="display:flex;gap:6px;align-items:center">
-          <div class="u" data-n="waves" style="flex:1"><div class="waves" id="waves">
-            <button class="wave on" data-mode="voice">LF voice</button>
-            <button class="wave" data-mode="sine">Sine</button>
-            <button class="wave" data-mode="sawtooth">Saw</button>
-            <button class="wave" data-mode="triangle">Tri</button>
-            <button class="wave" data-mode="square">Sq</button>
-          </div></div>
+          <div class="u" data-n="meta" style="flex:1;min-width:0">
+            <div class="meta" id="meta">Press Start to hear the voice.</div></div>
           <div class="u" data-n="play"><button id="play" class="play">▶ Start</button></div>
         </div>
-        <div class="u" data-n="meta"><div class="meta" id="meta">Press Start to hear the voice.</div></div>
       </div>
 
       <div class="panel">
@@ -815,7 +808,6 @@
   // source-filter graph nodes
   let srcGain = null, nasalPole = null, nasalZero = null, nasalTrim = null;
   let sourceBus = null, formantMix = null, dryGain = null;
-  let oscMode = "voice";  // "voice" = LF source + formants; else a plain oscillator (formants bypassed)
   let vibLFO = null, vibDepth = null, humanTimer = null, onsetTimers = [];
   const bp = [], fg = [];                 // per-formant bandpass + gain nodes
   // The parallel bank sums branches, so relative sign matters. F1/F2 alternate (Klatt's trick for
@@ -933,21 +925,18 @@
     for (let i = 0; i < RAILS.length; i++) {
       bp[i].frequency.setTargetAtTime(tract.F[i], now, 0.02);
       bp[i].Q.setTargetAtTime(tract.F[i] / tract.B[i], now, 0.02);
-      const active = oscMode === "voice" && formantOn[i];   // basic waveforms bypass the bank
-      fg[i].gain.setTargetAtTime(active ? FORMANT_SIGN[i] * FORMANT_LEVEL : 0, now, 0.02);
+      fg[i].gain.setTargetAtTime(formantOn[i] ? FORMANT_SIGN[i] * FORMANT_LEVEL : 0, now, 0.02);
     }
-    const anyOn = oscMode === "voice" && formantOn.some(Boolean);
-    dryGain.gain.setTargetAtTime(anyOn ? 0 : DRY_LEVEL, now, 0.02);
+    dryGain.gain.setTargetAtTime(formantOn.some(Boolean) ? 0 : DRY_LEVEL, now, 0.02);
 
-    // Nasality is a filter figure, so a plain test oscillator gets the pair collapsed (bypassed).
-    const n = tract.nasal, voice = oscMode === "voice";
+    const n = tract.nasal;
     nasalPole.frequency.setTargetAtTime(n.FNP, now, 0.02);
     nasalPole.Q.setTargetAtTime(n.Q, now, 0.02);
-    nasalPole.gain.setTargetAtTime(voice ? n.dB : 0, now, 0.02);
-    nasalZero.frequency.setTargetAtTime(voice ? n.FNZ : n.FNP, now, 0.02);
+    nasalPole.gain.setTargetAtTime(n.dB, now, 0.02);
+    nasalZero.frequency.setTargetAtTime(n.FNZ, now, 0.02);
     nasalZero.Q.setTargetAtTime(n.Q, now, 0.02);
-    nasalZero.gain.setTargetAtTime(voice ? -n.dB : 0, now, 0.02);
-    nasalTrim.gain.setTargetAtTime(voice ? tract.gainCorrection : 1, now, 0.02);
+    nasalZero.gain.setTargetAtTime(-n.dB, now, 0.02);
+    nasalTrim.gain.setTargetAtTime(tract.gainCorrection, now, 0.02);
 
     if (playing) srcGain.gain.setTargetAtTime(eeEffective(), now, 0.03);
   }
@@ -961,16 +950,10 @@
     return { wave: ctx.createPeriodicWave(h.real, h.imag, { disableNormalization: true }), n: h.n, p };
   }
 
-  function applyOscType() {
-    if (!osc) return;
-    if (oscMode === "voice") osc.setPeriodicWave(computeWave(parseFloat(fundEl.value)).wave);
-    else osc.type = oscMode;
-  }
-
   function rebuildSource() {
     if (!playing || !osc || !ctx) return;
     const f0 = parseFloat(fundEl.value);
-    if (oscMode === "voice") osc.setPeriodicWave(computeWave(f0).wave);
+    osc.setPeriodicWave(computeWave(f0).wave);
     osc.frequency.setTargetAtTime(f0, ctx.currentTime, 0.02);
     srcGain.gain.setTargetAtTime(eeEffective(), ctx.currentTime, 0.03);
   }
@@ -1018,7 +1001,7 @@
     const f0 = parseFloat(fundEl.value);
     osc = ctx.createOscillator();
     osc.frequency.value = f0;
-    applyOscType();
+    osc.setPeriodicWave(computeWave(f0).wave);
     osc.connect(srcGain);
 
     vibDepth.disconnect();
@@ -1331,7 +1314,7 @@
       c.beginPath(); c.moveTo(x, 0); c.lineTo(x, base); c.stroke();
       c.fillText(f >= 1000 ? (f / 1000) + "k" : f, x, H - 2);
     }
-    if (oscMode === "voice") for (let i = 0; i < 5; i++) {            // effective formant centers
+    for (let i = 0; i < 5; i++) {                                     // effective formant centers
       if (!formantOn[i]) continue;
       const x = xOf(tract.F[i]);
       c.strokeStyle = "rgba(255,179,71,0.5)"; c.beginPath(); c.moveTo(x, 0); c.lineTo(x, base); c.stroke();
@@ -1352,10 +1335,6 @@
     const f0 = parseFloat(fundEl.value);
     const on = formantOn.filter(Boolean).length;
     if (!playing) { metaEl.textContent = "Press Start to hear the voice."; return; }
-    if (oscMode !== "voice") {
-      metaEl.innerHTML = `<b>${oscMode}</b> oscillator · f₀ <b>${f0.toFixed(1)} Hz</b> · tract bypassed`;
-      return;
-    }
     const N = Math.floor(Math.min(HEARING_TOP, (ctx?.sampleRate || 48000) / 2) / f0);
     metaEl.innerHTML = `LF source · <b>${N}</b> harmonics · f₀ <b>${f0.toFixed(1)} Hz</b> · ` +
       `OQ <b>${src.OQ.toFixed(2)}</b> · <b>${on}</b>/5 resonances active`;
@@ -1528,14 +1507,6 @@
   fundEl.addEventListener("change", () => apply());
 
   playBtn.addEventListener("click", () => playing ? stop() : start());
-  document.getElementById("waves").addEventListener("click", e => {
-    const b = e.target.closest("[data-mode]");
-    if (!b || b.disabled) return;
-    oscMode = b.dataset.mode;
-    document.querySelectorAll("#waves .wave[data-mode]").forEach(w => w.classList.toggle("on", w === b));
-    applyOscType();
-    apply();
-  });
 
   // DEV-ONLY: manual LF shape sliders
   const lfManualEl = document.getElementById("lfmanual");
@@ -1589,10 +1560,8 @@
      "A 5.5 Hz sine oscillator into the voice's detune. Detune is in cents, so the gain value is the depth directly. Not an Estill figure."],
     ["bwtrim", "Bandwidth trim ×",
      "Scales all five formant bandwidths. They are otherwise fixed constants — only nasality (B1) and twang (B3–B5) move them. A lab knob, no Estill meaning."],
-    ["waves", "Source waveform",
-     "\"LF voice\" is the model. The other four are plain oscillators with the tract bypassed — useful for hearing what is the source and what is the filter."],
     ["meta", "Status line",
-     "The OQ shown here includes pitch drift and any onset dip, so it can disagree with the body-cover slider. That is the point."],
+     "Harmonic count is min(20 kHz, Nyquist)/f₀. The OQ shown includes pitch drift and any onset dip, so it can disagree with the body-cover slider. That is the point."],
     ["presets", "Quality fixtures",
      "The six Estill qualities. Each button only assigns figure values — there is no quality-specific code anywhere. Belt is the test case."],
 
