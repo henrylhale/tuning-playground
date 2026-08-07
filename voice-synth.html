@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Modeled Source + Estill Figures — Voice Synth</title>
+<title>Source-filter model with Estill figures — Voice Synth</title>
 <!--
   ============================================================================================
   TEMPORARY DEV LAYOUT — everything marked DEV-ONLY below is review scaffolding, not the app.
@@ -138,15 +138,10 @@
   #figs-source.overridden{opacity:.4}
 
   /* what the model leaves out — greyed, and deliberately always on screen */
-  .figs h3 .cnt{float:right;font-size:8px;font-weight:500;letter-spacing:0;
-    text-transform:none;opacity:.8}
   .absent{display:grid;grid-template-columns:1fr 1fr;gap:0 10px;margin-top:1px}
   .absent > div{font-size:8.5px;line-height:1.25;color:#7a6742;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:help}
   .absent > div > b{font-weight:700;color:#6b5836}
-  .absent > .foot{grid-column:1/-1;color:#8a6f3e;white-space:normal;cursor:help;
-    border-top:1px solid rgba(143,118,73,.3);margin-top:2px;padding-top:2px}
-  .absent > .foot > b{color:#8a6f3e}
 </style>
 
 <style id="dev-only">
@@ -157,10 +152,6 @@
   .bar h1{font-size:11px;font-weight:800;margin:0;letter-spacing:1.2px;text-transform:uppercase;color:#ffb347}
   .bar .tag{font-size:8.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;
     background:#8a2f12;color:#ffd9b0;border-radius:2px;padding:1px 5px}
-  .bar .hint{font-size:9.5px;color:#9c8154;margin-left:auto}
-  .bar button{appearance:none;cursor:pointer;font-family:inherit;font-weight:700;font-size:9.5px;
-    background:#3a2a13;color:#e7d8b7;border:1px solid #5a4324;border-radius:3px;padding:2px 7px}
-  .bar button:hover{background:#4a361a}
   #noteout{height:2.6em;overflow-y:auto;font-size:10px;line-height:1.35;color:#cdb383;
     border-top:1px solid #3a2a13;padding-top:2px}
   #noteout .who{color:#ffb347;font-weight:700}
@@ -180,18 +171,6 @@
   /* a pinned note stays put while you drag something else around */
   .u.pinned > .badge{opacity:1; background:#e26a10; color:#fff2e0; box-shadow:0 0 0 1px #2a1400}
   .u.pinned{outline:1.5px solid var(--accent); outline-offset:1px; border-radius:2px}
-  body.notes-off .u > .badge{display:none}
-  body.notes-off .u:hover{outline:none}
-
-  /* inline mode: print every note in place; columns become scrollable */
-  .u > .inline{display:none}
-  body.notes-inline .u > .inline{
-    display:block; font-size:9px; line-height:1.35; color:#5f4a26;
-    background:rgba(255,255,255,.34); border-left:2px solid rgba(91,156,242,.6);
-    padding:3px 5px; margin-top:3px; border-radius:0 2px 2px 0;
-  }
-  body.notes-inline .plot{flex:0 0 auto}
-  body.notes-inline .plot canvas{flex:0 0 auto; height:96px}
   /* ===================== END DEV-ONLY ===================== */
 </style>
 </head>
@@ -201,11 +180,8 @@
   <!-- DEV-ONLY: title bar + the readout every annotation prints into -->
   <header class="bar">
     <div class="top">
-      <h1>Modeled Source + Estill Figures</h1>
+      <h1>Source-filter model with Estill figures</h1>
       <span class="tag">dev layout · temporary</span>
-      <button id="notemode">Notes: hover</button>
-      <button id="notestep">▸ walk through</button>
-      <span class="hint">hover any numbered element — its implementation is described below</span>
     </div>
     <div id="noteout"></div>
   </header>
@@ -224,8 +200,6 @@
         <div class="u ctlrow" data-n="vol"><label for="vol">Gain</label>
           <input id="vol" type="range" min="0" max="1" step="0.01" value="0.45"><span class="v" id="volval"></span></div>
           <div class="u" data-n="play"><button id="play" class="play">▶ Start</button></div>
-          <div class="u" data-n="meta" style="flex:1;min-width:0">
-            <div class="meta" id="meta">Press Start to hear the voice.</div></div>
           <div class="u ctlrow" data-n="fcluster"><label for="fcluster">Cluster</label>
             <input id="fcluster" type="range" min="2400" max="3400" step="10" value="2900">
             <span class="v" id="fcval"></span></div>
@@ -235,22 +209,21 @@
       </div>
 
       <div class="panel">
-        <div class="ptitle"><span>Thirteen Figures</span><span class="note">5 modeled · 1 partial · 2 collapsed · 5 set aside</span></div>
+        <div class="ptitle"><span>Estill Figures</span></div>
         <div class="figs">
           <h3>Source figures</h3>
           <div id="figs-source"></div>
           <h3>Filter figures</h3>
           <div id="figs-filter"></div>
-        <h3>Not modeled <span class="cnt">7 figures · hover for why</span></h3>
+        <h3>Unmodeled figures </h3>
         <div class="u absent" data-n="absent">
-          <div title="Assumed permanently retracted — the trained state. Its interesting outputs (subharmonics, biphonation, regime bifurcation) are chaotic and need a second coupled mass-spring oscillator above the source, not a jitter parameter."><b>False vocal folds</b> — assumed retracted</div>
-          <div title="Not a signal parameter. Unanchored singing shows characteristic couplings — f0 rising with subglottal pressure, larynx height drifting with pitch, tract collapse under load — and anchoring is the reduction of those couplings toward zero."><b>Torso anchoring</b> — assumed optimal</div>
-          <div title="Same as torso anchoring: a constraint on other parameters' trajectories, not a sound of its own. Assuming both ideal is what licenses treating every other figure as independent."><b>Head &amp; neck anchoring</b> — assumed optimal</div>
-          <div title="Set aside. It acted only through an OQ drift with pitch, measured against one global 220 Hz reference — but a reference pitch belongs to the singer, so with max(0, …) a bass never drifted at all. Restore it with F0_REF in the singer config, per part."><b>Cricoid cartilage</b> — set aside</div>
-          <div title="Thick and thin are modeled. Stiff (falsetto) needs incomplete closure, a DC flow offset and aspiration noise; slack needs a nonlinear oscillator capable of period doubling."><b>Body–cover: stiff, slack</b> — thick/thin only</div>
-          <div title="Both halves of the figure are gone. It was envelope timing on Ee — glottal (3 ms, a 1.25x overshoot, a briefly depressed OQ) and simultaneous (25 ms) — with aspirate already unreachable for want of a noise channel. Notes now fade in and out over a fixed 60 ms, short enough not to be heard as an attack shape, so nothing about the start or end of a note is a claim about production."><b>Onset &amp; offset</b> — not modeled; plain fades</div>
-          <div title="Not dropped but reparameterized: three articulators map many-to-one onto three formants, so they are collapsed into a direct (F1, F2, F3) target. The acoustic consequences are all present; which articulator produced them is not recoverable."><b>Tongue, jaw, lip aperture</b> — collapsed into (F1,F2,F3)</div>
-          <div class="foot" title="Not an Estill figure but a real axis all the same: subglottal drive. Eₑ is pinned at a nominal 0.6 and twang is the only thing that scales it, so loudness follows from the figures. The cost is that pushed-loud and twanged-loud can no longer be told apart by holding one still and moving the other.">also fixed: <b>glottal effort</b> · unreachable: <b>Falsetto</b> and distorted qualities</div>
+          <div title="Assumed permanently retracted — the trained state. Its interesting outputs (subharmonics, biphonation, regime bifurcation) are chaotic and need a second coupled mass-spring oscillator above the source, not a jitter parameter."><b>False vocal folds</b></div>
+          <div title="Not a signal parameter. Unanchored singing shows characteristic couplings — f0 rising with subglottal pressure, larynx height drifting with pitch, tract collapse under load — and anchoring is the reduction of those couplings toward zero."><b>Torso anchoring</b></div>
+          <div title="Same as torso anchoring: a constraint on other parameters' trajectories, not a sound of its own. Assuming both ideal is what licenses treating every other figure as independent."><b>Head &amp; neck anchoring</b></div>
+          <div title="Set aside. It acted only through an OQ drift with pitch, measured against one global 220 Hz reference — but a reference pitch belongs to the singer, so with max(0, …) a bass never drifted at all. Restore it with F0_REF in the singer config, per part."><b>Cricoid cartilage</b></div>
+          <div title="Thick and thin are modeled. Stiff (falsetto) needs incomplete closure, a DC flow offset and aspiration noise; slack needs a nonlinear oscillator capable of period doubling."><b>Body–cover: stiff, slack</b></div>
+          <div title="Both halves of the figure are gone. It was envelope timing on Ee — glottal (3 ms, a 1.25x overshoot, a briefly depressed OQ) and simultaneous (25 ms) — with aspirate already unreachable for want of a noise channel. Notes now fade in and out over a fixed 60 ms, short enough not to be heard as an attack shape, so nothing about the start or end of a note is a claim about production."><b>Onset &amp; offset</b></div>
+          <div title="Not dropped but reparameterized: three articulators map many-to-one onto three formants, so they are collapsed into a direct (F1, F2, F3) target. The acoustic consequences are all present; which articulator produced them is not recoverable."><b>Tongue, jaw, lip aperture</b></div>
         </div>
         </div>
         <div class="u" data-n="readout"><div class="readout" id="readout"></div></div>
@@ -263,7 +236,6 @@
         <div class="u ctlrow" data-n="f3t"><label for="f3t">F3</label>
           <input id="f3t" type="range" min="1400" max="3200" step="10" value="2500">
           <span class="v" id="f3val"></span></div>
-        <div class="meta" id="vmeta"></div>
       </div>
 
     </div>
@@ -271,8 +243,7 @@
     <!-- ============================ TOP RIGHT: rails ============================ -->
     <div class="col area-rails">
       <div class="panel">
-        <div class="ptitle"><span>Resonances</span>
-          <span class="note">ring = raw target · bar = after twang &amp; tract-length scaling</span></div>
+        <div class="ptitle"><span>Resonances</span></div>
         <div class="u" data-n="plot">
           <svg id="plot" class="screen" viewBox="0 0 760 236" preserveAspectRatio="xMidYMid meet"></svg>
         </div>
@@ -296,19 +267,17 @@
     <!-- ====================== BOTTOM RIGHT A: model spectra ====================== -->
     <div class="col area-specA">
       <div class="panel grow">
-        <div class="ptitle"><span>Model spectra</span>
-          <span class="note">computed, not measured · same dB/px: 3 = 1 + 2</span></div>
         <div class="u plot" data-n="srcSpec">
           <canvas id="srcSpec"></canvas>
-          <div class="cap">1 · source |dU/dt| — glottal formant, tilt knee, −6 → −12 dB/oct</div>
+          <div class="cap">Source spectrum</div>
         </div>
         <div class="u plot" data-n="tractSpec">
           <canvas id="tractSpec"></canvas>
-          <div class="cap">2 · tract |H(f)| — F1–F5, AES cluster, nasal pole/zero</div>
+          <div class="cap">Filter response</div>
         </div>
         <div class="u plot" data-n="outSpec">
           <canvas id="outSpec"></canvas>
-          <div class="cap">3 · radiated spectrum — harmonics against the tract envelope</div>
+          <div class="cap">Output spectrum</div>
         </div>
       </div>
     </div>
@@ -316,19 +285,17 @@
     <!-- ================== BOTTOM RIGHT B: waveform + measured ================== -->
     <div class="col area-specB">
       <div class="panel grow">
-        <div class="ptitle"><span>Waveform &amp; measured output</span>
-          <span id="cliplbl" class="note">level —</span></div>
         <div class="u plot" data-n="lfWave">
           <canvas id="lfWave"></canvas>
-          <div class="cap">Flow derivative, one period — closure at t<sub>e</sub> is the excitation</div>
+          <div class="cap">Source waveform</div>
         </div>
         <div class="u plot" data-n="scope">
           <canvas id="scope"></canvas>
-          <div class="cap">Radiated pressure — formant ringing retriggered at every closure</div>
+          <div class="cap">Output waveform <span id="cliplbl" style="float:right">level —</span></div>
         </div>
         <div class="u plot" data-n="spectrum">
           <canvas id="spectrum"></canvas>
-          <div class="cap">Measured spectrum (log f) — amber marks are effective formant centers</div>
+          <div class="cap">Measured spectrum</div>
         </div>
       </div>
     </div>
@@ -786,7 +753,6 @@
 
   // ---------- vowel chart (F1 vertical, F2 horizontal — IPA orientation) ----------
   const chartSvg = document.getElementById("chart");
-  const vmetaEl = document.getElementById("vmeta");
   const CVBW = 380, CVBH = 150;
   const CX0 = 44, CX1 = 358, CY0 = 10, CY1 = 128; // plot box
   const F1LO = 250, F1HI = 900;   // top -> bottom (close -> open)
@@ -841,10 +807,6 @@
     s += `<circle cx="${px}" cy="${py}" r="2.5" fill="#ffb347"/>`;
 
     chartSvg.innerHTML = s;
-    const rhotic = tract.w3 < 1;
-    vmetaEl.innerHTML = `<span style="opacity:.65">vowel — drag / click to snap ·</span> ` +
-      `F1 <b>${Math.round(vowel.F1)}</b> · F2 <b>${Math.round(vowel.F2)}</b> · F3 <b>${Math.round(vowel.F3)}</b> Hz` +
-      (rhotic ? ` · <b style="color:var(--accent-deep)">F3 ${(100*(1-tract.w3)).toFixed(0)}% exempt from the cluster</b>` : "");
   }
 
   // ---------- resonance rails ----------
@@ -933,7 +895,6 @@
   const SHIMMER = 0.04;                   // random amplitude wobble (± fraction)
   const playBtn = document.getElementById("play");
   const volEl = document.getElementById("vol");
-  const metaEl = document.getElementById("meta");
   // Glottal effort is not a control. Eₑ is a fixed nominal drive and twang is the only thing that
   // moves it, so loudness is a consequence of the figures rather than something set alongside
   // them. Everything the source does still scales off this one constant.
@@ -1165,8 +1126,10 @@
       c.beginPath(); c.moveTo(g.L, y); c.lineTo(g.W - g.R, y); c.stroke();
       c.fillStyle = "#7d6438"; c.fillText(d, g.L - 3, y + 3);
     }
-    c.textAlign = "left"; c.fillStyle = "#c9a76a"; c.font = "9px sans-serif";
-    c.fillText(label, g.L + 3, g.T + 9);
+    if (label) {
+      c.textAlign = "left"; c.fillStyle = "#c9a76a"; c.font = "9px sans-serif";
+      c.fillText(label, g.L + 3, g.T + 9);
+    }
   }
 
   // Tract magnitude at frequency f, from the same coefficients Web Audio is running.
@@ -1221,7 +1184,7 @@
 
     // --- panel 1: source ---
     let c = srcCv.getContext("2d"), g = geomOf(srcCv);
-    specFrame(c, g, 6, "1 · source |dU/dt|   0 dB = H1");
+    specFrame(c, g, 6, "0 dB = H1");
     for (const [f, col, lbl] of [[p.Rg * f0, "#5dd28f", "Rg·f₀"], [1 / (2 * Math.PI * p.ta), "#5b9cf2", "1/2πta"]]) {
       if (f < SPEC_FMIN || f > SPEC_FMAX) continue;
       const x = gx(g, f);
@@ -1236,7 +1199,7 @@
 
     // --- panel 2: tract ---
     c = tractCv.getContext("2d"); g = geomOf(tractCv);
-    specFrame(c, g, 24, "2 · vocal tract |H(f)|");
+    specFrame(c, g, 24, "");
     envelope(c, g, 24, "#5dd28f", f => dB(tractMag(f, sr)));
     if (tract.nasal.FNZ - tract.nasal.FNP > 2) {        // markers only once the pair has separated
       c.font = "8px sans-serif"; c.textAlign = "center";
@@ -1257,7 +1220,7 @@
       out[k] = dB(mag(k)) + dB(tractMag(k * f0, sr));
       if (k * f0 <= SPEC_FMAX && out[k] > peak) peak = out[k];
     }
-    specFrame(c, g, 4, "3 · radiated spectrum   source + tract");
+    specFrame(c, g, 4, "");
     envelope(c, g, 4, "rgba(93,210,143,0.45)", f => dB(tractMag(f, sr)) + h1 - peak + 4);
     stems(c, g, 4, f0, h.n, k => out[k] - peak + 4);
 
@@ -1296,7 +1259,7 @@
     }
     c.stroke(); c.lineWidth = 1;
     c.fillStyle = "#c9a76a"; c.font = "9px sans-serif"; c.textAlign = "left";
-    c.fillText(`dU/dt · one period (${(p.T * 1000).toFixed(2)} ms)`, L + 3, T);
+    c.fillText(`${(p.T * 1000).toFixed(2)} ms`, L + 3, T);
   }
 
   // ---------- readout ----------
@@ -1394,16 +1357,6 @@
     c.lineTo(W, base); c.lineTo(0, base); c.closePath(); c.fillStyle = "rgba(255,138,46,0.16)"; c.fill();
   }
 
-  // ---------- meta ----------
-  function updateMeta() {
-    const f0 = f0Now();
-    const on = formantOn.filter(Boolean).length;
-    if (!playing) { metaEl.textContent = "Press Start to hear the voice."; return; }
-    const N = Math.floor(Math.min(HEARING_TOP, (ctx?.sampleRate || 48000) / 2) / f0);
-    metaEl.innerHTML = `source · <b>${N}</b> harmonics · f₀ <b>${f0.toFixed(1)} Hz</b> · ` +
-      `OQ <b>${src.OQ.toFixed(2)}</b> · <b>${on}</b>/5 resonances active`;
-  }
-
   // ---------- one place that redraws everything ----------
   // Anything that moves a parameter calls apply(): the audio graph is updated synchronously (so
   // a filter is never a frame behind the slider) while the drawing — which includes an LF solve
@@ -1429,7 +1382,6 @@
     drawChart();
     drawReadout();
     drawModelSpectra();
-    updateMeta();
     updateSideLabels();
     syncLfSliders();          // DEV-ONLY
   }
@@ -1603,8 +1555,6 @@
      "Master gain, the last node before the speakers. A monitoring level only — unlike effort it changes nothing about the model, and nothing measured here depends on it."],
     ["play", "Start / Stop",
      "Builds a fresh oscillator (Web Audio's are one-shot), loads the source waveform, fades in over 60 ms. That fade is not an onset — the figure is not modeled — so nothing about how a note begins here is a claim. Also where the AudioContext is created, since that needs a click."],
-    ["meta", "Status line",
-     "Harmonic count is min(20 kHz, Nyquist)/f₀. The OQ shown is the one actually being synthesized, which is the body-cover value unless the manual source sliders have taken over."],
     ["presets", "Quality fixtures",
      "The six Estill qualities. Each button only assigns figure values — there is no quality-specific code anywhere. Belt is the test case."],
 
@@ -1662,10 +1612,6 @@
   const noteBy = new Map(DEV_NOTES.map(([k, title, body], i) =>
     [k, { i: i + 1, title: esc(title), body: esc(body) }]));
   const noteOut = document.getElementById("noteout");
-  const modeBtn = document.getElementById("notemode");
-  const stepBtn = document.getElementById("notestep");
-  const MODES = ["hover", "inline", "off"];
-  let modeIdx = 0, stepIdx = -1;
 
   const units = [...document.querySelectorAll(".u[data-n]")];
   let pinned = null, hovered = null;
@@ -1679,10 +1625,6 @@
     badge.addEventListener("pointerdown", e => e.stopPropagation());
     badge.addEventListener("click", e => { e.stopPropagation(); e.preventDefault(); togglePin(u.dataset.n); });
     u.appendChild(badge);
-    const inline = document.createElement("div");
-    inline.className = "inline";
-    inline.innerHTML = `<b>${n.i} · ${n.title}</b> — ${n.body}`;
-    u.appendChild(inline);
     u.addEventListener("pointerenter", () => { hovered = u.dataset.n; if (!pinned) showNote(hovered); });
   }
 
@@ -1697,11 +1639,9 @@
   window.addEventListener("keydown", e => { if (e.key === "Escape" && pinned) togglePin(pinned); });
 
   const DEFAULT_NOTE =
-    `<span class="who">Temporary dev layout.</span> Controls on the left, everything the model ` +
-    `draws on the right, sized to fit one screen. Hover any numbered element to read how it is ` +
-    `implemented; <b>Notes</b> switches to printing all ${DEV_NOTES.length} descriptions inline ` +
-    `(the columns then scroll), or <b>click a number</b> to pin its note so it stays put while ` +
-    `you drag something else. <b>walk through</b> steps them in order.`;
+    `<span class="who">Temporary dev layout.</span> Hover a numbered element for how it is ` +
+    `implemented, or click the number to pin the note so it stays put while you drag ` +
+    `something else.`;
 
   function showNote(key) {
     const n = noteBy.get(key);
@@ -1710,27 +1650,6 @@
         (pinned === key ? ` <span class="pin">pinned · click ${n.i} again or press Esc</span>` : "")
       : DEFAULT_NOTE;
   }
-  function setMode(i) {
-    modeIdx = (i + MODES.length) % MODES.length;
-    document.body.classList.toggle("notes-inline", MODES[modeIdx] === "inline");
-    document.body.classList.toggle("notes-off", MODES[modeIdx] === "off");
-    modeBtn.textContent = "Notes: " + MODES[modeIdx];
-    scheduleDraw();                       // canvas slots changed size in inline mode
-  }
-  modeBtn.addEventListener("click", () => setMode(modeIdx + 1));
-  stepBtn.addEventListener("click", () => {
-    stepIdx = (stepIdx + 1) % DEV_NOTES.length;
-    const key = DEV_NOTES[stepIdx][0];
-    pinned = key;
-    for (const u of units) u.classList.toggle("pinned", u.dataset.n === pinned);
-    showNote(key);
-    const u = units.find(x => x.dataset.n === key);
-    if (u) {
-      u.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      u.style.outline = "2px solid #ffb347";
-      setTimeout(() => { u.style.outline = ""; }, 1400);
-    }
-  });
   noteOut.innerHTML = DEFAULT_NOTE;
   //#endregion dev-notes
 
