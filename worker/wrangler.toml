@@ -1,0 +1,9 @@
+name = "quartet-share"
+main = "share-worker.js"
+compatibility_date = "2024-11-01"
+
+# The KV namespace that holds share blobs. `id` is filled in after
+# `wrangler kv namespace create SHARE_KV` (see README.md).
+[[kv_namespaces]]
+binding = "SHARE_KV"
+id = "1a95d6cd4b634a01b4cf84ff1926a0a1"

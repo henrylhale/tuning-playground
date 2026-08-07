@@ -42,12 +42,12 @@
   button.play:active,.chip:active,.mute:active,.solo:active,.wave:active,.octbtns button:active,.toggle:active{
     transform:translateY(2px);box-shadow:inset 0 2px 4px rgba(60,40,15,.4)}
   button.play{padding:9px 18px;font-size:14px}
+  button.play:disabled{opacity:.4;filter:grayscale(.5);cursor:not-allowed;transform:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.4)}
   .chip{padding:5px 8px;font-size:12px;min-width:30px;text-align:center}
   .grid .chip{font-size:11px;padding:6px 4px}
   .mute{color:var(--muted);padding:4px 9px;font-size:11px}
   .solo{color:var(--muted);padding:4px 9px;font-size:11px}
   .wave{color:var(--muted);padding:4px 8px;font-size:11px}
-  .octbtns button{width:24px;height:20px;font-size:11px;line-height:1;padding:0}
   .toggle{padding:5px 11px;font-size:11px}
   /* lit state */
   button.play.on,.chip.sel,.wave.on,.toggle.on{
@@ -59,32 +59,143 @@
   .solo.on{background:linear-gradient(180deg,#a9e6b4,#43a35e 60%,#2f7d45);color:#08240f;border-color:#2f7d45;
     box-shadow:inset 0 1px 0 rgba(210,255,220,.5),0 0 9px rgba(67,163,94,.5),0 2px 0 #2f7d45}
 
-  .selector{display:grid;grid-template-columns:auto auto 1fr auto;gap:14px;align-items:start}
-  .sp{min-width:0}
-  .btnrow{display:flex;flex-wrap:wrap;gap:4px;max-width:230px}
-  #keydial,#rootdial{width:250px;max-width:100%;height:auto;display:block;cursor:grab;touch-action:none;
+  #keydial,#rootdial{max-width:100%;height:auto;display:block;cursor:grab;touch-action:none;
     -webkit-tap-highlight-color:transparent}
   #keydial:active,#rootdial:active{cursor:grabbing}
   #keydial text,#rootdial text{user-select:none;-webkit-user-select:none}
-  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:4px}
 
-  .vrow{display:flex;gap:10px}
-  .vbox{flex:1;background:var(--display);border:1px solid #120c06;border-radius:4px;padding:8px;
-    display:flex;flex-direction:column;align-items:center;gap:4px;cursor:grab;min-width:0;color:#e8d6b0;
-    touch-action:pan-y;user-select:none;-webkit-user-select:none;
-    box-shadow:inset 0 2px 7px rgba(0,0,0,.55),0 1px 0 var(--bezel-hi)}
-  .vbox.drag{opacity:.4}
-  .vbox.over{outline:2px solid var(--accent);outline-offset:-2px}
-  .vbox .vnum{font-size:10px;color:#a98a55;text-transform:capitalize;letter-spacing:.5px}
-  .vbox .itv{font-size:18px;font-weight:700}
-  .vbox .roles{display:flex;gap:12px;align-items:flex-end}
-  .vbox .roles span{display:flex;flex-direction:column;align-items:center;line-height:1.05}
-  .vbox .roles b{font-size:18px;font-weight:700;color:#f3e3bf}
-  .vbox .roles i{font-style:normal;font-size:9px;color:#a98a55;text-transform:uppercase;letter-spacing:.4px}
-  .vbox .note{font-size:11px;color:var(--amber)}
-  .vbox .hz{font-size:10px;color:#a98a55}
-  .octbtns{display:flex;gap:4px;margin-top:2px}
+  /* voicing lattice: a vertical pitch axis you SPELL on. Every chord tone across the reasonable
+     octaves is a peg (hollow dot + grayed function label) = a place to drop a voice. The four voices
+     sit on four pegs; drag a voice to another peg to re-spell. Any voices may share one pitch
+     → their dots are drawn tangent in a row. Same 3-column grid for every row (parts | dot(s) | function/key/
+     note) so pegs and voices align on the center line.
+     A voice's whole label is its drag handle (.lgrab): the part name, the dot, and — when the pitch
+     isn't shared — the function/degree/note text, since a shared row's info describes every voice
+     at once and so belongs to none. Rows themselves stay pointer-transparent, so the handles are
+     exactly the inked text, not the empty gutters beside it. */
+  /* the lattice fills the full height of its column (which stretches to the canvas), and .latinner
+     spans it, so the whole pitch range always runs top-to-bottom the same regardless of chord */
+  .lattice{position:relative;flex:1 1 auto;min-height:300px;overflow:hidden;touch-action:none}
+  .lattice.nulled{opacity:.4;filter:grayscale(.6)}          /* no chord focused → grayed, label-less scaffold */
+  .latinner{position:relative;width:100%;height:100%}
+  .lattice .lline{position:absolute;left:50%;top:0;bottom:0;width:2px;transform:translateX(-1px);
+    background:linear-gradient(180deg,#00000012,#0000002e 8%,#0000002e 92%,#00000012)}
+  .lattice .lrow{position:absolute;left:0;right:0;transform:translateY(-50%);pointer-events:none;
+    display:grid;grid-template-columns:1fr auto 1fr;align-items:center;column-gap:9px}
+  .lattice .lparts{justify-self:end;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;justify-content:flex-end}
+  .lattice .lpart{font-size:11px;font-weight:800;text-transform:capitalize;letter-spacing:.3px;white-space:nowrap}
+  .lattice .ldots{justify-self:center;display:flex;align-items:center}       /* tangent dots when doubled */
+  .lattice .ldot{position:relative;width:16px;height:16px;border-radius:50%;box-sizing:border-box;
+    flex:0 0 auto;border:1.5px solid #ffffffb0;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+  .lattice .ldot.grabbing{transform:scale(1.25);box-shadow:0 2px 6px rgba(0,0,0,.45)}
+  /* every grabbable piece of a voice */
+  .lattice .lgrab{pointer-events:auto;cursor:grab;touch-action:none}
+  /* text handles get a little padding so they're a comfortable touch target. It's symmetric, so the
+     text stays centred on its row; the only cost is 5px more air either side of the dot column. */
+  .lattice .lpart.lgrab,.lattice .linfo.lgrab{padding:3px 5px;border-radius:7px}
+  .lattice .lpart.lgrab:hover,.lattice .linfo.lgrab:hover{background:#0000000f}
+  /* the dot can't use padding — tangent dots sit flush in a flex row — so it grows its hit area
+     with an invisible overlay instead */
+  .lattice .ldot.lgrab::after{content:"";position:absolute;inset:-6px;border-radius:50%}
+  .lattice.dragging .lgrab{cursor:grabbing}
+  .lattice.dragging .lpart.lgrab:hover,.lattice.dragging .linfo.lgrab:hover{background:none}
+  .lattice .pegdot{width:11px;height:11px;border-radius:50%;box-sizing:border-box;
+    background:#0000000d;border:1.5px solid #00000045}
+  .lattice .ldots.target .pegdot{border-color:var(--accent);background:#e26a1033;transform:scale(1.3)}
+  .lattice .ldots.target .ldot{box-shadow:0 0 0 3px #e26a1066}
+  .lattice .ldots.target.bad .pegdot{border-color:#c0473a;background:#c0473a33}
+  .lattice .ldots.target.bad .ldot{box-shadow:0 0 0 3px #c0473a66}
+  .lattice .linfo{justify-self:start;display:flex;align-items:baseline;gap:7px;white-space:nowrap}
+  .lattice .linfo b{font-size:15px;font-weight:800;color:#3a2c17}
+  .lattice .linfo b.peglab{color:#00000038;font-weight:800}   /* grayed function label on an empty peg */
+  .lattice .linfo i{font-style:normal;font-size:12px;font-weight:700;color:#7a6132}
+  .lattice .linfo em{font-style:normal;font-size:11px;color:#8a7038;font-variant-numeric:tabular-nums}
+  .lattice.dragging{cursor:grabbing}
 
+  /* sequencer: a strip of chord "chips" you step between; the app below edits the active one */
+  .seqhd{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+  .seqhd .grow{flex:1}
+  /* JSON, then the [lattice | canvas] stage, then the focused chord's editor — stacked top to bottom */
+  .seqmain{display:flex;flex-direction:column;gap:14px}
+  /* the stage: a slim vertical lattice pinned to the left, the black canvas taking all the rest. The
+     lattice column stretches to the canvas's height so the lattice is always exactly as tall as it. */
+  .stage{display:flex;gap:10px;align-items:stretch;flex-wrap:wrap}
+  .stage .vcol{flex:0 0 234px;min-width:210px;display:flex;flex-direction:column}
+  #seqcanvas{flex:1 1 460px;min-width:300px}
+  .chordeditor{width:100%;padding:12px;border-radius:6px;
+    background:linear-gradient(180deg,#e7d8b7,#d8c69f);border:1px solid var(--bezel-lo);
+    box-shadow:inset 0 1px 0 var(--bezel-hi)}
+  .chordeditor[hidden]{display:none}
+  /* editor: big key + root wheels on the left (where the lattice used to be), chord vocabulary right */
+  .edcols{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap}
+  .dials{display:flex;gap:18px;justify-content:center;align-items:flex-start;flex-wrap:wrap}
+  .dials.big{flex:1 1 480px}
+  .dials.big #keydial,.dials.big #rootdial{width:232px}
+  #chords.grid.big{flex:1 1 300px}
+  .grid.big{grid-template-columns:repeat(auto-fill,minmax(94px,1fr));gap:6px}
+  .grid.big .chip{font-size:13px;padding:10px 6px}
+  /* the black stage: a full-width rounded viewport. A stack of four analysis lanes sits on top
+     (audio waveform, synth waveform, audio spectrogram, synth spectrogram), the chord tiles below. */
+  .seqcanvas{background:#0c0702;border:1px solid #120c06;border-radius:8px;padding:12px;
+    box-shadow:inset 0 2px 12px rgba(0,0,0,.7),inset 0 0 0 2px #0a0602,0 1px 0 var(--bezel-hi);
+    display:flex;flex-direction:column;gap:10px}
+  .cliplbl{align-self:flex-end;font-size:10px;color:#7d6743;margin:-2px 2px -6px}
+  .lanes{display:flex;flex-direction:column;gap:8px}
+  /* one analysis lane. The two synth lanes hold live canvases; the two audio lanes are placeholders
+     (Milestone 2's imported recording) — a dashed empty screen with a flat baseline. */
+  .lane{position:relative;height:80px;border-radius:5px;border:1px solid #241a0d;background:#0a0602;overflow:hidden}
+  .lane.placeholder{border-style:dashed;border-color:#33260f}
+  .lane.placeholder.wf::before{content:"";position:absolute;left:10px;right:10px;top:50%;border-top:1px solid #1b1409}
+  .lane canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .lanelab{position:absolute;top:5px;left:8px;z-index:1;font-size:9px;letter-spacing:.4px;
+    text-transform:uppercase;color:#6b5730;pointer-events:none}
+  /* the fourth "lane" is a big full-width Step button (a large touch target for advancing on mobile) */
+  .steprow{width:100%;height:80px;border-radius:5px;appearance:none;cursor:pointer;font-family:inherit;
+    font-size:20px;font-weight:800;letter-spacing:.5px;color:#2a1400;border:1px solid var(--accent-deep);
+    background:linear-gradient(180deg,#ffbf6f,var(--accent) 60%,var(--accent-deep));
+    box-shadow:inset 0 1px 0 rgba(255,231,195,.6),0 2px 0 var(--accent-deep),0 2px 6px rgba(0,0,0,.4);
+    transition:transform .06s,box-shadow .06s,filter .1s}
+  .steprow:hover{filter:brightness(1.05)}
+  .steprow:active{transform:translateY(2px);box-shadow:inset 0 2px 5px rgba(120,50,10,.5)}
+  .steprow:disabled{opacity:.35;filter:grayscale(.4);cursor:not-allowed;transform:none;box-shadow:none}
+  /* extra padding so the selected tile's glow + the delete ✕ (which pokes outside the tile) aren't
+     clipped by the horizontal-scroll container */
+  .seqbar{display:flex;align-items:flex-start;gap:10px;overflow-x:auto;overflow-y:hidden;padding:14px 12px}
+  .slot{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;flex:0 0 auto;
+    background:linear-gradient(180deg,#241a0d,#181007);border:1px solid #3a2c17;border-radius:5px;
+    padding:7px 9px 6px;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,220,150,.06),0 1px 3px rgba(0,0,0,.5);
+    min-width:40px;-webkit-user-select:none;user-select:none;touch-action:pan-x}
+  .slot.sel{outline:2px solid var(--accent);outline-offset:0;box-shadow:inset 0 2px 7px rgba(0,0,0,.5),0 0 11px rgba(226,106,16,.55)}
+  .slot.msel{outline:2px solid #5b8be0;outline-offset:0;box-shadow:inset 0 2px 7px rgba(0,0,0,.4),0 0 9px rgba(91,139,224,.5)}
+  .selinfo{align-self:center;font-size:11px;font-weight:700;color:#8fb0ee;white-space:nowrap}
+  .slot .stack{display:flex;flex-direction:column;align-items:center;line-height:1.18}
+  .slot .stack b{font-size:15px;font-weight:800;color:#f3e3bf}
+  .slot .cname{font-size:9px;color:#a98a55;white-space:nowrap;max-width:64px;overflow:hidden;text-overflow:ellipsis}
+  .slot .del{position:absolute;top:-7px;right:-7px;width:16px;height:16px;border-radius:50%;border:1px solid #9c3327;
+    background:#c0473a;color:#fff0ec;font-size:11px;line-height:14px;text-align:center;cursor:pointer;
+    display:none;padding:0;font-weight:700}
+  .slot:hover .del,.slot.sel .del{display:block}
+  .slot .idx{font-size:8px;color:#6f5a38;letter-spacing:.5px}
+  .slot.seqadd{background:none;border:1px dashed #4a3820;box-shadow:none;align-self:stretch;
+    align-items:center;justify-content:center;min-width:44px;font-size:20px;color:#7d6743}
+  .slot.seqadd:hover{border-color:var(--accent);color:var(--amber)}
+  .seqhint{align-self:center;font-size:11px;color:#7d6743;font-style:italic}
+  /* the JSON window: one toggle button opens it; Copy/Paste along its top talk to the clipboard */
+  .jsonwin{margin-top:12px;padding:10px;border-radius:6px;border:1px solid var(--bezel-lo);
+    background:linear-gradient(180deg,#e7d8b7,#d8c69f);box-shadow:inset 0 1px 0 var(--bezel-hi)}
+  .jsonwin[hidden]{display:none}
+  .jsonwin-hd{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .jsonwin-title{margin-right:auto;font-size:10.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+  .tagmsg{font-size:11px;font-weight:600;margin-right:8px}
+  .tagwarn{margin-top:8px;padding:8px 10px;border-radius:4px;background:#f6e2c2;border:1px solid #d8a24a;
+    color:#7a4a12;font-size:11px;line-height:1.5}
+  .tagwarn[hidden]{display:none}
+  .tagwarn b{display:block;margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px;font-size:10px}
+  .jsonwin textarea{width:100%;height:120px;font:11px/1.4 ui-monospace,Menlo,Consolas,monospace;
+    background:var(--display);color:#c9b78f;border:1px solid var(--bezel-lo);border-radius:4px;padding:6px;resize:vertical}
+  .jsonwin input.sharelink{width:100%;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;
+    background:var(--display);color:#c9b78f;border:1px solid var(--bezel-lo);border-radius:4px;padding:8px}
   .waves{display:flex;gap:4px;flex-wrap:wrap}
   /* per-voice strips, beside the vowel chart */
   .vstrip{display:flex;flex-direction:column;gap:5px;padding:6px 8px;border-radius:4px;color:#e8d6b0;
@@ -110,23 +221,11 @@
     box-shadow:inset 0 2px 9px rgba(0,0,0,.6),inset 0 0 0 2px #0e0904,0 1px 0 var(--bezel-hi)}
   canvas.screen{padding:0}
 
-  /* the key-center dial needs real estate — drop to two columns before things overlap */
-  @media (max-width:1200px){
-    .selector{grid-template-columns:auto 1fr}
-  }
-  @media (max-width:760px){
-    .selector{grid-template-columns:1fr 1fr}
-    .btnrow{max-width:none}
-  }
   @media (max-width:520px){
     body{padding:10px;gap:10px}
     .panel{padding:11px}
     .bar{gap:10px 14px}
-    .selector{grid-template-columns:1fr}
-    .grid{grid-template-columns:repeat(3,1fr)}
     input[type=range]{width:110px}
-    .vbox{padding:6px}
-    .vbox .roles{gap:8px}
   }
 </style>
 </head>
@@ -140,18 +239,69 @@
     <div class="ctl"><label>Shimmer</label><button id="shim" class="toggle on" title="Random per-note amplitude drift (±4%)">on</button></div>
   </div>
 
-  <div class="panel selector">
-    <div class="sp">
-      <svg id="keydial" viewBox="0 0 340 340" preserveAspectRatio="xMidYMid meet" role="slider" aria-label="Key center"></svg>
+  <div class="panel">
+    <div class="seqhd">
+      <button id="seqadd-top" class="toggle">＋ Add chord</button>
+      <button id="seqclear" class="toggle" title="Remove every chord from the sequence">Clear</button>
+      <button id="selall" class="toggle" title="Select every chord (then a slider edit applies to all). Ctrl/Cmd-click chords to multi-select; Shift-click for a range.">Select all</button>
+      <span id="selinfo" class="selinfo" hidden></span>
+      <div class="ctl"><label>Glide</label><input id="glide" type="range" min="0" max="1.5" step="0.05" value="0"><span id="glideval" class="val">0 ms</span></div>
+      <span class="grow"></span>
+      <button id="tagtoggle" class="toggle" title="Import a Great Tags plain-text export as a sequence">Import tag</button>
+      <button id="sharetoggle" class="toggle" title="Create a link that loads this exact sequence">🔗 Share</button>
     </div>
-    <div class="sp">
-      <svg id="rootdial" viewBox="0 0 340 340" preserveAspectRatio="xMidYMid meet" role="slider" aria-label="Chord root"></svg>
-    </div>
-    <div class="sp">
-      <div id="chords" class="grid"></div>
-    </div>
-    <div class="sp">
-      <div id="voicing" class="vrow"></div>
+    <div class="seqmain">
+      <!-- Share: one button turns the current sequence into a link (copied to the clipboard); opening
+           that link loads the state. The raw JSON is never shown — this replaces the old JSON window. -->
+      <div id="sharewin" class="jsonwin" hidden>
+        <div class="jsonwin-hd">
+          <span class="jsonwin-title">Share link</span>
+          <span id="sharemsg" class="tagmsg"></span>
+          <button id="sharecopy" class="toggle" title="Copy the link to your clipboard">Copy</button>
+        </div>
+        <input id="sharelink" class="sharelink" readonly spellcheck="false" placeholder="Click 🔗 Share to create a link…">
+      </div>
+      <!-- Import a Great Tags plain-text export → a sequence (chords detected; default timbre for now) -->
+      <div id="tagwin" class="jsonwin" hidden>
+        <div class="jsonwin-hd">
+          <span class="jsonwin-title">Import Great Tags text</span>
+          <span id="tagmsg" class="tagmsg"></span>
+          <button id="tagpaste" class="toggle" title="Paste from your clipboard">Paste</button>
+          <button id="tagload" class="toggle" title="Parse the text and load it as a sequence">Import →</button>
+        </div>
+        <textarea id="tagbox" spellcheck="false" placeholder="Paste a Great Tags plain-text export here, then click Import →"></textarea>
+        <div id="tagwarn" class="tagwarn" hidden></div>
+      </div>
+      <!-- the voicing lattice keeps its vertical orientation but sits to the LEFT of the black canvas
+           (shown only when a chord is focused); the canvas fills the remaining width -->
+      <div class="stage">
+        <div id="voicing" class="vcol"></div>
+        <div id="seqcanvas" class="seqcanvas">
+          <div id="cliplbl" class="cliplbl">level —</div>
+          <!-- three analysis lanes (audio waveform, audio spectrogram, synth spectrogram — the two audio
+               lanes are placeholders until Milestone 2's recording import lands), then a big full-width
+               Step button as the fourth row so touch users can walk the sequence. -->
+          <div class="lanes">
+            <div class="lane placeholder wf"><span class="lanelab">audio · waveform</span></div>
+            <div class="lane placeholder"><span class="lanelab">audio · spectrogram</span></div>
+            <div class="lane"><span class="lanelab">synth · spectrogram</span>
+              <canvas id="spectrum" width="1000" height="150"></canvas></div>
+            <button id="seqnext" class="steprow" title="Advance to the next chord (or press Space / →)">Step ▶</button>
+          </div>
+          <div id="seqbar" class="seqbar"></div>            <!-- chords row (lyrics row will sit below) -->
+        </div>
+      </div>
+      <!-- editor for the focused chord: big key + root wheels on the left (where the speller used to be),
+           the chord vocabulary on the right. The lattice above is the respell surface. -->
+      <div id="chordeditor" class="chordeditor" hidden>
+        <div class="edcols">
+          <div class="dials big">
+            <svg id="keydial" viewBox="0 0 340 340" preserveAspectRatio="xMidYMid meet" role="slider" aria-label="Key center"></svg>
+            <svg id="rootdial" viewBox="0 0 340 340" preserveAspectRatio="xMidYMid meet" role="slider" aria-label="Chord root"></svg>
+          </div>
+          <div id="chords" class="grid big"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -168,21 +318,6 @@
     </div>
   </div>
 
-  <div class="panel">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
-      <div id="cliplbl" style="font-size:12px;color:var(--muted)">level —</div>
-    </div>
-    <div style="display:flex;gap:14px;flex-wrap:wrap">
-      <div style="flex:1;min-width:240px">
-        <canvas id="scope" class="screen" width="1000" height="150" style="width:100%;height:auto;display:block;background:#120c06;border-radius:3px"></canvas>
-        <div style="color:var(--muted);font-size:11px;margin-top:5px">Waveform — peaks flattening at the dashed ±1 lines (turning red) is clipping</div>
-      </div>
-      <div style="flex:1;min-width:240px">
-        <canvas id="spectrum" class="screen" width="1000" height="150" style="width:100%;height:auto;display:block;background:#120c06;border-radius:3px"></canvas>
-        <div style="color:var(--muted);font-size:11px;margin-top:5px">Spectrum (log frequency) — peaks are the combined overtones; red lines mark the implied fundamental and its harmonics. In just intonation peaks land on the lines; in 12-ET they drift off</div>
-      </div>
-    </div>
-  </div>
 
 
 <script>
@@ -204,26 +339,14 @@
     return nm + (cents>=0?"+":"") + cents + "¢";
   }
 
-  //#region state-codec — PURE, DOM-FREE: snapshot <-> compact URL string. Node-testable
+  //#region snapshot — PURE, DOM-FREE: normalize an arbitrary parsed object into a clean snapshot.
   // (test/state.test.mjs slices this region out of the HTML and evals it). Keep it free of any
   // reference to the DOM or to app constants: it takes app defaults as a parameter so the app
-  // stays the single source of truth.
-  //
-  // Wire format: a hand-packed binary buffer, deflate-raw'd, base64url'd.
-  //   [ header bytes ][ Float32 payload (little-endian) ]
-  //   header = version, root, chord, flags(et|moveAll|mute×4), mode×4, voicing×4 (tone|octave),
-  //   floats  = key, vib, jit, shim, vol, then per voice: bri, nas, f3, lvl, bend, f1, f2.
-  // Continuous controls are Float32 (~7 significant figures — finer than any audio control needs,
-  // and NOT pinned to current slider steps/ranges). Discrete controls are packed as small ints/bits.
-  // Forward/backward compat: a version byte, plus normalizeSnapshot fills any field a shorter/older
-  // buffer omits (unpack returns undefined past the end) and drops anything extra — so a string from
-  // an older or newer build still loads. Semantic range-clamping happens on apply.
+  // stays the single source of truth. Snapshots are the atom of a sequence slot; persistence is the
+  // sequence JSON document (see the sequencer section). A version field + normalizeSnapshot filling
+  // any omitted field (and dropping extras) is what keeps older/newer saved documents loadable.
   const SCHEMA_VERSION = 1;
   const VOICE_MODES = ["voice","sine","sawtooth","triangle","square"];
-  const N_VOICES = 4;
-  const HEADER_LEN = 4 + N_VOICES + N_VOICES;   // version,root,chord,flags + mode×4 + voicing×4 = 12
-  const N_FLOATS = 5 + N_VOICES * 7;            // key,vib,jit,shim,vol + 7 per voice = 33
-  const clampInt = (x,lo,hi) => { x = Math.round(+x || 0); return x < lo ? lo : x > hi ? hi : x; };
 
   function defaultSnapshot(d){
     return {
@@ -275,92 +398,7 @@
     };
   }
 
-  // ---- compressed URL string <-> snapshot (async: native deflate-raw + base64url) ----
-  function _bytesToB64url(bytes){
-    let bin = ""; for(let i=0;i<bytes.length;i++) bin += String.fromCharCode(bytes[i]);
-    return btoa(bin).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
-  }
-  function _b64urlToBytes(str){
-    const b64 = str.replace(/-/g,"+").replace(/_/g,"/");
-    const pad = (4 - (b64.length % 4)) % 4;
-    const bin = atob(b64 + "=".repeat(pad));
-    const out = new Uint8Array(bin.length);
-    for(let i=0;i<bin.length;i++) out[i] = bin.charCodeAt(i);
-    return out;
-  }
-  async function _pipe(bytes, Stream){           // Stream = CompressionStream | DecompressionStream
-    const s = new Stream("deflate-raw");
-    const w = s.writable.getWriter(); w.write(bytes); w.close();
-    const rd = s.readable.getReader(), parts = [];
-    for(;;){ const {done,value} = await rd.read(); if(done) break; parts.push(value); }
-    let len = 0; parts.forEach(p => len += p.length);
-    const out = new Uint8Array(len); let o = 0;
-    parts.forEach(p => { out.set(p,o); o += p.length; });
-    return out;
-  }
-  // snapshot object -> packed bytes. Reads snap defensively (missing voices/slots -> 0/defaults).
-  function packSnapshot(snap){
-    const buf = new Uint8Array(HEADER_LEN + N_FLOATS * 4);
-    const dv = new DataView(buf.buffer);
-    const voices = Array.isArray(snap.voices) ? snap.voices : [];
-    const voicing = Array.isArray(snap.voicing) ? snap.voicing : [];
-    buf[0] = SCHEMA_VERSION;
-    buf[1] = clampInt(snap.root, 0, 255);
-    buf[2] = clampInt(snap.chord, 0, 255);
-    let flags = (snap.et ? 1 : 0) | (snap.moveAll ? 2 : 0);
-    for(let i=0;i<N_VOICES;i++) if(voices[i] && voices[i].mute) flags |= 1 << (2 + i);
-    buf[3] = flags;
-    for(let i=0;i<N_VOICES;i++){
-      const m = voices[i] ? VOICE_MODES.indexOf(voices[i].mode) : 0;
-      buf[4 + i] = m < 0 ? 0 : m;
-    }
-    for(let i=0;i<N_VOICES;i++){
-      const sl = voicing[i];
-      const t = sl ? (Array.isArray(sl) ? sl[0] : sl.tone)   : 0;
-      const o = sl ? (Array.isArray(sl) ? sl[1] : sl.octave) : 0;
-      buf[4 + N_VOICES + i] = clampInt(t, 0, 7) | ((clampInt(o, -8, 7) + 8) << 3);
-    }
-    let off = HEADER_LEN;
-    const putF = x => { dv.setFloat32(off, +x || 0, true); off += 4; };   // little-endian, fixed across devices
-    putF(snap.key); putF(snap.vib); putF(snap.jit); putF(snap.shim); putF(snap.vol);
-    for(let i=0;i<N_VOICES;i++){
-      const v = voices[i] || {};
-      putF(v.bri); putF(v.nas); putF(v.f3); putF(v.lvl); putF(v.bend); putF(v.f1); putF(v.f2);
-    }
-    return buf;
-  }
-  // packed bytes -> raw snapshot object. Reads past the buffer end return undefined, which
-  // normalizeSnapshot then fills from defaults (this is how older/shorter buffers stay loadable).
-  function unpackSnapshot(bytes){
-    if(!(bytes instanceof Uint8Array)) bytes = new Uint8Array(bytes);
-    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    const u8 = i => i < bytes.length ? bytes[i] : 0;
-    const flags = u8(3);
-    const voices = [], voicing = [];
-    for(let i=0;i<N_VOICES;i++)
-      voices.push({ mode: VOICE_MODES[u8(4 + i)] || "voice", mute: !!(flags & (1 << (2 + i))) });
-    for(let i=0;i<N_VOICES;i++){
-      const b = u8(4 + N_VOICES + i);
-      voicing.push([ b & 7, ((b >> 3) & 15) - 8 ]);
-    }
-    let off = HEADER_LEN;
-    const getF = () => { const v = off + 4 <= bytes.length ? dv.getFloat32(off, true) : undefined; off += 4; return v; };
-    const key = getF(), vib = getF(), jit = getF(), shim = getF(), vol = getF();
-    for(let i=0;i<N_VOICES;i++){
-      const v = voices[i];
-      v.bri = getF(); v.nas = getF(); v.f3 = getF(); v.lvl = getF(); v.bend = getF(); v.f1 = getF(); v.f2 = getF();
-    }
-    return { v: u8(0), key, root: u8(1), chord: u8(2),
-             et: !!(flags & 1), moveAll: !!(flags & 2), vib, jit, shim, vol, voicing, voices };
-  }
-
-  async function encodeSnapshot(snap){
-    return _bytesToB64url(await _pipe(packSnapshot(snap), CompressionStream));
-  }
-  async function decodeSnapshot(str){
-    return unpackSnapshot(await _pipe(_b64urlToBytes(str), DecompressionStream));
-  }
-  //#endregion state-codec
+  //#endregion snapshot
 
   // ============================================================ music data
   // chord ratios relative to chord root (4 voices; triads double the root)
@@ -373,7 +411,7 @@
     {name:"Maj6",      r:["1/1","5/4","3/2","5/3"]},
     {name:"Min6",      r:["1/1","6/5","3/2","5/3"]},
     {name:"Half-dim7", r:["1/1","6/5","7/5","9/5"]},
-    {name:"Dim7",      r:["1/1","6/5","7/5","8/5"]},
+    {name:"Dim7",      r:["1/1","6/5","7/5","5/3"]},   // true fully-diminished 7th [0,3,6,9] in JI (top = 5/3)
     {name:"Maj7",      r:["1/1","5/4","3/2","15/8"]},
     {name:"Dom7 ♭5",   r:["1/1","5/4","7/5","7/4"]},
     {name:"Aug",       r:["1/1","5/4","8/5","1/1"]},
@@ -385,8 +423,155 @@
     {lab:"3",r:"5/4"},{lab:"4",r:"4/3"},{lab:"♯4",r:"7/5"},{lab:"5",r:"3/2"},
     {lab:"♭6",r:"8/5"},{lab:"6",r:"5/3"},{lab:"♭7",r:"9/5"},{lab:"7",r:"15/8"},
   ];
+  // Roman-numeral names for the chord ROOT degree, parallel to DEGREES by index. Used only where a
+  // chord is named AS A WHOLE — the root dial (rim + center) and the sequencer box's chord label —
+  // never for the per-voice scale degrees on the chips or lattice (those stay Arabic).
+  const ROMAN = ["I","♭II","II","♭III","III","IV","♯IV","V","♭VI","VI","♭VII","VII"];
+  const romanOf = idx => ROMAN[((idx%12)+12)%12];
   const ITV = {"1/1":"R","9/8":"9","6/5":"♭3","5/4":"3","4/3":"11","7/5":"♯4","3/2":"5",
                "8/5":"♭6","5/3":"6","7/4":"♭7","9/5":"♭7","15/8":"7","16/15":"♭9","25/16":"♯5"};
+
+  //#region tonecolor — PURE, DOM-FREE: map a chord-tone role label (R, 3, ♭7, 9, …) to one color per
+  // harmonic FUNCTION, so the same function reads as the same color everywhere it appears (the chip
+  // stack in the sequencer and the voicing lattice in the editor). Root / third / fifth / sixth /
+  // seventh / ninth / eleventh each get a hue; anything else falls back to neutral. Chosen to stay
+  // legible on both the dark chip tiles and the light editor panel. (test/tonecolor.test.mjs.)
+  const TONE_COLORS = {
+    root:"#e8703a", third:"#2f9e57", fifth:"#3d84cf", sixth:"#17a191",
+    seventh:"#8a6ee0", ninth:"#d19a00", eleventh:"#c85a9c", other:"#9a7d4a",
+  };
+  function toneClass(role){
+    const s = String(role);
+    if(s === "R")                 return "root";
+    if(s === "11" || s === "4")   return "eleventh";
+    if(s.includes("9"))           return "ninth";     // 9, ♭9
+    if(s.includes("7"))           return "seventh";   // ♭7, 7
+    if(s.includes("6"))           return "sixth";     // 6, ♭6
+    if(s.includes("5") || s === "♯4") return "fifth"; // 5, ♯5, and the tritone ♯4/♭5 as an altered fifth
+    if(s.includes("3"))           return "third";     // 3, ♭3
+    if(s.includes("1"))           return "root";      // a bare "1"
+    return "other";
+  }
+  const toneColor = role => TONE_COLORS[toneClass(role)] || TONE_COLORS.other;
+  //#endregion tonecolor
+
+  //#region tagimport — PURE, DOM-FREE: parse a Great Tags plain-text export + detect chords. Node-testable.
+  // The export stacks four voices per phrase with the lyric line in the middle: Tenor / Lead / <lyric> /
+  // Bari / Bass. A voice token is a major-scale degree 1–7, where '+'/'-' are sharp/flat accidentals and
+  // '↑'/'↓' are octave shifts (ignored here — only pitch class matters). The key is in [..] on line 1.
+  // parseTag → {key, chords:[{parts:[tenor,lead,bari,bass] as key-relative semitones 0–11]}]}. detectChord
+  // finds the best (root scale-degree 0–11, chord-quality index) in the app's vocabulary for a pitch set.
+  const TAG_MAJOR = {1:0, 2:2, 3:4, 4:5, 5:7, 6:9, 7:11};
+  const TAG_TOKEN = /^([↑↓]*)([+\-]*)(\d)$/;                 // octave arrows | +/- accidentals | scale degree
+  function tagToken(tok){                                    // → {pc: key-relative semitone, arr: net ↑/↓ octaves}
+    const m = TAG_TOKEN.exec(tok); if(!m) return null;
+    let pc = TAG_MAJOR[+m[3]]; if(pc==null) return null;
+    for(const c of m[2]) pc += (c==="+") ? 1 : -1;           // '+' sharp, '-' flat
+    let arr = 0; for(const c of m[1]) arr += (c==="↑") ? 1 : -1;
+    return { pc: ((pc%12)+12)%12, arr };
+  }
+  const tagTokenPC = tok => { const t = tagToken(tok); return t ? t.pc : null; };
+  const TAG_HOLD = /^-{2,}$/;                                // a run of dashes = "hold the previous note"
+  const tagIsVoiceLine = l => { const t=l.trim().split(/\s+/); return t[0]!=="" && t.every(x=>TAG_TOKEN.test(x) || TAG_HOLD.test(x) || x==="~"); };
+  // Voices are aligned by CHARACTER COLUMN, not token index, so swipes work: `------` (or just an absent
+  // token) means a voice HOLDS its last note while another voice moves through a run (its notes joined by
+  // `~`). Note columns are clustered into beats (within-beat spread ≤1 char, inter-beat gap ≥2); at each
+  // beat a voice with no note there repeats its previous pitch. A held note carries no octave arrow.
+  function parseTag(text){
+    const lines = String(text).replace(/\r/g,"").split("\n");
+    const km = /\[\s*([A-G][#b♭♯]?)\s*\]/.exec(lines[0]||"");
+    const chords = [], warnings = [];
+    let block = [], blockLine = 0;
+    const flush = () => {
+      const vlines = block.filter(tagIsVoiceLine);              // T, L, Ba, Bs
+      if(block.length && vlines.length && vlines.length!==4){   // looked like music but didn't come out to 4 voices
+        const bad = block.filter(l => l.trim() && !tagIsVoiceLine(l) && !/[A-Za-z]{3}/.test(l));
+        warnings.push(`Line ${blockLine}: found ${vlines.length} voice line(s), expected 4 — skipped this block`
+          + (bad.length ? `. Unreadable: ${bad.map(l=>`"${l.trim().slice(0,24)}"`).join(", ")}` : "."));
+      }
+      if(vlines.length===4){
+        const vnotes = vlines.map(l => {                        // real notes only, with their column
+          const out=[], re=/\S+/g; let m;
+          while((m=re.exec(l))){ const t=tagToken(m[0]); if(t) out.push({col:m.index, pc:t.pc, arr:t.arr}); }
+          return out;
+        });
+        const cols = [...new Set(vnotes.flatMap(nl=>nl.map(n=>n.col)))].sort((a,b)=>a-b);
+        const beats=[];
+        for(const c of cols){ const b=beats[beats.length-1]; if(b && c-b.hi<=1) b.hi=c; else beats.push({lo:c,hi:c}); }
+        const prevPC=[null,null,null,null];
+        let dropped=0;
+        for(const b of beats){
+          const parts=[], arr=[]; let full=true;
+          for(let vi=0; vi<4; vi++){
+            const hit = vnotes[vi].filter(n=>n.col>=b.lo-1 && n.col<=b.hi+1);
+            if(hit.length){ const t=hit[hit.length-1]; prevPC[vi]=t.pc; parts.push(t.pc); arr.push(t.arr); }
+            else if(prevPC[vi]!=null){ parts.push(prevPC[vi]); arr.push(0); }   // hold: same pitch, no arrow
+            else { full=false; parts.push(null); arr.push(0); }
+          }
+          if(full) chords.push({parts, arr}); else dropped++;
+        }
+        if(dropped) warnings.push(`Line ${blockLine}: ${dropped} column(s) couldn't be aligned across all four voices.`);
+      }
+      block = [];
+    };
+    for(let i=1;i<lines.length;i++){
+      if(lines[i].trim()===""){ flush(); }
+      else { if(!block.length) blockLine = i+1; block.push(lines[i]); }
+    }
+    flush();
+    if(!km) warnings.push('No key found in the title line (expected e.g. "[B♭]") — defaulting to B♭.');
+    return { key: km ? km[1] : null, chords, warnings };
+  }
+  function detectChord(pcs, music){
+    const {CHORDS, rval, octRed} = music;
+    const want = [...new Set(pcs.map(p=>((p%12)+12)%12))];
+    const pcOf = r => (((Math.round(12*Math.log2(octRed(rval(r))))%12)+12)%12);
+    let best=null;
+    for(let root=0; root<12; root++){
+      for(let ci=0; ci<CHORDS.length; ci++){
+        const set = [...new Set(CHORDS[ci].r.map(r=>(pcOf(r)+root)%12))];
+        const missing = want.filter(p=>!set.includes(p)).length;   // chord tones we needed but don't have
+        const extra   = set.filter(p=>!want.includes(p)).length;   // chord tones present but not wanted
+        const score = missing*10 + extra*3 + ci*0.02;              // exact first, then fewest extras, then common chords
+        // `covers` = every sung note is a chord tone (extra chord tones just mean an incomplete voicing,
+        // e.g. a unison or a triad with a doubling — that's faithful, not an approximation).
+        if(!best || score<best.score) best={root, chord:ci, score, exact:(missing===0 && extra===0), covers:(missing===0)};
+      }
+    }
+    return best;
+  }
+  //#endregion tagimport
+
+  //#region chip — PURE, DOM-FREE: derive a slot's stacked scale-degree display. Node-testable.
+  // (test/chip.test.mjs slices this region out of the HTML and evals it.)
+  //
+  // A chord "chip" shows the four PARTS stacked in fixed order — Tenor / Lead / Bari / Bass, top→bottom
+  // (bass on the bottom) — each labeled by its scale degree relative to the KEY, snapped to the nearest
+  // chromatic degree so JI detuning never renames a note. The order is by PART, not by sounding pitch,
+  // so a row always means the same voice even when voices cross. voicing[i] is what part i sings
+  // (i: 0=bass … 3=tenor), so rows are voicing reversed. Purely a function of the snapshot's root +
+  // chord + voicing (no audio) → testable. `music` injects DEGREES (chromatic, index = semitone 0..11),
+  // CHORDS, ITV (chord-tone role, kept for tooltips), and rval/octRed. Returns rows top→bottom: {deg, role}.
+  function chipRows(snap, music){
+    const {DEGREES, CHORDS, ITV, rval, octRed} = music;
+    const chord = CHORDS[snap && snap.chord] || CHORDS[0];
+    const rootVal = rval((DEGREES[snap && snap.root] || DEGREES[0]).r);
+    const voicing = (snap && Array.isArray(snap.voicing) && snap.voicing.length)
+      ? snap.voicing
+      : chord.r.map((_, i) => [i, 0]);   // no explicit voicing → part i sings tone i (root position)
+    const rows = voicing.map(slot => {
+      const tone = Array.isArray(slot) ? slot[0] : slot.tone;
+      const toneStr = chord.r[tone] || "1/1";
+      const pc = octRed(rootVal * rval(toneStr));                  // pitch class rel key, octave-reduced
+      const degIdx = ((Math.round(12*Math.log2(pc)) % 12) + 12) % 12;
+      return {
+        deg:  (DEGREES[degIdx] || DEGREES[0]).lab,                 // scale-degree name in the key
+        role: ITV[toneStr] || "?",                                 // chord-tone function (tooltip only now)
+      };
+    });
+    return rows.reverse();   // voicing is bass→tenor; reverse → tenor at top, bass at bottom
+  }
+  //#endregion chip
 
   // ============================================================ chart constants
   const VOICE_COLORS = ["#ff6f91","#ffd166","#06d6a0","#4d96ff"]; // bass, bari, lead, tenor (L→R)
@@ -455,6 +640,11 @@
   let ctx=null, masterOut=null, masterBus=null, humanTimer=null;
   let analyser=null, scopeRAF=null, timeBuf=null, freqBuf=null;
   const voices=[];   // each: {formants, freq, muted, level, mode, bend, srcExp, bwFrac, audio nodes..., infoEl}
+  // Portamento for stepping between sequence slots. `stepGlide` is a transient set only for the
+  // duration of a slot-step's applySnapshot() call; every other retune (dial drags, etc.) reads
+  // null and keeps the snappy default. glide=0 → the pre-existing instant behavior.
+  let stepGlide = null;
+  const retuneTau = () => (stepGlide != null && stepGlide > 0) ? stepGlide/3 : 0.04;
 
   function computeWave(f0,srcExp){
     const top=Math.min(HEARING_TOP, ctx.sampleRate/2);
@@ -626,41 +816,27 @@
   }
 
   // ---------- output visualization (live, from the analyser tap on the final mix) ----------
-  const scopeCv=document.getElementById("scope"), spectrumCv=document.getElementById("spectrum");
+  const spectrumCv=document.getElementById("spectrum");
   const clipLbl=document.getElementById("cliplbl");
   function startScope(){
     if(!analyser||scopeRAF) return;
     timeBuf=new Float32Array(analyser.fftSize);
     freqBuf=new Uint8Array(analyser.frequencyBinCount);
-    const frame=()=>{ scopeRAF=requestAnimationFrame(frame); drawWave(); drawSpectrum(); };
+    const frame=()=>{ scopeRAF=requestAnimationFrame(frame); updateLevel(); drawSpectrum(); };
     frame();
   }
   function stopScope(){
     if(scopeRAF) cancelAnimationFrame(scopeRAF);
     scopeRAF=null;
-    scopeCv.getContext("2d").clearRect(0,0,scopeCv.width,scopeCv.height);
     spectrumCv.getContext("2d").clearRect(0,0,spectrumCv.width,spectrumCv.height);
     clipLbl.textContent="level —"; clipLbl.style.color="var(--muted)";
   }
-  function drawWave(){
-    const g=scopeCv.getContext("2d"), W=scopeCv.width, H=scopeCv.height, mid=H/2, amp=(H/2)*0.82;
+  // Peak level for the clip readout. (The synth-waveform lane this used to draw in was removed, but the
+  // clip/level meter is still worth keeping — so read the time domain and report the peak without drawing.)
+  function updateLevel(){
     analyser.getFloatTimeDomainData(timeBuf);
-    g.clearRect(0,0,W,H);
-    g.strokeStyle="#2c2010"; g.lineWidth=1;
-    g.beginPath(); g.moveTo(0,mid); g.lineTo(W,mid); g.stroke();
-    g.strokeStyle="#6b5128"; g.setLineDash([4,4]);
-    g.beginPath(); g.moveTo(0,mid-amp); g.lineTo(W,mid-amp); g.moveTo(0,mid+amp); g.lineTo(W,mid+amp); g.stroke();
-    g.setLineDash([]);
-    const N=timeBuf.length, step=N/W; let peak=0;
-    g.beginPath();
-    for(let x=0;x<W;x++){
-      const v=timeBuf[Math.floor(x*step)];
-      if(Math.abs(v)>peak) peak=Math.abs(v);
-      let y=mid-v*amp; if(y<0)y=0; else if(y>H)y=H;
-      x?g.lineTo(x,y):g.moveTo(x,y);
-    }
+    let peak=0; for(let i=0;i<timeBuf.length;i++){ const a=Math.abs(timeBuf[i]); if(a>peak) peak=a; }
     const clipped=peak>=1.0;
-    g.strokeStyle=clipped?"#ff5a4a":"#ffb347"; g.lineWidth=1.5; g.stroke();
     clipLbl.textContent=clipped?`peak ${peak.toFixed(2)} · CLIPPING`:`peak ${peak.toFixed(2)}`;
     clipLbl.style.color=clipped?"#ff5a5a":(peak>0.85?"#ffce54":"var(--muted)");
   }
@@ -737,15 +913,19 @@
     let num=0; fr.forEach(([a,b])=> num=gcd(num,a*(den/b))); // greatest common rational = num/den
     return effKey() * num/den;
   }
+  // Root position: the chord root (tone 0, always ratio 1/1) in the bass, the other tones stacked in
+  // close position ascending above it (in tone-index order), then the whole thing shifted into a
+  // central register. Part i (0=bass … 3=tenor) sings tone i. New chords always default to this; the
+  // user respells by hand from here. (A shortest-motion voice-leading solver is a possible future default.)
   function defaultVoicing(pcs){
-    const idx=[0,1,2,3].sort((a,b)=>pcs[a]-pcs[b]);
-    const slots=[]; let prev=0;
-    for(const i of idx){
-      let o=0; while(pcs[i]*Math.pow(2,o)<=prev+1e-9) o++;
-      slots.push({tone:i,octave:o}); prev=pcs[i]*Math.pow(2,o);
+    const slots=[{tone:0, octave:0}];       // bass = root
+    let prev=pcs[0];
+    for(let t=1;t<pcs.length;t++){
+      let o=0; while(pcs[t]*Math.pow(2,o)<=prev+1e-9) o++;   // lift until strictly above the voice below
+      slots.push({tone:t, octave:o}); prev=pcs[t]*Math.pow(2,o);
     }
     const meanLog=slots.reduce((s,sl)=>s+Math.log2(pcs[sl.tone])+sl.octave,0)/slots.length;
-    const sh=-Math.round(meanLog); slots.forEach(sl=>sl.octave+=sh);
+    const sh=-Math.round(meanLog); slots.forEach(sl=>sl.octave+=sh);   // center the register near the key
     return slots;
   }
   // effective key center = the selected key, fine-tuned by the global pitch bend (cents).
@@ -759,28 +939,18 @@
     state.absPcs.forEach((pc,ti)=>{ if(!seen.has(pc)) seen.set(pc,ti); });
     return [...seen.entries()].map(([pc,ti])=>({pc,ti})).sort((a,b)=>a.pc-b.pc);
   }
-  // move a voice to the next chord pitch up/down, dropping/raising an octave on wrap
-  function stepVoice(slot,dir){
-    const pcs=chordPcs();
-    let idx=pcs.findIndex(p=>p.pc===state.absPcs[slot.tone]);
-    if(idx<0) idx=0;
-    let ni=idx+dir, oct=slot.octave;
-    if(ni<0){ ni=pcs.length-1; oct--; }
-    else if(ni>=pcs.length){ ni=0; oct++; }
-    slot.tone=pcs[ni].ti; slot.octave=oct;
-  }
   function applyFreqs(){
     state.voicing.forEach((slot,k)=>{
       const v=voices[k]; v.freq=slotFreq(slot);
       if(state.playing && v.osc){
-        v.osc.frequency.setTargetAtTime(v.freq, ctx.currentTime, 0.04);
+        v.osc.frequency.setTargetAtTime(v.freq, ctx.currentTime, retuneTau());   // glide when stepping slots
         if(v.mode==="voice") v.osc.setPeriodicWave(computeWave(v.freq,v.srcExp));
       }
       updateVoiceInfo(v); syncFormants(v);  // syncFormants re-normalizes level for the new f0
     });
     state.fundHz = impliedFundamentalHz();
     drawSharedChart();
-    scheduleUrlSync();   // key / root / chord / tuning / voicing all funnel through here
+    onStateEdit();   // key / root / chord / tuning / voicing all funnel through here
   }
 
   // ============================================================ selector UI
@@ -847,12 +1017,12 @@
   }
   function commitKey(nm){
     nm=clamp(nm, MIDI_LO, MIDI_HI);
-    if(nm!==state.keyMidi){ state.keyMidi=nm; state.keyFreq=midiToFreq(nm); applyFreqs(); renderVoicing(); }
+    if(nm!==state.keyMidi){ state.keyMidi=nm; state.keyFreq=midiToFreq(nm); applyFreqs(); renderVoicing(); syncGlobalsAcrossSlots(); }
     drawKeyDial(); drawRootDial();   // root's note readout follows the key
   }
   function commitBend(c){
     c=clamp(c,-100,100);
-    if(c!==state.bendCents){ state.bendCents=c; applyFreqs(); renderVoicing(); }
+    if(c!==state.bendCents){ state.bendCents=c; applyFreqs(); renderVoicing(); syncGlobalsAcrossSlots(); }
     drawKeyDial(); drawRootDial();
   }
 
@@ -904,10 +1074,10 @@
       const t1=DP(a,R_OUT_HI-2), t2=DP(a,R_OUT_HI-11);
       s+=`<line x1="${t1[0].toFixed(1)}" y1="${t1[1].toFixed(1)}" x2="${t2[0].toFixed(1)}" y2="${t2[1].toFixed(1)}" stroke="${sel?"#e26a10":"#7d6743"}" stroke-width="${sel?2:1}"/>`;
       const [lx,ly]=DP(a,R_NOTE);
-      s+=`<text x="${lx.toFixed(1)}" y="${(ly+4).toFixed(1)}" text-anchor="middle" font-size="13" font-weight="${sel?800:600}" fill="${sel?"#ffb347":"#a98a55"}">${DEGREES[i].lab}</text>`;
+      s+=`<text x="${lx.toFixed(1)}" y="${(ly+4).toFixed(1)}" text-anchor="middle" font-size="12" font-weight="${sel?800:600}" fill="${sel?"#ffb347":"#a98a55"}">${ROMAN[i]}</text>`;
     }
     s+=tri(a0, R_OUT_HI-3, R_OUT_LO+8, 7, "#e26a10");
-    s+=`<text x="${DCX}" y="${DCY+14}" text-anchor="middle" font-size="40" font-weight="800" fill="#ffce87">${DEGREES[idx].lab}</text>`;
+    s+=`<text x="${DCX}" y="${DCY+13}" text-anchor="middle" font-size="34" font-weight="800" fill="#ffce87">${romanOf(idx)}</text>`;
     rootDialSvg.innerHTML=s;
   }
   function commitRoot(idx){
@@ -943,69 +1113,129 @@
 
   const voicingEl=document.getElementById("voicing");
 
-  // ---- drag-to-reorder via pointer events (HTML5 drag-and-drop never fires on touch) ----
-  let vdrag=null;
-  function startVoicingDrag(e,k,box){
-    vdrag={from:k, x0:e.clientX, y0:e.clientY, moved:false, box, pid:e.pointerId};
-    try{ box.setPointerCapture(e.pointerId); }catch(_){}   // keep receiving moves if the finger leaves the box
-  }
-  function voicingInsertIndex(clientX){                     // where in the row the dragged box would land
-    const boxes=[...voicingEl.children];
-    for(let i=0;i<boxes.length;i++){
-      const r=boxes[i].getBoundingClientRect();
-      if(clientX < r.left + r.width/2) return i;
-    }
-    return boxes.length;
-  }
-  window.addEventListener("pointermove",e=>{
-    if(!vdrag) return;
-    if(!vdrag.moved && Math.hypot(e.clientX-vdrag.x0, e.clientY-vdrag.y0) > 6){
-      vdrag.moved=true; vdrag.box.classList.add("drag");    // only treat it as a drag past a small threshold (so taps still work)
-    }
-    if(vdrag.moved){
-      const boxes=[...voicingEl.children], ins=voicingInsertIndex(e.clientX);
-      boxes.forEach((b,i)=> b.classList.toggle("over", i===Math.min(ins,boxes.length-1) && i!==vdrag.from));
-    }
-  });
-  window.addEventListener("pointerup",e=>{
-    if(!vdrag) return;
-    const v=vdrag; vdrag=null;
-    try{ v.box.releasePointerCapture(v.pid); }catch(_){}
-    if(v.moved){
-      let ins=voicingInsertIndex(e.clientX);
-      const [m]=state.voicing.splice(v.from,1);
-      if(ins>v.from) ins--;                                 // array shrank after removing the dragged item
-      state.voicing.splice(clamp(ins,0,state.voicing.length),0,m);
-      applyFreqs(); renderVoicing();
-    }
-  });
-  window.addEventListener("pointercancel",()=>{ if(vdrag){ vdrag=null; renderVoicing(); } });
+  // pitch → vertical position on the lattice, as a PERCENT down the content. The content fills the full
+  // (canvas-matched) lattice height, so the whole ~4-octave window (G1..A5) always spans the same box top
+  // to bottom, high notes near the top. Depends only on the fixed window, not the chord, so stepping
+  // chords never reshapes the lattice. A small top/bottom margin keeps the edge rows fully in view.
+  const LAT_MLO=31, LAT_MHI=81, LAT_PAD_PCT=3;
+  const midiOf = f => 69 + 12*Math.log2(f/440);
+  const latY = f => LAT_PAD_PCT + (LAT_MHI - midiOf(f))/(LAT_MHI-LAT_MLO)*(100-2*LAT_PAD_PCT);
+  const MAX_PER_PITCH = 4;                                  // any number of the four voices may share one pitch
+  const fkey = f => f.toFixed(2);                           // group voices/pegs that share a pitch
 
+  // every chord tone at every octave inside the window = the set of places a voice can be dragged to.
+  function latticePegs(){
+    const fLo=midiToFreq(LAT_MLO), fHi=midiToFreq(LAT_MHI), pegs=[];
+    chordPcs().forEach(({pc,ti})=>{                          // pc: octave-reduced; ti: its chord-tone index
+      const base=effKey()*pc;
+      for(let o=Math.ceil(Math.log2(fLo/base)); o<=Math.floor(Math.log2(fHi/base)); o++){
+        const f=base*Math.pow(2,o);
+        pegs.push({ tone:ti, octave:o, f, y:latY(f), role:(ITV[CHORDS[state.chordIdx].r[ti]]||"?") });
+      }
+    });
+    return pegs;
+  }
+
+  const latState={el:null, inner:null, pegs:[], drag:null};  // live lattice for the drag handlers
+  const seqActive = () => seq.active>=0 && seq.active<seq.slots.length;   // is a chord focused?
   function renderVoicing(){
     voicingEl.innerHTML="";
-    state.voicing.forEach((slot,k)=>{
-      const tone=CHORDS[state.chordIdx].r[slot.tone];
-      const keyDeg=DEGREES[(Math.round(12*Math.log2(state.absPcs[slot.tone]))%12+12)%12].lab;
-      const box=document.createElement("div"); box.className="vbox"; box.dataset.k=k;
-      box.innerHTML =
-        `<div class="vnum">${VOICE_NAMES[k]}</div>`+
-        `<div class="roles"><span><b>${ITV[tone]||tone}</b><i>chord</i></span><span><b>${keyDeg}</b><i>key</i></span></div>`+
-        `<div class="note">${noteName(slotFreq(slot))}</div>`+
-        `<div class="hz">${Math.round(slotFreq(slot))} Hz · oct ${slot.octave>=0?"+":""}${slot.octave}</div>`;
-      const ob=document.createElement("div"); ob.className="octbtns";
-      const up=document.createElement("button"); up.textContent="▲";
-      const dn=document.createElement("button"); dn.textContent="▼";
-      up.addEventListener("click",e=>{e.stopPropagation(); stepVoice(slot,+1); applyFreqs(); renderVoicing();});
-      dn.addEventListener("click",e=>{e.stopPropagation(); stepVoice(slot,-1); applyFreqs(); renderVoicing();});
-      ob.appendChild(dn); ob.appendChild(up); box.appendChild(ob);
+    const active = seqActive();
 
-      box.addEventListener("pointerdown",e=>{
-        if(e.target.closest(".octbtns")) return;   // let the octave buttons handle their own taps
-        startVoicingDrag(e,k,box);
-      });
-      voicingEl.appendChild(box);
+    // .lattice fills the canvas height (see CSS); .latinner spans it, holding the whole pitch range
+    const lat=document.createElement("div"); lat.className="lattice"+(active?"":" nulled");
+    const inner=document.createElement("div"); inner.className="latinner";
+    inner.innerHTML='<div class="lline"></div>';
+    latState.el=lat; latState.inner=inner; latState.pegs=latticePegs();
+
+    // which pitches the voices occupy, so we don't draw an empty peg under a voice
+    const occ=new Map();                                    // fkey → [voice index,…]
+    if(active) state.voicing.forEach((slot,k)=>{ const key=fkey(slotFreq(slot)); (occ.get(key)||occ.set(key,[]).get(key)).push(k); });
+
+    // hollow pegs. When a chord is focused each carries a grayed chord-tone label (a named drop target);
+    // in the null case the lattice is just a grayed, label-less scaffold.
+    latState.pegs.forEach(p=>{
+      if(occ.has(fkey(p.f))) return;                        // occupied → the voice row draws it instead
+      const row=document.createElement("div"); row.className="lrow lpeg"; row.style.top=p.y.toFixed(2)+"%";
+      row.dataset.f=fkey(p.f);
+      row.innerHTML=`<span></span><span class="ldots"><span class="pegdot"></span></span>`+
+                    (active?`<span class="linfo"><b class="peglab">${p.role}</b></span>`:`<span></span>`);
+      inner.appendChild(row);
     });
+
+    // voices: one row per occupied pitch. A shared pitch shows every part + a row of tangent dots + one label.
+    occ.forEach((ks,key)=>{
+      const rep=state.voicing[ks[0]];
+      const ratio=CHORDS[state.chordIdx].r[rep.tone], role=ITV[ratio]||ratio, col=toneColor(role);
+      const keyDeg=DEGREES[(Math.round(12*Math.log2(state.absPcs[rep.tone]))%12+12)%12].lab;
+      const f=slotFreq(rep);
+      const row=document.createElement("div"); row.className="lrow lvoice"; row.style.top=latY(f).toFixed(2)+"%";
+      row.dataset.f=key;
+      const parts=ks.map(k=>`<span class="lpart lgrab" data-k="${k}" style="color:${col}">${VOICE_NAMES[k]}</span>`).join("");
+      const dots =ks.map(k=>`<span class="ldot lgrab" draggable="false" data-k="${k}" style="background:${col}"></span>`).join("");
+      // one voice on this pitch → the info text names that voice, so it drags it too. Doubled → it
+      // describes both, so it stays inert and each voice is grabbed by its own part label or dot.
+      const info=ks.length===1 ? `class="linfo lgrab" data-k="${ks[0]}"` : `class="linfo"`;
+      row.innerHTML=`<span class="lparts">${parts}</span>`+
+                    `<span class="ldots">${dots}</span>`+
+                    `<span ${info}><b style="color:${col}">${role}</b><i>${keyDeg}</i><em>${noteName(f)}</em></span>`;
+      inner.appendChild(row);
+    });
+
+    lat.appendChild(inner);
+    inner.querySelectorAll(".lgrab").forEach(h=>h.addEventListener("pointerdown",startVoiceDrag));
+    voicingEl.appendChild(lat);
   }
+
+  // ---- drag a voice onto a peg (the only voicing edit) -----------------------------------------
+  // Grab a voice anywhere on its label; the dragged voice keeps its part, and dropping sets that
+  // part's chord tone + octave to the target peg, so its function (and colour) update. A pitch already
+  // holding MAX_PER_PITCH voices is refused (never triggers with 4 voices, since a dragged one leaves
+  // at most 3 others — i.e. all four may stack).
+  function nearestPeg(clientY){
+    const r=latState.inner.getBoundingClientRect();          // maps a peg's % position to a screen Y
+    let best=null, bd=Infinity;
+    latState.pegs.forEach(p=>{ const d=Math.abs((r.top + p.y/100*r.height)-clientY); if(d<bd){ bd=d; best=p; } });
+    return best;
+  }
+  function occupancyAt(key, exceptK){                       // how many OTHER voices sit on this pitch
+    let n=0; state.voicing.forEach((s,k)=>{ if(k!==exceptK && fkey(slotFreq(s))===key) n++; }); return n;
+  }
+  function highlight(peg, ok){
+    latState.el.querySelectorAll(".target,.bad").forEach(e=>e.classList.remove("target","bad"));
+    if(!peg) return;
+    const row=latState.el.querySelector(`.lrow[data-f="${fkey(peg.f)}"]`);
+    const dots=row && row.querySelector(".ldots");
+    if(dots){ dots.classList.add("target"); if(!ok) dots.classList.add("bad"); }
+  }
+  function startVoiceDrag(e){
+    e.preventDefault(); e.stopPropagation();
+    const handle=e.currentTarget, k=+handle.dataset.k;
+    // everything tagged with this voice's index — its dot, its part label, and its info text when the
+    // pitch isn't doubled — trails the finger together, so the whole grabbed label moves as one
+    const follow=[...handle.closest(".lrow").querySelectorAll(`[data-k="${k}"]`)];
+    const dot=follow.find(el=>el.classList.contains("ldot"));
+    latState.drag={k, pid:e.pointerId, peg:null, dot, follow, y0:e.clientY};
+    try{ handle.setPointerCapture(e.pointerId); }catch(_){}
+    if(dot) dot.classList.add("grabbing");
+    latState.el.classList.add("dragging");
+  }
+  window.addEventListener("pointermove",e=>{
+    const d=latState.drag; if(!d) return;
+    const dy=(e.clientY-d.y0).toFixed(0);
+    d.follow.forEach(el=>{ el.style.transform=`translateY(${dy}px)`+(el===d.dot?" scale(1.25)":""); });
+    const peg=nearestPeg(e.clientY);
+    const ok=peg && occupancyAt(fkey(peg.f), d.k) < MAX_PER_PITCH;
+    d.peg=ok ? peg : null;
+    highlight(peg, ok);
+  });
+  window.addEventListener("pointerup",()=>{
+    const d=latState.drag; if(!d) return;
+    latState.drag=null;
+    if(d.peg){ const s=state.voicing[d.k]; s.tone=d.peg.tone; s.octave=d.peg.octave; applyFreqs(); }
+    renderVoicing();                                        // redraw (also clears drag styling / snaps back)
+  });
+  window.addEventListener("pointercancel",()=>{ if(latState.drag){ latState.drag=null; renderVoicing(); } });
 
   // ============================================================ voices + mixer strips
   const chartSvg=document.getElementById("chart");
@@ -1043,7 +1273,7 @@
     const u=v.ui[p.key];
     if(parseFloat(u.sl.value)!==cv) u.sl.value=cv;
     u.pv.textContent=p.fmt(v);
-    scheduleUrlSync();   // per-voice sliders (bright/nasal/F3/vol/bend) + resets funnel through here
+    onStateEdit();   // per-voice sliders (bright/nasal/F3/vol/bend) + resets funnel through here
   }
   function onParamInput(p,k){
     const v=voices[k], nv=parseFloat(v.ui[p.key].sl.value);
@@ -1109,7 +1339,7 @@
       const w=voices[k]; w.muted=s.muted; w.soloed=s.soloed; setMuteUI(w); setSoloUI(w);
     });
     refreshGains();
-    scheduleUrlSync();                           // solo moves mutes, and mutes are persisted
+    onStateEdit();                           // solo moves mutes, and mutes are persisted
   }
   // Re-level every voice's gain to its current audibility.
   function refreshGains(){
@@ -1208,7 +1438,7 @@
     v.formants[0].F=clamp(f1, v.formants[0].min, v.formants[0].max);
     v.formants[1].F=clamp(f2, v.formants[1].min, v.formants[1].max);
     updateVoiceInfo(v); drawSharedChart(); syncFormants(v);
-    scheduleUrlSync();
+    onStateEdit();
   }
   chartSvg.addEventListener("pointerdown",e=>{
     const dot=e.target.closest("[data-vdot]");
@@ -1235,7 +1465,7 @@
         updateVoiceInfo(v); syncFormants(v);
       });
       drawSharedChart();
-      scheduleUrlSync();
+      onStateEdit();
     } else {
       setFromChart(activeDrag.v, e.clientX, e.clientY);
     }
@@ -1250,21 +1480,23 @@
   jitBtn.addEventListener("click",()=>{
     const on=!jitBtn.classList.contains("on");
     jitBtn.classList.toggle("on",on); jitBtn.textContent=on?"on":"off";
-    state.jitterCents=on?JITTER_AMT:0; scheduleUrlSync();
+    state.jitterCents=on?JITTER_AMT:0; onStateEdit();
   });
   shimBtn.addEventListener("click",()=>{
     const on=!shimBtn.classList.contains("on");
     shimBtn.classList.toggle("on",on); shimBtn.textContent=on?"on":"off";
-    state.shimmer=on?SHIMMER_AMT:0; scheduleUrlSync();
+    state.shimmer=on?SHIMMER_AMT:0; onStateEdit();
   });
 
   function lab(){
     vibVal.textContent=state.vibCents<=0?"off":`±${state.vibCents}¢`;
   }
   vibEl.addEventListener("input",()=>{ state.vibCents=parseFloat(vibEl.value); lab();
-    if(ctx) voices.forEach(v=>v.vibDepth&&v.vibDepth.gain.setTargetAtTime(state.vibCents,ctx.currentTime,0.02)); scheduleUrlSync(); });
+    if(ctx) voices.forEach(v=>v.vibDepth&&v.vibDepth.gain.setTargetAtTime(state.vibCents,ctx.currentTime,0.02)); onStateEdit(); });
 
-  playBtn.addEventListener("click",()=> state.playing?stopAll():playAll());
+  // No audio without a sequenced chord: Play sounds the focused slot (there's always one unless the
+  // user has deleted every chord).
+  playBtn.addEventListener("click",()=>{ if(state.playing) stopAll(); else if(seq.slots.length) playAll(); });
 
   // just ↔ 12-ET toggle: keep the current voicing, just retune the chord's internal intervals
   const tuningBtn=document.getElementById("tuning");
@@ -1275,6 +1507,7 @@
     computeAbsPcs();
     applyFreqs();      // retune the sounding voices and recompute the implied fundamental
     renderVoicing();   // refresh the displayed note names / cents
+    syncGlobalsAcrossSlots();   // tuning system is global to the whole progression, like the key center
   });
 
   // move-one / move-all toggle (lets touch users drag all vowels in unison without a modifier key)
@@ -1283,7 +1516,7 @@
     state.moveAll=!state.moveAll;
     moveAllBtn.classList.toggle("on",state.moveAll);
     moveAllBtn.textContent=state.moveAll?"move: all voices":"move: one voice";
-    scheduleUrlSync();
+    onStateEdit();
   });
 
   // ============================================================ save state (URL <-> app)
@@ -1377,27 +1610,478 @@
     }
   }
 
-  // URL <#s=...> reflects the current app state; rewritten (debounced) on any intent-changing action.
-  let ready = false, suppressSync = false, syncTimer = null;
-  function scheduleUrlSync(){
+  // State lives in the sequence JSON (copy/download/upload) + a localStorage autosave — not the URL.
+  // Every intent-changing action funnels through onStateEdit(), which mirrors the live app into the
+  // active slot. `ready` gates it until init finishes; `suppressSync` gates it during a load/step.
+  let ready = false, suppressSync = false;
+  function onStateEdit(){
     if(!ready || suppressSync) return;
-    if(syncTimer) clearTimeout(syncTimer);
-    syncTimer = setTimeout(writeUrl, 250);
+    seqCaptureActive();   // write the live state back into the active slot (+ autosave, inside)
   }
-  async function writeUrl(){
-    syncTimer = null;
-    try {
-      const str = await encodeSnapshot(readSnapshot());
-      history.replaceState(null, "", "#s=" + str);
-    } catch(_) { /* codec unsupported in this browser: app still works, just no URL sync */ }
+
+  // ============================================================ sequencer
+  // A sequence is an ordered list of full snapshots (readSnapshot() objects). Each slot carries the
+  // COMPLETE quartet state — timbre included — because the whole point of the tool is studying how
+  // balance/timbre must shift between chords. Stepping to a slot is applySnapshot() (which retunes the
+  // sounding voices in place); editing the app writes the live state back into the active slot via
+  // seqCaptureActive(), hung off onStateEdit(). Persistence is a JSON document you copy/download/
+  // upload; the sequence also autosaves to localStorage so a reload doesn't lose an unsaved progression.
+  const SEQ_DOC = "quartet-seq", SEQ_LS_KEY = "quartet-seq-v1";
+  const seq = { slots: [], active: -1, sel: new Set() };   // sel = EXTRA selected slots an edit broadcasts to
+  const seqbarEl  = document.getElementById("seqbar");
+  const chordEditorEl = document.getElementById("chordeditor");
+  const glideEl   = document.getElementById("glide"), glideValEl = document.getElementById("glideval");
+  const musicTables = { DEGREES, CHORDS, ITV, rval, octRed };
+  const readGlide = () => parseFloat(glideEl.value) || 0;
+  const fmtGlide  = s => s<=0 ? "0 ms" : s<1 ? Math.round(s*1000)+" ms" : s.toFixed(2)+" s";
+
+  function slotChipHTML(snap){
+    return chipRows(snap, musicTables)
+      .map(r => `<b title="${r.role}" style="color:${toneColor(r.role)}">${r.deg}</b>`).join("");
   }
-  async function loadFromUrl(){
-    const m = /[#&]s=([^&]+)/.exec(location.hash || "");
-    if(!m) return;
-    try {
-      applySnapshot(await decodeSnapshot(m[1]));
-    } catch(_) { /* bad/old/corrupt hash: keep the default state that init already built */ }
+  function chordNameOf(snap){
+    return romanOf(snap.root|0) + " " + (CHORDS[snap.chord]||CHORDS[0]).name;
   }
+  function renderSeq(){
+    seqbarEl.innerHTML = "";
+    seq.slots.forEach((snap,i) => {
+      const el = document.createElement("div");
+      el.className = "slot" + (i===seq.active ? " sel" : "") + (seq.sel.has(i) ? " msel" : "");
+      el.dataset.i = i;
+      el.innerHTML = `<span class="idx">${i+1}</span><div class="stack">${slotChipHTML(snap)}</div>`
+                   + `<span class="cname">${chordNameOf(snap)}</span>`
+                   + `<button class="del" title="Delete this chord">✕</button>`;
+      seqbarEl.appendChild(el);
+    });
+    const add = document.createElement("div");
+    add.className = "slot seqadd"; add.title = "Add a chord (copies the current one)"; add.textContent = "＋";
+    seqbarEl.appendChild(add);
+    if(!seq.slots.length){
+      const hint = document.createElement("span");
+      hint.className = "seqhint"; hint.textContent = "Add a chord to start a sequence.";
+      seqbarEl.appendChild(hint);
+    }
+    updateEditor(); updatePlayEnabled(); updateSelBadge();
+  }
+  const realSlots  = () => [...seqbarEl.querySelectorAll(".slot:not(.seqadd)")];
+  function markSeqSel(){
+    const boxes = realSlots();
+    boxes.forEach((b,i)=>{ b.classList.toggle("sel", i===seq.active); b.classList.toggle("msel", seq.sel.has(i)); });
+    if(boxes[seq.active]) boxes[seq.active].scrollIntoView({block:"nearest", inline:"nearest"});
+    updateSelBadge();
+  }
+  // ---- multi-selection: Ctrl/Cmd-click adds/removes a chord, Shift-click a range, "Select all" button.
+  // The anchor (seq.active) is edited directly; every chord in seq.sel receives the same change too.
+  const selInfoEl = document.getElementById("selinfo");
+  function updateSelBadge(){
+    if(seq.sel.size){ selInfoEl.hidden=false; selInfoEl.textContent = `editing ${seq.sel.size+1} chords`; }
+    else selInfoEl.hidden=true;
+  }
+  function clearSel(){ if(seq.sel.size){ seq.sel.clear(); markSeqSel(); } }
+  function toggleSelExtra(i){                 // the anchor is always edited, so it can't be an "extra"
+    if(i===seq.active) return;
+    if(seq.sel.has(i)) seq.sel.delete(i); else seq.sel.add(i);
+    markSeqSel();
+  }
+  function selectRangeTo(i){
+    const a = seq.active<0 ? i : seq.active, lo=Math.min(a,i), hi=Math.max(a,i);
+    for(let k=lo;k<=hi;k++) if(k!==seq.active) seq.sel.add(k);
+    markSeqSel();
+  }
+  function toggleSelectAll(){
+    const others = seq.slots.length - (seq.active>=0 ? 1 : 0);
+    if(others>0 && seq.sel.size >= others) seq.sel.clear();     // everything already selected → clear
+    else { seq.sel.clear(); for(let k=0;k<seq.slots.length;k++) if(k!==seq.active) seq.sel.add(k); }
+    markSeqSel();
+  }
+  // The editor (wheels + vocabulary) appears only when a slot is focused. The voicing lattice stays
+  // ALWAYS visible in a fixed spot left of the canvas — it just renders as a grayed, label-less
+  // scaffold in the null case — so the canvas width never shifts. Re-render it to flip active↔null.
+  function updateEditor(){
+    const on = seq.active>=0 && seq.active<seq.slots.length;
+    chordEditorEl.hidden = !on;
+    renderVoicing();
+  }
+  // No audio without a sequenced chord: Play (and the Step button) are dead when the sequence is empty.
+  function updatePlayEnabled(){
+    const has = seq.slots.length>0;
+    playBtn.disabled = !has;
+    const nextBtn = document.getElementById("seqnext"); if(nextBtn) nextBtn.disabled = !has;
+    if(!has && state.playing) stopAll();
+  }
+  // Advance to the next chord, wrapping at the end (shared by Space, → and the Step button — the latter
+  // gives touch users, who have no keyboard, a way to walk the sequence).
+  function seqAdvance(){
+    if(!seq.slots.length) return;
+    const cur = seq.active<0 ? 0 : seq.active;
+    seqStep((cur+1) % seq.slots.length);
+  }
+  // Some settings are global to the whole progression, not per-chord: the KEY center, the global
+  // pitch BEND, and the tuning system (JI vs 12-ET). Changing any of them rewrites every slot so the
+  // choice holds across the entire sequence (and new chords, copied from the current state, inherit it).
+  function syncGlobalsAcrossSlots(){
+    if(!ready) return;
+    seq.slots.forEach(s=>{ s.key = state.keyFreq; s.et = state.et; if(Array.isArray(s.voices)) s.voices.forEach(v=>{ v.bend = state.bendCents; }); });
+    scheduleAutosave();
+  }
+
+  function seqStep(i){
+    if(i<0 || i>=seq.slots.length) return;
+    seq.sel.clear();                      // stepping to a chord collapses any multi-selection
+    seq.active = i;
+    stepGlide = readGlide();                                       // portamento only for this step
+    try { applySnapshot(seq.slots[i]); } finally { stepGlide = null; }
+    markSeqSel(); updateEditor(); scheduleAutosave();
+  }
+  function seqAdd(){
+    const at = seq.active>=0 ? seq.active+1 : seq.slots.length;    // insert just after the current chord
+    seq.slots.splice(at, 0, readSnapshot());
+    seq.active = at; seq.sel.clear();
+    renderSeq(); scheduleAutosave();
+  }
+  function seqRemove(i){
+    if(i<0 || i>=seq.slots.length) return;
+    seq.sel.clear();                      // indices shift on removal → drop the selection
+    const wasActive = i===seq.active;
+    seq.slots.splice(i,1);
+    if(seq.active > i) seq.active--;
+    else if(seq.active === i) seq.active = Math.min(i, seq.slots.length-1);   // → neighbor, or -1 if empty
+    renderSeq();
+    if(wasActive && seq.active>=0){ stepGlide=readGlide(); try{ applySnapshot(seq.slots[seq.active]); } finally{ stepGlide=null; } }
+    scheduleAutosave();
+  }
+  // ---- broadcasting an edit to the other selected chords ----------------------------------------
+  // Diff the active slot's snapshot (before→after) and apply only the CHANGED fields to each selected
+  // chord: NUMBERS as a delta (so every chord keeps its own offset / shaping), everything else as an
+  // absolute set. This runs on readSnapshot() output, so it's agnostic to which sliders exist — new or
+  // renamed timbre params flow through with no change here. The only per-field knobs are the skip-lists
+  // (structural/global fields that must never broadcast) and optional clamp ranges (reused from the
+  // slider constants, so they track the sliders). Fields not listed simply broadcast unclamped.
+  const BCAST_SKIP_TOP   = new Set(["v","key","root","chord","voicing","vol","moveAll","et"]);   // et/key are global, not per-chord
+  const BCAST_SKIP_VOICE = new Set(["bend"]);          // bend is globally synced via the key dial
+  const BCAST_RANGE = {
+    bri:[TYP_F0,TYP_F1], nas:[TYP_B0,TYP_B1], f3:[1800,3000], lvl:[Math.pow(10,-48/20),1],
+    f1:[200,1400], f2:[600,3200], vib:[0,8], jit:[0,JITTER_AMT], shim:[0,SHIMMER_AMT],
+  };
+  function bcastField(name, cur, before, after){
+    if(typeof after !== "number" || typeof cur !== "number" || typeof before !== "number") return after; // absolute
+    let v = cur + (after - before);                    // delta preserves the target chord's own value
+    const r = BCAST_RANGE[name]; return r ? clamp(v, r[0], r[1]) : v;
+  }
+  function broadcastDelta(target, before, after){       // mutates `target` in place; only changed fields
+    for(const k in after){
+      if(BCAST_SKIP_TOP.has(k)) continue;
+      if(k === "voices"){
+        if(!Array.isArray(target.voices)) continue;
+        after.voices.forEach((av,i)=>{
+          const bv = (before.voices && before.voices[i]) || {}, tv = target.voices[i];
+          if(!tv) return;
+          for(const f in av){ if(!BCAST_SKIP_VOICE.has(f) && av[f] !== bv[f]) tv[f] = bcastField(f, tv[f], bv[f], av[f]); }
+        });
+        continue;
+      }
+      if(after[k] !== before[k]) target[k] = bcastField(k, target[k], before[k], after[k]);
+    }
+  }
+
+  // Writeback: mirror the live app state into the active slot + refresh just that chip (called on
+  // every edit via onStateEdit). Guarded so it no-ops with no active slot or during a load/step.
+  function seqCaptureActive(){
+    if(seq.active<0 || seq.active>=seq.slots.length) return;
+    const before = seq.slots[seq.active], after = readSnapshot();
+    seq.slots[seq.active] = after;
+    const el = seqbarEl.querySelector(`.slot[data-i="${seq.active}"]`);
+    if(el){
+      el.querySelector(".stack").innerHTML = slotChipHTML(after);
+      el.querySelector(".cname").textContent = chordNameOf(after);
+    }
+    // fan the same change out to the other selected chords (timbre/expression only, so their chips,
+    // which show voicing + chord name, don't change — no chip refresh needed)
+    if(seq.sel.size) for(const j of seq.sel){ if(j!==seq.active && j>=0 && j<seq.slots.length) broadcastDelta(seq.slots[j], before, after); }
+    updateEditor();   // keep the editor's "Chord N · <name>" title in step with in-editor changes
+    scheduleAutosave();
+  }
+
+  // ---- tap-to-step (chords no longer reorder — a horizontal drag scrolls the bar natively, since
+  // .slot is touch-action:pan-x; a real tap fires click, a scroll gesture does not, so they never fight).
+  seqbarEl.addEventListener("click", e=>{
+    const del=e.target.closest(".del");
+    if(del){ e.stopPropagation(); seqRemove(+del.closest(".slot").dataset.i); return; }
+    if(e.target.closest(".seqadd")){ seqAdd(); return; }
+    const slot=e.target.closest(".slot"); if(!slot) return;
+    const i=+slot.dataset.i;
+    if(e.metaKey||e.ctrlKey){ toggleSelExtra(i); return; }        // add/remove this chord from the broadcast set
+    if(e.shiftKey && seq.active>=0){ selectRangeTo(i); return; }  // extend the set as a range from the anchor
+    seqStep(i);                                                   // plain click: collapse the set + step
+  });
+
+  // ---- the sequence document: share links + localStorage autosave ----
+  const seqDoc    = () => ({ app:SEQ_DOC, v:SCHEMA_VERSION, active:seq.active, slots:seq.slots });
+  const seqToJSON = () => JSON.stringify(seqDoc(), null, 2);
+  let autosaveTimer=null;
+  const scheduleAutosave = () => { clearTimeout(autosaveTimer); autosaveTimer=setTimeout(saveLS,400); };
+  function saveLS(){ try{ localStorage.setItem(SEQ_LS_KEY, seqToJSON()); }catch(_){} }
+  function loadDoc(obj){
+    if(!obj || !Array.isArray(obj.slots)) throw new Error("not a sequence document");
+    seq.sel.clear();
+    seq.slots = obj.slots.map(s => normalizeSnapshot(s, appDefaults()));
+    seq.active = Number.isInteger(obj.active) ? clamp(obj.active,-1,seq.slots.length-1) : (seq.slots.length?0:-1);
+    renderSeq();
+    if(seq.active>=0){ stepGlide=readGlide(); try{ applySnapshot(seq.slots[seq.active]); } finally{ stepGlide=null; } }
+    scheduleAutosave();
+  }
+  function restoreLS(){
+    let raw; try{ raw=localStorage.getItem(SEQ_LS_KEY); }catch(_){ return; }
+    if(raw){ try{ loadDoc(JSON.parse(raw)); }catch(_){ /* corrupt save → ignore */ } }
+  }
+  // First-run seed: one chord, so the app is never in a dead (nothing-to-play) state. V7 in B♭ —
+  // key center B♭3, chord root on scale-degree 5, Dom7, root position (the quintessential ring chord).
+  function seedDefault(){
+    state.keyMidi = 58; state.keyFreq = midiToFreq(58); state.bendCents = 0;   // B♭3
+    state.rootIdx = 7;                                                          // scale degree "5"
+    const dom7 = CHORDS.findIndex(c=>c.name==="Dom7"); state.chordIdx = dom7<0 ? 1 : dom7;
+    drawKeyDial(); drawRootDial(); recomputeChord(); markSel(chordsEl, state.chordIdx);
+    seq.slots = [ readSnapshot() ]; seq.active = 0;
+    renderSeq();
+  }
+
+  // ---- import a Great Tags plain-text export as a sequence ------------------------------------
+  // Parsing + chord detection are pure (see #region tagimport). Here we turn each detected chord into
+  // a full snapshot: default timbre everywhere (the user tunes/ring-maxes later), the tag's key, and a
+  // close, register-centered voicing that keeps each part on the chord tone it actually sang.
+  function keyNameToMidi(name){
+    if(!name) return 58;                                       // fall back to B♭3
+    const base = {C:0,D:2,E:4,F:5,G:7,A:9,B:11}[name[0].toUpperCase()];
+    if(base==null) return 58;
+    let pc = base; const acc = name.slice(1);
+    if(acc==="#"||acc==="♯") pc++; else if(acc==="b"||acc==="♭") pc--;
+    return 48 + (((pc%12)+12)%12);                             // octave 3, matching the seed's B♭3
+  }
+  // Reconstruct the VERBATIM octave of every voice as absolute MIDI. The plaintext gives only scale
+  // degrees + octave arrows (↑/↓), so the register is implicit: seed the first chord as a close, no-crossing
+  // stack (Bass<Bari<Lead<Tenor) centered near the key, then move each voice to the nearest note of its next
+  // pitch class, applying any arrow as an octave override. Returns per chord [bass,bari,lead,tenor] MIDIs.
+  function reconstructMidis(chords, keyMidi){
+    const V = [[],[],[],[]];                                   // per tag voice (0=T,1=L,2=Ba,3=Bs)
+    const p0 = chords[0].parts;
+    let bs = keyMidi + p0[3];
+    let ba = keyMidi + p0[2]; while(ba < bs) ba += 12;
+    let ld = keyMidi + p0[1]; while(ld < ba) ld += 12;
+    let tn = keyMidi + p0[0]; while(tn < ld) tn += 12;
+    const shift = -12*Math.round(((bs+ba+ld+tn)/4 - keyMidi)/12);   // center the quartet near the key
+    bs+=shift; ba+=shift; ld+=shift; tn+=shift;
+    const prev = [tn, ld, ba, bs];                            // tag-voice order T,L,Ba,Bs
+    V[0].push(tn); V[1].push(ld); V[2].push(ba); V[3].push(bs);
+    for(let i=1;i<chords.length;i++){
+      for(let v=0; v<4; v++){
+        const base = keyMidi + chords[i].parts[v];
+        let m = base + 12*Math.round((prev[v]-base)/12);      // nearest octave to the previous note
+        m += 12*chords[i].arr[v];                             // ↑/↓ arrow = octave override
+        V[v].push(m); prev[v] = m;
+      }
+    }
+    return chords.map((_,i)=>[V[3][i], V[2][i], V[1][i], V[0][i]]);   // → app order bass..tenor
+  }
+  // Turn per-part absolute MIDIs into the app's {tone, octave} voicing for a detected chord.
+  function voicingFromMidis(root, chord, midis, keyMidi){
+    const rootRatio = rval(DEGREES[root].r);
+    const absPcs = CHORDS[chord].r.map(t => octRed(rootRatio * rval(t)));
+    const tonePC = ti => (((Math.round(12*Math.log2(absPcs[ti]))%12)+12)%12);
+    return midis.map(m => {
+      const pc = (((m - keyMidi)%12)+12)%12;
+      let bi=0, bd=99;
+      CHORDS[chord].r.forEach((_,ti)=>{ const d=Math.abs(((tonePC(ti)-pc+18)%12)-6); if(d<bd){ bd=d; bi=ti; } });
+      return [bi, Math.round((m - keyMidi)/12 - Math.log2(absPcs[bi]))];
+    });
+  }
+  function importTagText(text){
+    const parsed = parseTag(text);
+    if(!parsed.chords.length) return { ok:false, msg:"No chords found — paste a Great Tags plain-text export.", warnings:parsed.warnings };
+    const keyMidi = keyNameToMidi(parsed.key), keyFreq = midiToFreq(keyMidi);
+    const midis = reconstructMidis(parsed.chords, keyMidi);
+    const D = appDefaults();
+    let approx = 0;
+    seq.slots = parsed.chords.map((ch,i) => {
+      const det = detectChord(ch.parts, musicTables);
+      if(!det.covers) approx++;                                // only count notes we couldn't represent at all
+      return normalizeSnapshot({ key:keyFreq, root:det.root, chord:det.chord,
+                                 voicing:voicingFromMidis(det.root, det.chord, midis[i], keyMidi) }, D);
+    });
+    seq.active = 0;
+    renderSeq();
+    stepGlide = readGlide(); try{ applySnapshot(seq.slots[0]); } finally{ stepGlide = null; }
+    drawKeyDial(); drawRootDial();
+    scheduleAutosave();
+    return { ok:true, count:seq.slots.length, approx, key:parsed.key||"?", warnings:parsed.warnings };
+  }
+
+  // Copy to clipboard, robust on a bare file:// open (not a secure context, so navigator.clipboard is
+  // unavailable there → fall back to a throwaway <textarea> + execCommand).
+  async function copyText(txt){
+    try{ if(navigator.clipboard && window.isSecureContext){ await navigator.clipboard.writeText(txt); return true; } }catch(_){}
+    try{
+      const ta=document.createElement("textarea"); ta.value=txt;
+      ta.style.cssText="position:fixed;top:0;left:0;opacity:0"; document.body.appendChild(ta);
+      ta.focus(); ta.select(); const ok=document.execCommand("copy"); ta.remove(); return ok;
+    }catch(_){ return false; }
+  }
+  document.getElementById("seqadd-top").addEventListener("click", seqAdd);
+  // Clear the whole sequence → empty state (Play disabled, lattice grays out). Confirm first since
+  // there's no undo and the autosave will overwrite the cleared sequence.
+  document.getElementById("seqclear").addEventListener("click", ()=>{
+    if(seq.slots.length && !confirm("Clear all chords from the sequence?")) return;
+    seq.slots = []; seq.active = -1; seq.sel.clear();
+    if(state.playing) stopAll();
+    renderSeq(); scheduleAutosave();
+  });
+  document.getElementById("selall").addEventListener("click", toggleSelectAll);
+  glideEl.addEventListener("input", ()=>{ glideValEl.textContent = fmtGlide(readGlide()); });
+  // ← / → step through the sequence; SPACE steps forward too (repeatedly tapping walks the chords,
+  // wrapping at the end) — this replaces spacebar play/pause. A focused form control keeps the keys.
+  window.addEventListener("keydown", e=>{
+    const isSpace = e.key===" " || e.code==="Space";
+    if(e.key!=="ArrowLeft" && e.key!=="ArrowRight" && !isSpace) return;
+    const tag = document.activeElement && document.activeElement.tagName;
+    if(tag==="INPUT" || tag==="TEXTAREA" || tag==="SELECT") return;
+    if(!seq.slots.length){ if(isSpace) e.preventDefault(); return; }
+    e.preventDefault();                                   // also stops space from clicking a focused button / scrolling
+    if(isSpace) seqAdvance();                             // forward, cyclic
+    else{ const cur = seq.active<0 ? 0 : seq.active; seqStep(clamp(cur + (e.key==="ArrowRight"?1:-1), 0, seq.slots.length-1)); }
+  });
+  document.getElementById("seqnext").addEventListener("click", seqAdvance);
+
+  // ---- Share links: the sequence is packed (deflate) into a link; opening a link loads it. ----
+  // Set SHARE_WORKER to the deployed Worker origin (e.g. "https://quartet-share.<sub>.workers.dev") to
+  // get short hosted #id= links. While it's empty, Share still works offline by inlining the whole state
+  // into a self-contained #s= link (fine for small/medium sequences; too-long ones say so).
+  const SHARE_WORKER = "https://quartet-share.henrylhale.workers.dev";
+
+  // --- byte helpers: deflate-raw via native streams (version byte: 1=deflated, 0=raw utf8 fallback) ---
+  const concatBytes = (a,b) => { const o=new Uint8Array(a.length+b.length); o.set(a,0); o.set(b,a.length); return o; };
+  async function pipeBytes(bytes, stream){ return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer()); }
+  async function packState(){
+    const body = new TextEncoder().encode(JSON.stringify(seqDoc()));
+    if(typeof CompressionStream === "function") return concatBytes(Uint8Array.of(1), await pipeBytes(body, new CompressionStream("deflate-raw")));
+    return concatBytes(Uint8Array.of(0), body);
+  }
+  async function unpackState(bytes){
+    const ver = bytes[0], rest = bytes.subarray(1);
+    let json;
+    if(ver === 1){
+      if(typeof DecompressionStream !== "function") throw new Error("compression unsupported here");
+      json = new TextDecoder().decode(await pipeBytes(rest, new DecompressionStream("deflate-raw")));
+    } else { json = new TextDecoder().decode(rest); }
+    return JSON.parse(json);
+  }
+  function b64urlEnc(bytes){ let s=""; const CH=0x8000; for(let i=0;i<bytes.length;i+=CH) s+=String.fromCharCode.apply(null, bytes.subarray(i,i+CH)); return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
+  function b64urlDec(str){ str=str.replace(/-/g,"+").replace(/_/g,"/"); const bin=atob(str); const u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i); return u; }
+
+  // --- IndexedDB cache (id -> bytes). Cache only: eviction is lossless, we just re-fetch by id. ---
+  let _idb=null;
+  function idb(){ if(_idb) return _idb; _idb=new Promise((res,rej)=>{ let q; try{ q=indexedDB.open("quartet-share",1); }catch(e){ return rej(e); } q.onupgradeneeded=()=>q.result.createObjectStore("blobs"); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error); }); return _idb; }
+  async function idbGet(id){ try{ const db=await idb(); return await new Promise((res,rej)=>{ const r=db.transaction("blobs").objectStore("blobs").get(id); r.onsuccess=()=>res(r.result?new Uint8Array(r.result):null); r.onerror=()=>rej(r.error); }); }catch(_){ return null; } }
+  async function idbPut(id,bytes){ try{ const db=await idb(); const buf=bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset+bytes.byteLength); await new Promise((res,rej)=>{ const tx=db.transaction("blobs","readwrite"); tx.objectStore("blobs").put(buf,id); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); }catch(_){} }
+
+  // Base for a link: the live URL when served over http(s) (so it self-references), else the hosted app.
+  const shareBase = () => (location.protocol==="http:"||location.protocol==="https:") ? location.href.split("#")[0] : "https://henryhale.com/tuning";
+  async function makeShareLink(){
+    const bytes = await packState();
+    if(SHARE_WORKER){
+      const r = await fetch(SHARE_WORKER + "/s", { method:"POST", headers:{"content-type":"application/octet-stream"}, body: bytes });
+      if(!r.ok) throw new Error("share-server");
+      const { id } = await r.json();
+      idbPut(id, bytes);                                          // cache our own share so re-opening is instant
+      return shareBase() + "#id=" + id;
+    }
+    const link = shareBase() + "#s=" + b64urlEnc(bytes);          // no backend: inline the whole state
+    if(link.length > 1900) throw new RangeError("too-long");      // past a comfortable Discord-message length
+    return link;
+  }
+
+  const shareWin = document.getElementById("sharewin");
+  const shareBtn = document.getElementById("sharetoggle");
+  const shareLinkEl = document.getElementById("sharelink");
+  const shareMsgEl = document.getElementById("sharemsg");
+  let shareMsgTimer=null;
+  function showShareMsg(text, ok){ shareMsgEl.textContent=text; shareMsgEl.style.color = ok?"#2f7d45":"#c0473a"; clearTimeout(shareMsgTimer); shareMsgTimer=setTimeout(()=>{ shareMsgEl.textContent=""; }, 3200); }
+  shareBtn.addEventListener("click", async ()=>{
+    if(!shareWin.hidden){ shareWin.hidden = true; shareBtn.classList.remove("on"); return; }   // toggle closed
+    shareWin.hidden = false; shareBtn.classList.add("on"); shareLinkEl.value = "";
+    if(!seq.slots.length){ showShareMsg("Add a chord first", false); return; }
+    showShareMsg("Creating link…", true);
+    try{
+      const link = await makeShareLink();
+      shareLinkEl.value = link; shareLinkEl.focus(); shareLinkEl.select();
+      showShareMsg(await copyText(link) ? "Link copied ✓" : "Link ready — tap Copy", true);
+    }catch(e){
+      showShareMsg(e instanceof RangeError ? "Too long to link — hosting needed for big sequences" : "Couldn’t reach the share server", false);
+    }
+  });
+  document.getElementById("sharecopy").addEventListener("click", async ()=>{
+    if(!shareLinkEl.value){ showShareMsg("Nothing to copy yet", false); return; }
+    const ok = await copyText(shareLinkEl.value);
+    showShareMsg(ok ? "Link copied ✓" : "Copy failed", ok);
+  });
+
+  // On load, a #id=/#s= hash means we were opened from a share link → fetch/decode → load, then clear it.
+  async function loadFromHash(){
+    const h = location.hash || "";
+    const mId = h.match(/^#id=([A-Za-z0-9_-]+)$/), mS = h.match(/^#s=(.+)$/);
+    if(!mId && !mS) return false;
+    try{
+      let bytes;
+      if(mId){
+        const id = mId[1];
+        bytes = await idbGet(id);
+        if(!bytes){
+          if(!SHARE_WORKER) throw new Error("no-worker");
+          const r = await fetch(SHARE_WORKER + "/s/" + encodeURIComponent(id));
+          if(!r.ok) throw new Error("not-found");
+          bytes = new Uint8Array(await r.arrayBuffer()); idbPut(id, bytes);
+        }
+      } else { bytes = b64urlDec(mS[1]); }
+      loadDoc(await unpackState(bytes));
+    }catch(e){
+      shareWin.hidden = false; shareBtn.classList.add("on"); shareLinkEl.value = "";
+      showShareMsg("This link could not be loaded", false);
+      return false;
+    }
+    // Loaded OK — drop the hash so later edits aren't "the shared version". replaceState throws on some
+    // file:// origins, so guard it and fall back; a clearing failure must not report a load failure.
+    try{ history.replaceState(null, "", location.pathname + location.search); }
+    catch(_){ try{ location.hash = ""; }catch(__){} }
+    return true;
+  }
+
+  // ---- the tag-import window: paste a Great Tags text export, Import → builds the sequence ----
+  const tagWin = document.getElementById("tagwin");
+  const tagToggleBtn = document.getElementById("tagtoggle");
+  const tagBoxEl = document.getElementById("tagbox");
+  const tagMsgEl = document.getElementById("tagmsg");
+  tagToggleBtn.addEventListener("click", ()=>{
+    tagWin.hidden = !tagWin.hidden;
+    tagToggleBtn.classList.toggle("on", !tagWin.hidden);
+  });
+  document.getElementById("tagpaste").addEventListener("click", async ()=>{
+    try{
+      if(!navigator.clipboard || !navigator.clipboard.readText) throw 0;
+      tagBoxEl.value = await navigator.clipboard.readText();
+    }catch(_){ tagBoxEl.focus(); tagBoxEl.select(); tagMsgEl.textContent = "Press ⌘V / Ctrl-V, then Import →"; tagMsgEl.style.color = "var(--muted)"; }
+  });
+  const tagWarnEl = document.getElementById("tagwarn");
+  const esc = s => s.replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+  document.getElementById("tagload").addEventListener("click", ()=>{
+    const r = importTagText(tagBoxEl.value);
+    tagMsgEl.textContent = r.ok
+      ? `Imported ${r.count} chords in ${r.key}${r.approx ? ` · ${r.approx} approximated` : ""}.`
+      : r.msg;
+    tagMsgEl.style.color = r.ok ? "#2f7d45" : "#c0473a";
+    const warns = r.warnings || [];
+    tagWarnEl.hidden = warns.length===0;
+    tagWarnEl.innerHTML = warns.length
+      ? `<b>${warns.length} line${warns.length>1?"s":""} didn't parse cleanly</b>` + warns.map(w=>esc(w)).join("<br>")
+      : "";
+  });
 
   // ============================================================ init
   for(let k=0;k<4;k++) buildVoice(k);
@@ -1408,8 +2092,16 @@
   drawRootDial();
   recomputeChord();
   drawSharedChart();
-  // restore a shared/saved state if present, then arm URL syncing (so init itself never stamps a URL)
-  loadFromUrl().finally(() => { ready = true; });
+  // Restore the autosaved sequence (stepping to its active chord), or seed a first-run chord if there
+  // is none, then arm state syncing so init itself never re-triggers a save. All persistence is the
+  // JSON doc + this localStorage autosave.
+  glideValEl.textContent = fmtGlide(readGlide());
+  restoreLS();
+  const openedFromShare = /^#(id|s)=/.test(location.hash || "");
+  if(!seq.slots.length && !openedFromShare) seedDefault();   // don't seed over an incoming shared state
+  renderSeq();
+  ready = true;
+  if(openedFromShare) loadFromHash();                        // fetch/decode the shared sequence, then take over
 })();
 </script>
 </body>
