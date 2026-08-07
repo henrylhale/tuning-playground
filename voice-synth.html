@@ -80,16 +80,13 @@
      the dial itself is then sized from the row's measured height in fitDial(). */
   .dialrow{display:flex; gap:8px; flex:1 1 0; min-height:0; align-items:stretch}
   .dialbox{flex:0 0 auto; display:flex; align-items:center; min-height:0}
-  .dialside{flex:1; min-width:0; display:flex; flex-direction:column; gap:5px; min-height:0;
-    justify-content:space-between}
+  .dialside{flex:0 0 84px; display:flex; flex-direction:column; gap:5px; justify-content:center}
   /* the UA rule that hides a closed details' content is author-overridable, and .stack's
      display:flex was winning — say it explicitly */
   button.play.off{background:linear-gradient(180deg,#bda887,#9d8760);color:#5c4a2a;
     box-shadow:inset 0 2px 4px rgba(60,40,15,.45)}
-  .btnrow{display:flex;gap:5px}
-  .btnrow > div{flex:1 1 0;min-width:0}
-  .btnrow button{width:100%}
   .adv:not([open]) > *:not(summary){display:none}
+  .adv{margin:1px 0 2px}
   .adv > summary{font-size:9px;color:var(--muted);cursor:pointer;letter-spacing:.4px;
     text-transform:uppercase;font-weight:700;list-style-position:inside}
   .adv > summary:hover{color:var(--ink)}
@@ -164,20 +161,12 @@
           <div class="dialbox">
             <svg id="fund" class="dial" viewBox="0 0 340 340" preserveAspectRatio="xMidYMid meet"
                  role="slider" aria-label="Fundamental"></svg></div>
+          <div class="dialbox">
+            <svg id="gain" class="dial" viewBox="0 0 340 340" preserveAspectRatio="xMidYMid meet"
+                 role="slider" aria-label="Gain"></svg></div>
           <div class="dialside">
-            <div class="btnrow">
-              <div><button id="play" class="play">▶ Start</button></div>
-              <div><button id="filt" class="play">Filter</button></div>
-            </div>
-            <div class="stack">
-              <div class="hd"><label for="vol">Gain</label><span class="v" id="volval"></span></div>
-              <input id="vol" type="range" min="0" max="1" step="0.01" value="0.45"></div>
-            <details class="adv">
-              <summary>Singer: AES cluster target</summary>
-              <div class="stack">
-                <div class="hd"><label for="fcluster">Cluster</label><span class="v" id="fcval"></span></div>
-                <input id="fcluster" type="range" min="2400" max="3400" step="10" value="2900"></div>
-            </details>
+            <button id="play" class="play">▶ Start</button>
+            <button id="filt" class="play">Filter</button>
           </div>
         </div>
       </div>
@@ -188,6 +177,12 @@
           <div id="figs-source"></div>
           <h3>Filter figures</h3>
           <div id="figs-filter"></div>
+          <details class="adv">
+            <summary>Singer: AES cluster target</summary>
+            <div class="stack">
+              <div class="hd"><label for="fcluster">Cluster</label><span class="v" id="fcval"></span></div>
+              <input id="fcluster" type="range" min="2400" max="3400" step="10" value="2900"></div>
+          </details>
         <h3>Unmodeled figures </h3>
         <div class="absent">
           <div><b>False vocal folds</b></div>
@@ -634,7 +629,58 @@
   });
   window.addEventListener("pointerup", () => { dialDrag = null; });
   window.addEventListener("pointercancel", () => { dialDrag = null; });
+  // ---------- gain dial: one wheel, 300° of sweep with the gap at the bottom ----------
+  // Same body and the same size as the pitch dial, because it is the same kind of object: a
+  // continuous quantity you set by turning something. Absolute angle rather than accumulated
+  // rotation, so the pointer goes where you put it; the bottom gap splits at ±180°, which is
+  // what keeps a drag through it from teleporting between the two ends.
+  const GAIN_SWEEP = 150;                       // degrees either side of top
+  const gainSvg = document.getElementById("gain");
+  let gain = 0.45;
+
+  function drawGainDial() {
+    const ang = -GAIN_SWEEP + gain * 2 * GAIN_SWEEP;
+    let s = "";
+    s += `<circle cx="${DCX}" cy="${DCY}" r="${R_OUT_HI}" fill="#241a0d" stroke="#6b5128" stroke-width="2"/>`;
+    s += `<circle cx="${DCX}" cy="${DCY}" r="${R_OUT_LO}" fill="#1b130a" stroke="#4a3820" stroke-width="1.5"/>`;
+    for (let i = 0; i <= 20; i++) {
+      const t = i / 20, a = -GAIN_SWEEP + t * 2 * GAIN_SWEEP;
+      const big = i % 5 === 0, lit = t <= gain + 1e-9;
+      const p1 = DP(a, R_OUT_HI - 3), p2 = DP(a, R_OUT_HI - (big ? 17 : 10));
+      s += `<line x1="${p1[0].toFixed(1)}" y1="${p1[1].toFixed(1)}" x2="${p2[0].toFixed(1)}" y2="${p2[1].toFixed(1)}" stroke="${lit ? "#e26a10" : "#6b5128"}" stroke-width="${big ? 3 : 1.5}"/>`;
+    }
+    s += tri(ang, R_OUT_HI - 5, R_OUT_LO - 10, 9, "#e26a10");
+    s += `<circle cx="${DCX}" cy="${DCY}" r="72" fill="#0e0904" stroke="#6b5128" stroke-width="2"/>`;
+    s += `<text x="${DCX}" y="${DCY + 2}" text-anchor="middle" font-size="42" font-weight="800" fill="#ffce87">${gain.toFixed(2)}</text>`;
+    s += `<text x="${DCX}" y="${DCY + 28}" text-anchor="middle" font-size="16" font-weight="600" fill="#c9b78f" letter-spacing="2">GAIN</text>`;
+    gainSvg.innerHTML = s;
+  }
+
+  function commitGain(v) {
+    gain = clamp(v, 0, 1);
+    if (playing && ctx) master.gain.setTargetAtTime(gain, ctx.currentTime, 0.01);
+    drawGainDial();
+  }
+  function gainFromEvent(e) {
+    const p = svgPoint(gainSvg, e.clientX, e.clientY);
+    const ang = clamp(Math.atan2(p.x - DCX, -(p.y - DCY)) * 180 / Math.PI, -GAIN_SWEEP, GAIN_SWEEP);
+    return (ang + GAIN_SWEEP) / (2 * GAIN_SWEEP);
+  }
+  let gainDrag = false;
+  gainSvg.addEventListener("pointerdown", e => {
+    gainDrag = true;
+    try { gainSvg.setPointerCapture(e.pointerId); } catch (_) {}
+    commitGain(gainFromEvent(e));
+    e.preventDefault();
+  });
+  gainSvg.addEventListener("pointermove", e => { if (gainDrag) commitGain(gainFromEvent(e)); });
+  const endGainDrag = () => { gainDrag = false; };
+  gainSvg.addEventListener("pointerup", endGainDrag);
+  gainSvg.addEventListener("pointercancel", endGainDrag);
+  window.addEventListener("pointerup", endGainDrag);
+
   window.__setMidi = m => commitPitch(m);          // DEV-ONLY: test hook for the browser check
+  window.__setGain = v => commitGain(v);           // DEV-ONLY
   window.vowelPeek = () => vowel;                  // DEV-ONLY: test hook
   window.__redrawMaster = () => masterArgs && drawMaster(...masterArgs);   // DEV-ONLY: test hook
 
@@ -643,9 +689,10 @@
     { id: "body_cover",     col: "source", nm: "Vocal fold cover", lo: "thick",  hi: "thin",      def: 0.0 },
     { id: "thyroid_tilt",   col: "source", nm: "Thyroid tilt",   lo: "vertical", hi: "tilted",    def: 0.0 },
     { id: "larynx_height",  col: "filter", nm: "Larynx height",  lo: "low",      hi: "high",      def: 0.5 },
-    { id: "twang",          col: "filter", nm: "AES / twang",    lo: "wide",     hi: "narrow",    def: 0.2 },
     { id: "velum",          col: "filter", nm: "Velum (nasality)", lo: "raised", hi: "lowered",   def: 0.0 },
     { id: "lip_protrusion", col: "filter", nm: "Lip protrusion", lo: "spread",   hi: "protruded", def: 0.0 },
+    // last in its section so the cluster target it drives can sit directly underneath
+    { id: "twang",          col: "filter", nm: "AES / twang",    lo: "wide",     hi: "narrow",    def: 0.2 },
   ];
   const fig = {};
   const figInputs = {}, figVals = {};
@@ -767,7 +814,6 @@
   const JITTER_CENTS = 4;                 // random cycle-drift pitch wobble (± cents)
   const SHIMMER = 0.04;                   // random amplitude wobble (± fraction)
   const playBtn = document.getElementById("play");
-  const volEl = document.getElementById("vol");
   // Glottal effort is not a control. Eₑ is a fixed nominal drive and twang is the only thing that
   // moves it, so loudness is a consequence of the figures rather than something set alongside
   // them. Everything the source does still scales off this one constant.
@@ -898,7 +944,7 @@
     const now = ctx.currentTime;
     const j = (Math.random() * 2 - 1) * JITTER_CENTS;
     osc.detune.setTargetAtTime(j, now, 0.05);
-    const v = parseFloat(volEl.value) * (1 + (Math.random() * 2 - 1) * SHIMMER);
+    const v = gain * (1 + (Math.random() * 2 - 1) * SHIMMER);
     master.gain.setTargetAtTime(Math.max(0, v), now, 0.06);
   }
 
@@ -924,7 +970,7 @@
     srcGain.gain.linearRampToValueAtTime(eeEffective(), now + FADE_MS / 1000);
 
     master.gain.cancelScheduledValues(now);
-    master.gain.setValueAtTime(parseFloat(volEl.value), now);
+    master.gain.setValueAtTime(gain, now);
 
     humanTimer = setInterval(tickHuman, 110);
     startScope();
@@ -962,9 +1008,15 @@
   const CANVASES = [tractCv, lfCv, scopeCv];
 
   const dialRow = document.getElementById("dialrow");
+  const dialSide = dialRow.querySelector(".dialside");
   function fitDial() {
-    const h = dialRow.clientHeight;
-    if (h > 0) dialSvg.style.width = clamp(Math.round(h), 92, 210) + "px";
+    const h = dialRow.clientHeight, w = dialRow.clientWidth;
+    if (h <= 0 || w <= 0) return;
+    // two dials abreast: height still leads, but the row's width is now the binding constraint
+    // at tall viewports, and overflowing it would push the buttons off the panel
+    const px = clamp(Math.round(Math.min(h, (w - dialSide.offsetWidth - 24) / 2)), 68, 200);
+    dialSvg.style.width = px + "px";
+    gainSvg.style.width = px + "px";
   }
 
   function fitCanvases() {
@@ -1343,6 +1395,7 @@
   function drawAll() {
     fitCanvases();
     drawDial();
+    drawGainDial();
     drawChart();
     drawModelSpectra();
     updateSideLabels();
@@ -1413,20 +1466,14 @@
   // ---------- remaining controls ----------
   const f3El = document.getElementById("f3t"), f3ValEl = document.getElementById("f3val");
   const fcEl = document.getElementById("fcluster"), fcValEl = document.getElementById("fcval");
-  const volValEl = document.getElementById("volval");
 
   function updateSideLabels() {
     f3ValEl.textContent = `${Math.round(vowel.F3)}${tract.w3 < 1 ? " ʳ" : ""}`;
     fcValEl.textContent = `${singer.Fcluster}`;
-    volValEl.textContent = parseFloat(volEl.value).toFixed(2);
   }
 
   f3El.addEventListener("input", () => { vowel.F3 = parseFloat(f3El.value); apply(); });
   fcEl.addEventListener("input", () => { singer.Fcluster = parseFloat(fcEl.value); apply(); });
-  volEl.addEventListener("input", () => {
-    if (playing && ctx) master.gain.setTargetAtTime(parseFloat(volEl.value), ctx.currentTime, 0.01);
-    updateSideLabels();
-  });
 
   playBtn.addEventListener("click", () => playing ? stop() : start());
 
