@@ -68,20 +68,17 @@
     padding:2px 4px; font-size:10.5px; font-weight:600; font-family:inherit;
   }
   input[type=range]{width:100%; height:10px; accent-color:var(--accent); margin:0}
-  button.play,button.wave{
+  button.play{
     appearance:none; cursor:pointer; color:var(--ink); font-family:inherit; font-weight:700;
     background:linear-gradient(180deg,var(--keycap-hi),var(--keycap) 55%,var(--keycap-edge));
-    border:1px solid var(--bezel-lo); border-radius:3px;
+    border:1px solid var(--bezel-lo); border-radius:3px; padding:4px 10px; font-size:11px;
     box-shadow:inset 0 1px 0 rgba(255,255,255,.6), 0 1px 0 var(--keycap-edge);
   }
-  button.play{padding:4px 10px; font-size:11px}
-  button.wave{padding:2px 6px; font-size:10px; color:var(--muted)}
-  button.play:hover,button.wave:hover{filter:brightness(1.05)}
-  button.play.on,button.wave.on{
+  button.play:hover{filter:brightness(1.05)}
+  button.play.on{
     background:linear-gradient(180deg,#ffbf6f,var(--accent) 60%,var(--accent-deep));
     color:#2a1400; border-color:var(--accent-deep);
   }
-  button.wave[disabled]{opacity:.42; cursor:not-allowed}
 
   svg{display:block;width:100%;height:auto;touch-action:none;user-select:none}
   .screen{background:var(--display); border-radius:2px;
@@ -95,6 +92,7 @@
   .dial text{user-select:none;-webkit-user-select:none}
   .ctlrow{display:flex;align-items:center;gap:5px;min-width:0}
   .ctlrow > label{flex:0 0 44px}
+  .ctlrow > label.wide{flex:0 0 auto}
   .ctlrow.tight{flex:1}  .ctlrow.tight > label{flex:0 0 auto}
   .ctlrow > input,.ctlrow > select{flex:1 1 auto;min-width:0}
   .ctlrow > .v{flex:0 0 auto;font-size:9.5px;color:var(--ink);text-align:right;
@@ -104,12 +102,11 @@
   .figs{display:flex;flex-direction:column;gap:2px}
   .figs h3{margin:2px 0 0;font-size:9px;letter-spacing:1px;text-transform:uppercase;
     color:var(--muted);font-weight:800;border-bottom:1px solid rgba(143,118,73,.4)}
-  .fig{display:grid;grid-template-columns:74px 30px 1fr 40px 24px;align-items:center;gap:4px}
+  .fig{display:grid;grid-template-columns:94px 30px 1fr 40px 24px;align-items:center;gap:4px}
   .fig > .nm{font-size:10px;font-weight:600}
   .fig > .e{font-size:7.5px;color:var(--muted);line-height:1;white-space:nowrap;overflow:hidden}
   .fig > .e.lo{text-align:right}
   .fig > .val{font-size:9.5px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
-  .presets{display:flex;gap:3px;flex-wrap:wrap;align-items:center}
 
   /* ---- derived readout ---- */
   .readout{display:grid;grid-template-columns:repeat(4,1fr);gap:1px 6px;
@@ -140,7 +137,7 @@
   /* what the model leaves out — greyed, and deliberately always on screen */
   .absent{display:grid;grid-template-columns:1fr 1fr;gap:0 10px;margin-top:1px}
   .absent > div{font-size:8.5px;line-height:1.25;color:#7a6742;
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:help}
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .absent > div > b{font-weight:700;color:#6b5836}
 </style>
 
@@ -203,7 +200,6 @@
           <div class="u ctlrow" data-n="fcluster"><label for="fcluster">Cluster</label>
             <input id="fcluster" type="range" min="2400" max="3400" step="10" value="2900">
             <span class="v" id="fcval"></span></div>
-          <div class="u" data-n="presets"><div class="presets" id="presets"></div></div>
           </div>
         </div>
       </div>
@@ -217,13 +213,13 @@
           <div id="figs-filter"></div>
         <h3>Unmodeled figures </h3>
         <div class="u absent" data-n="absent">
-          <div title="Assumed permanently retracted — the trained state. Its interesting outputs (subharmonics, biphonation, regime bifurcation) are chaotic and need a second coupled mass-spring oscillator above the source, not a jitter parameter."><b>False vocal folds</b></div>
-          <div title="Not a signal parameter. Unanchored singing shows characteristic couplings — f0 rising with subglottal pressure, larynx height drifting with pitch, tract collapse under load — and anchoring is the reduction of those couplings toward zero."><b>Torso anchoring</b></div>
-          <div title="Same as torso anchoring: a constraint on other parameters' trajectories, not a sound of its own. Assuming both ideal is what licenses treating every other figure as independent."><b>Head &amp; neck anchoring</b></div>
-          <div title="Set aside. It acted only through an OQ drift with pitch, measured against one global 220 Hz reference — but a reference pitch belongs to the singer, so with max(0, …) a bass never drifted at all. Restore it with F0_REF in the singer config, per part."><b>Cricoid cartilage</b></div>
-          <div title="Thick and thin are modeled. Stiff (falsetto) needs incomplete closure, a DC flow offset and aspiration noise; slack needs a nonlinear oscillator capable of period doubling."><b>Body–cover: stiff, slack</b></div>
-          <div title="Both halves of the figure are gone. It was envelope timing on Ee — glottal (3 ms, a 1.25x overshoot, a briefly depressed OQ) and simultaneous (25 ms) — with aspirate already unreachable for want of a noise channel. Notes now fade in and out over a fixed 60 ms, short enough not to be heard as an attack shape, so nothing about the start or end of a note is a claim about production."><b>Onset &amp; offset</b></div>
-          <div title="Not dropped but reparameterized: three articulators map many-to-one onto three formants, so they are collapsed into a direct (F1, F2, F3) target. The acoustic consequences are all present; which articulator produced them is not recoverable."><b>Tongue, jaw, lip aperture</b></div>
+          <div><b>False vocal folds</b></div>
+          <div><b>Torso anchoring</b></div>
+          <div><b>Head &amp; neck anchoring</b></div>
+          <div><b>Cricoid cartilage</b></div>
+          <div><b>Body–cover: stiff, slack</b></div>
+          <div><b>Onset &amp; offset</b></div>
+          <div><b>Tongue, jaw, lip aperture</b></div>
         </div>
         </div>
         <div class="u" data-n="readout"><div class="readout" id="readout"></div></div>
@@ -233,7 +229,7 @@
         <div class="u" data-n="chart">
           <svg id="chart" class="screen" viewBox="0 0 380 150" preserveAspectRatio="xMidYMid meet"></svg>
         </div>
-        <div class="u ctlrow" data-n="f3t"><label for="f3t">F3</label>
+        <div class="u ctlrow" data-n="f3t"><label for="f3t" class="wide">F3 (r-coloring)</label>
           <input id="f3t" type="range" min="1400" max="3200" step="10" value="2500">
           <span class="v" id="f3val"></span></div>
       </div>
@@ -273,7 +269,7 @@
         </div>
         <div class="u plot" data-n="tractSpec">
           <canvas id="tractSpec"></canvas>
-          <div class="cap">Filter response</div>
+          <div class="cap">Filter</div>
         </div>
         <div class="u plot" data-n="outSpec">
           <canvas id="outSpec"></canvas>
@@ -546,8 +542,10 @@
     };
   }
 
-  // Recipes, not implementations. Each must sound like its quality with no quality-specific code
-  // path anywhere. The cricoid_tilt column is gone with the figure (see above), which is what
+  // Recipes, not implementations — and with the preset buttons gone, no longer reachable from
+  // the UI at all. They stay because test/estill-map.test.mjs is their real consumer: the spec
+  // calls the six qualities test fixtures rather than presets, and what they verify is that each
+  // one lands where the pedagogy says it should with no quality-specific code path anywhere. The cricoid_tilt column is gone with the figure (see above), which is what
   // took the teeth out of the Belt fixture — it is still reachable, it just no longer has to
   // *emerge* from anything. lip_protrusion was never in the table and is left where the user put it.
   const QUALITIES = {
@@ -686,11 +684,11 @@
 
   // ---------- figure state ----------
   const FIGURE_DEFS = [
-    { id: "body_cover",     col: "source", nm: "Body–cover",     lo: "thick",    hi: "thin",      def: 0.0 },
+    { id: "body_cover",     col: "source", nm: "Vocal fold cover", lo: "thick",  hi: "thin",      def: 0.0 },
     { id: "thyroid_tilt",   col: "source", nm: "Thyroid tilt",   lo: "vertical", hi: "tilted",    def: 0.0 },
     { id: "larynx_height",  col: "filter", nm: "Larynx height",  lo: "low",      hi: "high",      def: 0.5 },
     { id: "twang",          col: "filter", nm: "AES / twang",    lo: "wide",     hi: "narrow",    def: 0.2 },
-    { id: "velum",          col: "filter", nm: "Velum",          lo: "raised",   hi: "lowered",   def: 0.0 },
+    { id: "velum",          col: "filter", nm: "Velum (nasality)", lo: "raised", hi: "lowered",   def: 0.0 },
     { id: "lip_protrusion", col: "filter", nm: "Lip protrusion", lo: "spread",   hi: "protruded", def: 0.0 },
   ];
   const fig = {};
@@ -710,12 +708,18 @@
   const COLORS = ["#e5484d", "#f2870a", "#f5cf3d", "#5dd28f", "#5b9cf2"];
   const GRAY = "#6e5a3a", GRAY_TXT = "#a98a55";
   // Drag ranges for each rail. F1–F3 move the vowel target; F4/F5 move the singer's neutrals.
+  // Only F1–F3 are draggable. F4 and F5 are the fourth and fifth quarter-wavelength resonances
+  // of the same tube as the rest — the 500/1500/2500/3500/4500 neutral series is that tube — so
+  // they are not independently settable by a singer and not independent of each other. What
+  // moves them is tract length, which is larynx_height's job, and twang, which pulls them into
+  // the cluster. Giving them a grab handle implied a parity with the vowel formants that does
+  // not exist.
   const RAILS = [
     { min: 250,  max: 900,  set: v => vowel.F1 = v },
     { min: 700,  max: 2400, set: v => vowel.F2 = v },
     { min: 1400, max: 3200, set: v => vowel.F3 = v },
-    { min: 2800, max: 4600, set: v => singer.F4 = v },
-    { min: 3600, max: 5800, set: v => singer.F5 = v },
+    { min: 2800, max: 4600 },
+    { min: 3600, max: 5800 },
   ];
   const formantOn = [true, true, true, true, true];
 
@@ -842,7 +846,10 @@
       const txt = on ? COLORS[i] : GRAY_TXT;
       const lx = freqToX(F - B / 2), mx = freqToX(F), rx = freqToX(F + B / 2), tx = freqToX(Ft);
 
-      s += `<line x1="${freqToX(RAILS[i].min)}" y1="${cy+12}" x2="${freqToX(RAILS[i].max)}" y2="${cy+12}" stroke="${col}" stroke-opacity="0.25" stroke-width="1.2" stroke-dasharray="2 3"/>`;
+      const grab = !!RAILS[i].set;
+      if (grab) {
+        s += `<line x1="${freqToX(RAILS[i].min)}" y1="${cy+12}" x2="${freqToX(RAILS[i].max)}" y2="${cy+12}" stroke="${col}" stroke-opacity="0.25" stroke-width="1.2" stroke-dasharray="2 3"/>`;
+      }
 
       s += `<g data-toggle="1" data-i="${i}" style="cursor:pointer">`;
       s += `<rect x="8" y="${cy-11}" width="38" height="22" rx="6" fill="${on ? col : '#241a0c'}" stroke="${col}" stroke-width="1.2"/>`;
@@ -856,12 +863,15 @@
       s += `<line x1="${lx}" y1="${cy-8}" x2="${lx}" y2="${cy+8}" stroke="${col}" stroke-width="1.6"/>`;
       s += `<line x1="${rx}" y1="${cy-8}" x2="${rx}" y2="${cy+8}" stroke="${col}" stroke-width="1.6"/>`;
       s += `<line x1="${mx}" y1="${cy-13}" x2="${mx}" y2="${cy+13}" stroke="${col}" stroke-width="2"/>`;
-      s += `<circle cx="${tx}" cy="${cy-15}" r="5.5" fill="#120c06" stroke="${col}" stroke-width="1.8" style="cursor:ew-resize"/>`;
+      // filled ring with a grab cursor where you can drag; a bare tick where the value is derived
+      s += grab
+        ? `<circle cx="${tx}" cy="${cy-15}" r="5.5" fill="#120c06" stroke="${col}" stroke-width="1.8" style="cursor:ew-resize"/>`
+        : `<line x1="${tx}" y1="${cy-19}" x2="${tx}" y2="${cy-11}" stroke="${col}" stroke-opacity="0.7" stroke-width="1.8"/>`;
 
       const shifted = Math.abs(Ft - F) > 2;
       s += `<text x="${X1}" y="${cy-14}" fill="${txt}" font-size="10" text-anchor="end">` +
            `${shifted ? Math.round(Ft) + "→" : ""}F=${Math.round(F)}  B=${Math.round(B)}</text>`;
-      s += `<rect data-handle="1" data-i="${i}" x="${tx-10}" y="${cy-23}" width="20" height="40" fill="transparent" style="cursor:ew-resize"/>`;
+      if (grab) s += `<rect data-handle="1" data-i="${i}" x="${tx-10}" y="${cy-23}" width="20" height="40" fill="transparent" style="cursor:ew-resize"/>`;
     }
 
     svg.innerHTML = s;
@@ -1469,26 +1479,6 @@
     }
   }
 
-  // ---------- quality fixtures ----------
-  const presetsEl = document.getElementById("presets");
-  for (const name of Object.keys(QUALITIES)) {
-    const b = document.createElement("button");
-    b.className = "wave";
-    b.textContent = name;
-    b.addEventListener("click", () => {
-      Object.assign(fig, QUALITIES[name]);
-      syncFigureInputs();
-      apply();
-    });
-    presetsEl.appendChild(b);
-  }
-  const falsetto = document.createElement("button");
-  falsetto.className = "wave";
-  falsetto.textContent = "Falsetto";
-  falsetto.disabled = true;
-  falsetto.title = "Stiff folds need incomplete closure, DC flow offset and aspiration noise — out of scope.";
-  presetsEl.appendChild(falsetto);
-
   // ---------- remaining controls ----------
   const f3El = document.getElementById("f3t"), f3ValEl = document.getElementById("f3val");
   const fcEl = document.getElementById("fcluster"), fcValEl = document.getElementById("fcval");
@@ -1555,10 +1545,8 @@
      "Master gain, the last node before the speakers. A monitoring level only — unlike effort it changes nothing about the model, and nothing measured here depends on it."],
     ["play", "Start / Stop",
      "Builds a fresh oscillator (Web Audio's are one-shot), loads the source waveform, fades in over 60 ms. That fade is not an onset — the figure is not modeled — so nothing about how a note begins here is a claim. Also where the AudioContext is created, since that needs a click."],
-    ["presets", "Quality fixtures",
-     "The six Estill qualities. Each button only assigns figure values — there is no quality-specific code anywhere. Belt is the test case."],
 
-    ["fig-body_cover", "Body–cover (thick ↔ thin)",
+    ["fig-body_cover", "Vocal fold cover (thick ↔ thin)",
      "Fold thickness. Sets OQ 0.45→0.68 and Rk 0.25→0.45, and deliberately leaves Ra alone. In panel 1: H1 vs H2 moves, the slope does not."],
     ["fig-thyroid_tilt", "Thyroid tilt (vertical ↔ tilted)",
      "Smoother fold closure, darker sound. Sets Ra 0.004→0.075 and nothing else. At full tilt the spectral knee sits near 2·f₀ at any pitch. This is \"cry\"."],
@@ -1566,10 +1554,10 @@
      "Tract length, 0.88–1.12×. Full weight on F1/F2, half on F3–F5, since the epilarynx changes length less. On the rails every bar slides away from its ring."],
     ["fig-twang", "AES / twang (wide ↔ narrow)",
      "Narrows the top of the larynx. F3/F4/F5 converge near 3 kHz and sum into one big peak — the singer's formant. F1/F2 are untouched, so it survives vowel changes, and it adds ~4.6 dB to Eₑ."],
-    ["fig-velum", "Velum (raised ↔ lowered)",
+    ["fig-velum", "Velum / nasality (raised ↔ lowered)",
      "Nasality. Two peaking filters at +9 and −9 dB start on the same frequency and cancel exactly. Raising this walks the −9 dB one up to 450 Hz, opening a notch next to F1."],
     ["fig-lip_protrusion", "Lip protrusion (spread ↔ protruded)",
-     "Rounding lengthens the tract and drops every formant by up to 5% — something F1/F2 alone cannot express. Weighted down on F1. Not in the quality presets."],
+     "Rounding lengthens the tract and drops every formant by up to 5% — something F1/F2 alone cannot express. Weighted down on F1, which is dominated by the back cavity."],
     ["fcluster", "AES cluster target",
      "Where twang pulls F3/F4/F5 to. A per-singer constant; 2.9 kHz is a male ballpark. It is the dashed blue line on the rails."],
     ["readout", "Derived source parameters",
@@ -1580,7 +1568,7 @@
      "F3 belongs to the vowel, not to twang. An American /r/ drops it to ~1570 Hz, which exempts it from the cluster, so rhotics ring less — which is why choirs de-rhoticize."],
 
     ["absent", "Not modeled",
-     "Of the thirteen figures: five modeled, two half-modeled, two collapsed into the vowel target, four set aside. Each omission is an assumption that buys the orthogonality the rest of the model rests on — on screen so that a missing effect reads as a known limit, not a bug. Hover any line for the reason."],
+     "Of the thirteen figures: five modeled, two half-modeled, two collapsed into the vowel target, four set aside. Each omission is an assumption that buys the orthogonality the rest of the model rests on — on screen so that a missing effect reads as a known limit, not a bug."],
     ["lfmode", "Manual source override",
      "Temporary. The three sliders normally follow whatever the figures worked out; touching one freezes them so you can drive the waveform directly. The source figures grey out while it is on."],
     ["lf-OQ", "OQ — open quotient",
@@ -1591,7 +1579,7 @@
      "How long closure takes, as a fraction of the period. This is the spectral tilt: the knee sits at 1/(2π·ta). Push it up and watch panel 1 fold over. It clamps if it will not fit under (1 − OQ)."],
 
     ["plot", "Resonance rails",
-     "Five log-frequency rails. Ring = what you set, bar = where the figures put it (width = bandwidth), dots = the displacement. The F1–F5 buttons mute one resonance at a time."],
+     "Five log-frequency rails. Ring = what you set, bar = where the figures put it (width = bandwidth), dots = the displacement. F1–F3 have grab rings because they are articulatory; F4 and F5 get a bare tick, since they are the same tube's higher resonances and only tract length and twang move them. The F1–F5 buttons mute one resonance at a time."],
     ["srcSpec", "Panel 1 — source spectrum",
      "The harmonics actually being played, normalised to H1 = 0 dB. Green = glottal formant, blue = tilt knee. The slope is −6 dB/oct, not −12, because this is the flow derivative."],
     ["tractSpec", "Panel 2 — tract transfer function",
