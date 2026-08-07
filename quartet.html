@@ -152,6 +152,8 @@
     padding:7px 9px 6px;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,220,150,.06),0 1px 3px rgba(0,0,0,.5);
     min-width:40px;-webkit-user-select:none;user-select:none;touch-action:pan-x}
   .slot.sel{outline:2px solid var(--accent);outline-offset:0;box-shadow:inset 0 2px 7px rgba(0,0,0,.5),0 0 11px rgba(226,106,16,.55)}
+  .slot.msel{outline:2px solid #5b8be0;outline-offset:0;box-shadow:inset 0 2px 7px rgba(0,0,0,.4),0 0 9px rgba(91,139,224,.5)}
+  .selinfo{align-self:center;font-size:11px;font-weight:700;color:#8fb0ee;white-space:nowrap}
   .slot .stack{display:flex;flex-direction:column;align-items:center;line-height:1.18}
   .slot .stack b{font-size:15px;font-weight:800;color:#f3e3bf}
   .slot .cname{font-size:9px;color:#a98a55;white-space:nowrap;max-width:64px;overflow:hidden;text-overflow:ellipsis}
@@ -226,6 +228,8 @@
     <div class="seqhd">
       <button id="seqadd-top" class="toggle">＋ Add chord</button>
       <button id="seqclear" class="toggle" title="Remove every chord from the sequence">Clear</button>
+      <button id="selall" class="toggle" title="Select every chord (then a slider edit applies to all). Ctrl/Cmd-click chords to multi-select; Shift-click for a range.">Select all</button>
+      <span id="selinfo" class="selinfo" hidden></span>
       <div class="ctl"><label>Glide</label><input id="glide" type="range" min="0" max="1.5" step="0.05" value="0"><span id="glideval" class="val">0 ms</span></div>
       <span class="grow"></span>
       <button id="tagtoggle" class="toggle" title="Import a Great Tags plain-text export as a sequence">Import tag</button>
@@ -1478,6 +1482,7 @@
     computeAbsPcs();
     applyFreqs();      // retune the sounding voices and recompute the implied fundamental
     renderVoicing();   // refresh the displayed note names / cents
+    onStateEdit();     // ET is per-chord in the snapshot → persist it (and broadcast across a selection)
   });
 
   // move-one / move-all toggle (lets touch users drag all vowels in unison without a modifier key)
@@ -1597,7 +1602,7 @@
   // seqCaptureActive(), hung off onStateEdit(). Persistence is a JSON document you copy/download/
   // upload; the sequence also autosaves to localStorage so a reload doesn't lose an unsaved progression.
   const SEQ_DOC = "quartet-seq", SEQ_LS_KEY = "quartet-seq-v1";
-  const seq = { slots: [], active: -1 };
+  const seq = { slots: [], active: -1, sel: new Set() };   // sel = EXTRA selected slots an edit broadcasts to
   const seqbarEl  = document.getElementById("seqbar");
   const chordEditorEl = document.getElementById("chordeditor");
   const glideEl   = document.getElementById("glide"), glideValEl = document.getElementById("glideval");
@@ -1616,7 +1621,7 @@
     seqbarEl.innerHTML = "";
     seq.slots.forEach((snap,i) => {
       const el = document.createElement("div");
-      el.className = "slot" + (i===seq.active ? " sel" : "");
+      el.className = "slot" + (i===seq.active ? " sel" : "") + (seq.sel.has(i) ? " msel" : "");
       el.dataset.i = i;
       el.innerHTML = `<span class="idx">${i+1}</span><div class="stack">${slotChipHTML(snap)}</div>`
                    + `<span class="cname">${chordNameOf(snap)}</span>`
@@ -1631,13 +1636,38 @@
       hint.className = "seqhint"; hint.textContent = "Add a chord to start a sequence.";
       seqbarEl.appendChild(hint);
     }
-    updateEditor(); updatePlayEnabled();
+    updateEditor(); updatePlayEnabled(); updateSelBadge();
   }
   const realSlots  = () => [...seqbarEl.querySelectorAll(".slot:not(.seqadd)")];
   function markSeqSel(){
     const boxes = realSlots();
-    boxes.forEach((b,i)=>b.classList.toggle("sel", i===seq.active));
+    boxes.forEach((b,i)=>{ b.classList.toggle("sel", i===seq.active); b.classList.toggle("msel", seq.sel.has(i)); });
     if(boxes[seq.active]) boxes[seq.active].scrollIntoView({block:"nearest", inline:"nearest"});
+    updateSelBadge();
+  }
+  // ---- multi-selection: Ctrl/Cmd-click adds/removes a chord, Shift-click a range, "Select all" button.
+  // The anchor (seq.active) is edited directly; every chord in seq.sel receives the same change too.
+  const selInfoEl = document.getElementById("selinfo");
+  function updateSelBadge(){
+    if(seq.sel.size){ selInfoEl.hidden=false; selInfoEl.textContent = `editing ${seq.sel.size+1} chords`; }
+    else selInfoEl.hidden=true;
+  }
+  function clearSel(){ if(seq.sel.size){ seq.sel.clear(); markSeqSel(); } }
+  function toggleSelExtra(i){                 // the anchor is always edited, so it can't be an "extra"
+    if(i===seq.active) return;
+    if(seq.sel.has(i)) seq.sel.delete(i); else seq.sel.add(i);
+    markSeqSel();
+  }
+  function selectRangeTo(i){
+    const a = seq.active<0 ? i : seq.active, lo=Math.min(a,i), hi=Math.max(a,i);
+    for(let k=lo;k<=hi;k++) if(k!==seq.active) seq.sel.add(k);
+    markSeqSel();
+  }
+  function toggleSelectAll(){
+    const others = seq.slots.length - (seq.active>=0 ? 1 : 0);
+    if(others>0 && seq.sel.size >= others) seq.sel.clear();     // everything already selected → clear
+    else { seq.sel.clear(); for(let k=0;k<seq.slots.length;k++) if(k!==seq.active) seq.sel.add(k); }
+    markSeqSel();
   }
   // The editor (wheels + vocabulary) appears only when a slot is focused. The voicing lattice stays
   // ALWAYS visible in a fixed spot left of the canvas — it just renders as a grayed, label-less
@@ -1670,6 +1700,7 @@
 
   function seqStep(i){
     if(i<0 || i>=seq.slots.length) return;
+    seq.sel.clear();                      // stepping to a chord collapses any multi-selection
     seq.active = i;
     stepGlide = readGlide();                                       // portamento only for this step
     try { applySnapshot(seq.slots[i]); } finally { stepGlide = null; }
@@ -1678,11 +1709,12 @@
   function seqAdd(){
     const at = seq.active>=0 ? seq.active+1 : seq.slots.length;    // insert just after the current chord
     seq.slots.splice(at, 0, readSnapshot());
-    seq.active = at;
+    seq.active = at; seq.sel.clear();
     renderSeq(); scheduleAutosave();
   }
   function seqRemove(i){
     if(i<0 || i>=seq.slots.length) return;
+    seq.sel.clear();                      // indices shift on removal → drop the selection
     const wasActive = i===seq.active;
     seq.slots.splice(i,1);
     if(seq.active > i) seq.active--;
@@ -1691,16 +1723,54 @@
     if(wasActive && seq.active>=0){ stepGlide=readGlide(); try{ applySnapshot(seq.slots[seq.active]); } finally{ stepGlide=null; } }
     scheduleAutosave();
   }
+  // ---- broadcasting an edit to the other selected chords ----------------------------------------
+  // Diff the active slot's snapshot (before→after) and apply only the CHANGED fields to each selected
+  // chord: NUMBERS as a delta (so every chord keeps its own offset / shaping), everything else as an
+  // absolute set. This runs on readSnapshot() output, so it's agnostic to which sliders exist — new or
+  // renamed timbre params flow through with no change here. The only per-field knobs are the skip-lists
+  // (structural/global fields that must never broadcast) and optional clamp ranges (reused from the
+  // slider constants, so they track the sliders). Fields not listed simply broadcast unclamped.
+  const BCAST_SKIP_TOP   = new Set(["v","key","root","chord","voicing","vol","moveAll"]);
+  const BCAST_SKIP_VOICE = new Set(["bend"]);          // bend is globally synced via the key dial
+  const BCAST_RANGE = {
+    bri:[TYP_F0,TYP_F1], nas:[TYP_B0,TYP_B1], f3:[1800,3000], lvl:[Math.pow(10,-48/20),1],
+    f1:[200,1400], f2:[600,3200], vib:[0,8], jit:[0,JITTER_AMT], shim:[0,SHIMMER_AMT],
+  };
+  function bcastField(name, cur, before, after){
+    if(typeof after !== "number" || typeof cur !== "number" || typeof before !== "number") return after; // absolute
+    let v = cur + (after - before);                    // delta preserves the target chord's own value
+    const r = BCAST_RANGE[name]; return r ? clamp(v, r[0], r[1]) : v;
+  }
+  function broadcastDelta(target, before, after){       // mutates `target` in place; only changed fields
+    for(const k in after){
+      if(BCAST_SKIP_TOP.has(k)) continue;
+      if(k === "voices"){
+        if(!Array.isArray(target.voices)) continue;
+        after.voices.forEach((av,i)=>{
+          const bv = (before.voices && before.voices[i]) || {}, tv = target.voices[i];
+          if(!tv) return;
+          for(const f in av){ if(!BCAST_SKIP_VOICE.has(f) && av[f] !== bv[f]) tv[f] = bcastField(f, tv[f], bv[f], av[f]); }
+        });
+        continue;
+      }
+      if(after[k] !== before[k]) target[k] = bcastField(k, target[k], before[k], after[k]);
+    }
+  }
+
   // Writeback: mirror the live app state into the active slot + refresh just that chip (called on
   // every edit via onStateEdit). Guarded so it no-ops with no active slot or during a load/step.
   function seqCaptureActive(){
     if(seq.active<0 || seq.active>=seq.slots.length) return;
-    seq.slots[seq.active] = readSnapshot();
+    const before = seq.slots[seq.active], after = readSnapshot();
+    seq.slots[seq.active] = after;
     const el = seqbarEl.querySelector(`.slot[data-i="${seq.active}"]`);
     if(el){
-      el.querySelector(".stack").innerHTML = slotChipHTML(seq.slots[seq.active]);
-      el.querySelector(".cname").textContent = chordNameOf(seq.slots[seq.active]);
+      el.querySelector(".stack").innerHTML = slotChipHTML(after);
+      el.querySelector(".cname").textContent = chordNameOf(after);
     }
+    // fan the same change out to the other selected chords (timbre/expression only, so their chips,
+    // which show voicing + chord name, don't change — no chip refresh needed)
+    if(seq.sel.size) for(const j of seq.sel){ if(j!==seq.active && j>=0 && j<seq.slots.length) broadcastDelta(seq.slots[j], before, after); }
     updateEditor();   // keep the editor's "Chord N · <name>" title in step with in-editor changes
     scheduleAutosave();
   }
@@ -1711,8 +1781,11 @@
     const del=e.target.closest(".del");
     if(del){ e.stopPropagation(); seqRemove(+del.closest(".slot").dataset.i); return; }
     if(e.target.closest(".seqadd")){ seqAdd(); return; }
-    const slot=e.target.closest(".slot");
-    if(slot) seqStep(+slot.dataset.i);
+    const slot=e.target.closest(".slot"); if(!slot) return;
+    const i=+slot.dataset.i;
+    if(e.metaKey||e.ctrlKey){ toggleSelExtra(i); return; }        // add/remove this chord from the broadcast set
+    if(e.shiftKey && seq.active>=0){ selectRangeTo(i); return; }  // extend the set as a range from the anchor
+    seqStep(i);                                                   // plain click: collapse the set + step
   });
 
   // ---- the sequence document: share links + localStorage autosave ----
@@ -1723,6 +1796,7 @@
   function saveLS(){ try{ localStorage.setItem(SEQ_LS_KEY, seqToJSON()); }catch(_){} }
   function loadDoc(obj){
     if(!obj || !Array.isArray(obj.slots)) throw new Error("not a sequence document");
+    seq.sel.clear();
     seq.slots = obj.slots.map(s => normalizeSnapshot(s, appDefaults()));
     seq.active = Number.isInteger(obj.active) ? clamp(obj.active,-1,seq.slots.length-1) : (seq.slots.length?0:-1);
     renderSeq();
@@ -1829,10 +1903,11 @@
   // there's no undo and the autosave will overwrite the cleared sequence.
   document.getElementById("seqclear").addEventListener("click", ()=>{
     if(seq.slots.length && !confirm("Clear all chords from the sequence?")) return;
-    seq.slots = []; seq.active = -1;
+    seq.slots = []; seq.active = -1; seq.sel.clear();
     if(state.playing) stopAll();
     renderSeq(); scheduleAutosave();
   });
+  document.getElementById("selall").addEventListener("click", toggleSelectAll);
   glideEl.addEventListener("input", ()=>{ glideValEl.textContent = fmtGlide(readGlide()); });
   // ← / → step through the sequence; SPACE steps forward too (repeatedly tapping walks the chords,
   // wrapping at the end) — this replaces spacebar play/pause. A focused form control keeps the keys.
