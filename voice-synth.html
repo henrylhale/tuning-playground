@@ -93,6 +93,11 @@
   .readoutwrap{flex:1 1 0; min-height:0; display:flex}
   /* the UA rule that hides a closed details' content is author-overridable, and .stack's
      display:flex was winning — say it explicitly */
+  button.play.off{background:linear-gradient(180deg,#bda887,#9d8760);color:#5c4a2a;
+    box-shadow:inset 0 2px 4px rgba(60,40,15,.45)}
+  .btnrow{display:flex;gap:5px}
+  .btnrow > .u{flex:1 1 0;min-width:0}
+  .btnrow button{width:100%}
   .adv:not([open]) > *:not(summary){display:none}
   .adv > summary{font-size:9px;color:var(--muted);cursor:pointer;letter-spacing:.4px;
     text-transform:uppercase;font-weight:700;list-style-position:inside}
@@ -201,7 +206,10 @@
             <svg id="fund" class="dial" viewBox="0 0 340 340" preserveAspectRatio="xMidYMid meet"
                  role="slider" aria-label="Fundamental"></svg></div>
           <div class="dialside">
-            <div class="u" data-n="play"><button id="play" class="play">▶ Start</button></div>
+            <div class="btnrow">
+              <div class="u" data-n="play"><button id="play" class="play">▶ Start</button></div>
+              <div class="u" data-n="filt"><button id="filt" class="play">Filter</button></div>
+            </div>
             <div class="u readoutwrap" data-n="readout"><div class="readout" id="readout"></div></div>
           </div>
         </div>
@@ -776,7 +784,7 @@
   let analyser = null, scopeRAF = null, timeBuf = null, specBuf = null;
   // source-filter graph nodes
   let srcGain = null, nasalPole = null, nasalZero = null, nasalTrim = null;
-  let sourceBus = null, formantMix = null;
+  let sourceBus = null, formantMix = null, dryGain = null;
   let humanTimer = null;
   const bp = [], fg = [];                 // per-formant bandpass + gain nodes
   // The parallel bank sums branches, so relative sign matters. F1/F2 alternate (Klatt's trick for
@@ -784,6 +792,11 @@
   // so that when twang collapses them onto one frequency they *add* instead of cancelling.
   const FORMANT_SIGN = [1, -1, 1, 1, 1];
   const FORMANT_LEVEL = 0.8;
+  // Bypass level. The unfiltered source is far hotter than anything the bandpass bank puts out
+  // — its energy is a narrow spike, not a resonance — so the dry path is padded to land in the
+  // same ballpark rather than jumping ~20 dB and clipping when the filter is switched out.
+  const DRY_LEVEL = 0.12;
+  let filterOn = true;
   // A fixed trim, deliberately not a per-vowel loudness fixup: twang's Ee bonus and the source's
   // own level changes are findings, not artifacts to be normalized away. Chosen so that the
   // loudest configuration in the space (a tilted, twanged voice whose F1 lands on f0) just
@@ -858,6 +871,11 @@
         bp[i] = f; fg[i] = filterGain;
       }
 
+      dryGain = ctx.createGain();          // the path the source takes with the filter bypassed
+      dryGain.gain.value = 0;
+      sourceBus.connect(dryGain);
+      dryGain.connect(formantMix);
+
       syncFilters();
     }
     if (ctx.state === "suspended") ctx.resume();
@@ -870,17 +888,19 @@
     for (let i = 0; i < 5; i++) {
       bp[i].frequency.setTargetAtTime(tract.F[i], now, 0.02);
       bp[i].Q.setTargetAtTime(tract.F[i] / tract.B[i], now, 0.02);
-      fg[i].gain.setTargetAtTime(FORMANT_SIGN[i] * FORMANT_LEVEL, now, 0.02);
+      fg[i].gain.setTargetAtTime(filterOn ? FORMANT_SIGN[i] * FORMANT_LEVEL : 0, now, 0.02);
     }
+    dryGain.gain.setTargetAtTime(filterOn ? 0 : DRY_LEVEL, now, 0.02);
 
+    // the nasal pair is part of the filter, so bypassing collapses it onto itself
     const n = tract.nasal;
     nasalPole.frequency.setTargetAtTime(n.FNP, now, 0.02);
     nasalPole.Q.setTargetAtTime(n.Q, now, 0.02);
-    nasalPole.gain.setTargetAtTime(n.dB, now, 0.02);
-    nasalZero.frequency.setTargetAtTime(n.FNZ, now, 0.02);
+    nasalPole.gain.setTargetAtTime(filterOn ? n.dB : 0, now, 0.02);
+    nasalZero.frequency.setTargetAtTime(filterOn ? n.FNZ : n.FNP, now, 0.02);
     nasalZero.Q.setTargetAtTime(n.Q, now, 0.02);
-    nasalZero.gain.setTargetAtTime(-n.dB, now, 0.02);
-    nasalTrim.gain.setTargetAtTime(tract.gainCorrection, now, 0.02);
+    nasalZero.gain.setTargetAtTime(filterOn ? -n.dB : 0, now, 0.02);
+    nasalTrim.gain.setTargetAtTime(filterOn ? tract.gainCorrection : 1, now, 0.02);
 
     if (playing) srcGain.gain.setTargetAtTime(eeEffective(), now, 0.03);
   }
@@ -1031,6 +1051,7 @@
 
   // Tract magnitude at frequency f, from the same coefficients Web Audio is running.
   function tractMag(f, sr) {
+    if (!filterOn) return DRY_LEVEL;              // flat: the plot follows what you hear
     const w = 2 * Math.PI * f / sr;
     if (w >= Math.PI) return 0;
     let re = 0, im = 0;
@@ -1145,7 +1166,7 @@
 
     // source landmarks: the glottal formant, and where the spectral tilt breaks
     c.font = "8px sans-serif";
-    for (const [f, col, lbl] of [[p.Rg * f0, "#5dd28f", "glottal formant"], [1 / (2 * Math.PI * p.ta), "#5b9cf2", "tilt knee"]]) {
+    for (const [f, col, lbl] of [[p.Rg * f0, "#5dd28f", "glottal formant"]]) {
       if (f < SPEC_FMIN || f > SPEC_FMAX) continue;
       const x = gx(g, f);
       c.strokeStyle = col; c.globalAlpha = 0.3; c.setLineDash([1, 3]);
@@ -1193,6 +1214,7 @@
 
     const yBar = yTop + 13;
     formantDots = [];
+    c.globalAlpha = filterOn ? 1 : 0.3;
     for (let i = 4; i >= 0; i--) {
       const col = COLORS[i], F = tract.F[i], B = tract.B[i];
       const x = gx(g, F);
@@ -1221,7 +1243,7 @@
       c.font = "8.5px sans-serif"; c.textAlign = "center"; c.fillStyle = col;
       c.fillText(`F${i + 1}`, x, yBar + (i % 2 ? 21 : 12));
     }
-    c.lineWidth = 1;
+    c.lineWidth = 1; c.globalAlpha = 1;
 
     // hovering a peak names it, where the peak actually is
     const d = formantDots.find(q => q.i === hoverF);
@@ -1269,7 +1291,7 @@
     c.beginPath(); c.moveTo(x0, yv(0)); c.lineTo(x1, yv(0)); c.stroke();
 
     c.font = "8px sans-serif"; c.textAlign = "center";
-    for (const [t, col, lbl] of [[p.tp, "#5dd28f", "tp"], [p.te, "#e5484d", "te"], [p.te + p.ta, "#5b9cf2", "+ta"]]) {
+    for (const [t, col, lbl] of [[p.tp, "#5dd28f", "tp"], [p.te, "#e5484d", "te"]]) {
       const x = clamp(xt(t), x0, x1);
       c.strokeStyle = col; c.globalAlpha = 0.45;
       c.beginPath(); c.moveTo(x, T); c.lineTo(x, H - Bm); c.stroke();
@@ -1471,6 +1493,14 @@
 
   playBtn.addEventListener("click", () => playing ? stop() : start());
 
+  const filtBtn = document.getElementById("filt");
+  filtBtn.addEventListener("click", () => {
+    filterOn = !filterOn;
+    filtBtn.classList.toggle("off", !filterOn);
+    filtBtn.textContent = filterOn ? "Filter" : "Filter off";
+    apply();
+  });
+
   window.addEventListener("resize", () => scheduleDraw());
 
   //#region dev-notes
@@ -1488,6 +1518,8 @@
      "quartet.html's dial. Spin the outer wheel to step semitones (it winds through octaves, clamped C2–C6); drag the inner one to bend ±100¢ continuously. Changing it re-solves the source waveform, not just the oscillator frequency — the harmonic count and ta/T both depend on f₀. The bend is what lets you slide a harmonic onto a formant and watch panel 3 jump."],
     ["vol", "Gain",
      "Master gain, the last node before the speakers. A monitoring level only — unlike effort it changes nothing about the model, and nothing measured here depends on it."],
+    ["filt", "Filter bypass",
+     "Switches the whole tract out — all five resonances and the nasal pair — and passes the source straight through, padded so the level roughly matches. The plot follows: the response curve goes flat, the output stems collapse onto the source stems, and the resonance markers grey out. The fastest way to hear what the filter is contributing, and to hear the raw flow derivative on its own."],
     ["play", "Start / Stop",
      "Builds a fresh oscillator (Web Audio's are one-shot), loads the source waveform, fades in over 60 ms. That fade is not an onset — the figure is not modeled — so nothing about how a note begins here is a claim. Also where the AudioContext is created, since that needs a click."],
 
