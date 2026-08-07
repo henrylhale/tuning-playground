@@ -38,10 +38,10 @@
   }
 
   /* ---- fit-to-screen shell: header, then controls | graphs | graphs ---- */
-  .app{height:100%; display:grid; grid-template-rows:auto minmax(0,1fr) auto; gap:5px; padding:5px 7px 6px}
+  .app{height:100%; display:grid; grid-template-rows:auto minmax(0,1fr); gap:5px; padding:5px 7px 6px}
   .cols{
     display:grid; min-height:0; gap:6px;
-    grid-template-columns:352px minmax(0,1fr) minmax(0,1fr);
+    grid-template-columns:428px minmax(0,1fr) minmax(0,1fr);
     grid-template-rows:auto minmax(0,1fr);
     grid-template-areas:"ctl rails rails" "ctl specA specB";
   }
@@ -56,6 +56,7 @@
     padding:4px 7px; display:flex; flex-direction:column; gap:3px; min-height:0;
   }
   .panel.grow{flex:1 1 0}
+  .col > .panel:not(.grow){flex:0 0 auto}
   .ptitle{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
     font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#54401f}
   .ptitle .note{color:var(--muted);font-size:9.5px;font-weight:500;letter-spacing:0;text-transform:none}
@@ -89,6 +90,9 @@
   .meta b{color:var(--ink);font-weight:700}
 
   /* ---- transport / misc control rows ---- */
+  .dial{width:152px;height:auto;display:block;cursor:grab;touch-action:none}
+  .dial:active{cursor:grabbing}
+  .dial text{user-select:none;-webkit-user-select:none}
   .ctlrow{display:flex;align-items:center;gap:5px;min-width:0}
   .ctlrow > label{flex:0 0 44px}
   .ctlrow.tight{flex:1}  .ctlrow.tight > label{flex:0 0 auto}
@@ -120,6 +124,7 @@
   .plot canvas{flex:1 1 0; min-height:0; width:100%; display:block; background:#120c06;
     border-radius:2px; box-shadow:inset 0 1px 5px rgba(0,0,0,.6), inset 0 0 0 1px #0e0904}
   .cap{font-size:9px;color:var(--muted);line-height:1.2}
+  #chart{max-width:224px;margin:0 auto}
 
   /* DEV-ONLY: direct source-shape controls, a strip under the rails */
   .lfrow{display:flex;gap:9px;align-items:center}
@@ -133,16 +138,14 @@
   #figs-source.overridden{opacity:.4}
 
   /* what the model leaves out — greyed, and deliberately always on screen */
-  .absentbar{padding:4px 8px;gap:2px}
-  .absentbar .ptitle{color:#6b5836}
-  .absent{display:grid;grid-template-columns:repeat(4,1fr);gap:1px 16px}
-  .absent > .head{font-size:9px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;
-    color:#6b5836;cursor:default}
-  .absent > .head > span{font-weight:500;letter-spacing:0;text-transform:none;opacity:.75}
-  .absent > div{font-size:8.5px;line-height:1.3;color:#7a6742;
+  .figs h3 .cnt{float:right;font-size:8px;font-weight:500;letter-spacing:0;
+    text-transform:none;opacity:.8}
+  .absent{display:grid;grid-template-columns:1fr 1fr;gap:0 10px;margin-top:1px}
+  .absent > div{font-size:8.5px;line-height:1.25;color:#7a6742;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:help}
   .absent > div > b{font-weight:700;color:#6b5836}
-  .absent > .foot{color:#8a6f3e;cursor:default}
+  .absent > .foot{grid-column:1/-1;color:#8a6f3e;white-space:normal;cursor:help;
+    border-top:1px solid rgba(143,118,73,.3);margin-top:2px;padding-top:2px}
   .absent > .foot > b{color:#8a6f3e}
 </style>
 
@@ -213,36 +216,42 @@
     <div class="col area-ctl">
 
       <div class="panel">
-        <div class="u ctlrow" data-n="fund"><label for="fund">f₀</label>
-          <select id="fund"></select><span class="v" id="fundv"></span></div>
-        <div class="u ctlrow" data-n="vol"><label for="vol">Output</label>
+        <div style="display:flex;gap:8px;align-items:flex-start">
+          <div class="u" data-n="fund" style="flex:0 0 auto">
+            <svg id="fund" class="dial" viewBox="0 0 340 340" preserveAspectRatio="xMidYMid meet"
+                 role="slider" aria-label="Fundamental"></svg></div>
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+        <div class="u ctlrow" data-n="vol"><label for="vol">Gain</label>
           <input id="vol" type="range" min="0" max="1" step="0.01" value="0.45"><span class="v" id="volval"></span></div>
-        <div class="u ctlrow" data-n="vib"><label for="vib">Vibrato</label>
-          <input id="vib" type="range" min="0" max="8" step="0.5" value="3">
-          <span class="v" id="vibval"></span></div>
-        <div style="display:flex;gap:6px;align-items:center">
+          <div class="u" data-n="play"><button id="play" class="play">▶ Start</button></div>
           <div class="u" data-n="meta" style="flex:1;min-width:0">
             <div class="meta" id="meta">Press Start to hear the voice.</div></div>
-          <div class="u" data-n="play"><button id="play" class="play">▶ Start</button></div>
+          <div class="u ctlrow" data-n="fcluster"><label for="fcluster">Cluster</label>
+            <input id="fcluster" type="range" min="2400" max="3400" step="10" value="2900">
+            <span class="v" id="fcval"></span></div>
+          <div class="u" data-n="presets"><div class="presets" id="presets"></div></div>
+          </div>
         </div>
       </div>
 
       <div class="panel">
         <div class="ptitle"><span>Thirteen Figures</span><span class="note">5 modeled · 1 partial · 2 collapsed · 5 set aside</span></div>
-        <div class="u" data-n="presets"><div class="presets" id="presets"></div></div>
         <div class="figs">
           <h3>Source figures</h3>
           <div id="figs-source"></div>
           <h3>Filter figures</h3>
           <div id="figs-filter"></div>
+        <h3>Not modeled <span class="cnt">7 figures · hover for why</span></h3>
+        <div class="u absent" data-n="absent">
+          <div title="Assumed permanently retracted — the trained state. Its interesting outputs (subharmonics, biphonation, regime bifurcation) are chaotic and need a second coupled mass-spring oscillator above the source, not a jitter parameter."><b>False vocal folds</b> — assumed retracted</div>
+          <div title="Not a signal parameter. Unanchored singing shows characteristic couplings — f0 rising with subglottal pressure, larynx height drifting with pitch, tract collapse under load — and anchoring is the reduction of those couplings toward zero."><b>Torso anchoring</b> — assumed optimal</div>
+          <div title="Same as torso anchoring: a constraint on other parameters' trajectories, not a sound of its own. Assuming both ideal is what licenses treating every other figure as independent."><b>Head &amp; neck anchoring</b> — assumed optimal</div>
+          <div title="Set aside. It acted only through an OQ drift with pitch, measured against one global 220 Hz reference — but a reference pitch belongs to the singer, so with max(0, …) a bass never drifted at all. Restore it with F0_REF in the singer config, per part."><b>Cricoid cartilage</b> — set aside</div>
+          <div title="Thick and thin are modeled. Stiff (falsetto) needs incomplete closure, a DC flow offset and aspiration noise; slack needs a nonlinear oscillator capable of period doubling."><b>Body–cover: stiff, slack</b> — thick/thin only</div>
+          <div title="Both halves of the figure are gone. It was envelope timing on Ee — glottal (3 ms, a 1.25x overshoot, a briefly depressed OQ) and simultaneous (25 ms) — with aspirate already unreachable for want of a noise channel. Notes now fade in and out over a fixed 60 ms, short enough not to be heard as an attack shape, so nothing about the start or end of a note is a claim about production."><b>Onset &amp; offset</b> — not modeled; plain fades</div>
+          <div title="Not dropped but reparameterized: three articulators map many-to-one onto three formants, so they are collapsed into a direct (F1, F2, F3) target. The acoustic consequences are all present; which articulator produced them is not recoverable."><b>Tongue, jaw, lip aperture</b> — collapsed into (F1,F2,F3)</div>
+          <div class="foot" title="Not an Estill figure but a real axis all the same: subglottal drive. Eₑ is pinned at a nominal 0.6 and twang is the only thing that scales it, so loudness follows from the figures. The cost is that pushed-loud and twanged-loud can no longer be told apart by holding one still and moving the other.">also fixed: <b>glottal effort</b> · unreachable: <b>Falsetto</b> and distorted qualities</div>
         </div>
-        <div style="display:flex;gap:6px">
-          <div class="u ctlrow tight" data-n="ee"><label for="ee">Effort E<sub>e</sub></label>
-            <input id="ee" type="range" min="0.05" max="1" step="0.01" value="0.6">
-            <span class="v" id="eeval"></span></div>
-          <div class="u ctlrow tight" data-n="fcluster"><label for="fcluster">Cluster</label>
-            <input id="fcluster" type="range" min="2400" max="3400" step="10" value="2900">
-            <span class="v" id="fcval"></span></div>
         </div>
         <div class="u" data-n="readout"><div class="readout" id="readout"></div></div>
       </div>
@@ -326,20 +335,6 @@
 
   </div>
 
-  <!-- DEV-ONLY in placement only: the content is a real statement about the model's scope -->
-  <div class="panel absentbar">
-    <div class="u" data-n="absent"><div class="absent">
-      <div class="head">Not modeled <span>— assumptions, not oversights; hover for why</span></div>
-      <div title="Assumed permanently retracted — the trained state. Its interesting outputs (subharmonics, biphonation, regime bifurcation) are chaotic and need a second coupled mass-spring oscillator above the source, not a jitter parameter."><b>False vocal folds</b> — assumed retracted</div>
-      <div title="Not a signal parameter. Unanchored singing shows characteristic couplings — f0 rising with subglottal pressure, larynx height drifting with pitch, tract collapse under load — and anchoring is the reduction of those couplings toward zero."><b>Torso anchoring</b> — assumed optimal</div>
-      <div title="Same as torso anchoring: a constraint on other parameters' trajectories, not a sound of its own. Assuming both ideal is what licenses treating every other figure as independent."><b>Head &amp; neck anchoring</b> — assumed optimal</div>
-      <div title="Set aside. It acted only through an OQ drift with pitch, measured against one global 220 Hz reference — but a reference pitch belongs to the singer, so with max(0, …) a bass never drifted at all. Restore it with F0_REF in the singer config, per part."><b>Cricoid cartilage</b> — set aside</div>
-      <div title="Thick and thin are modeled. Stiff (falsetto) needs incomplete closure, a DC flow offset and aspiration noise; slack needs a nonlinear oscillator capable of period doubling."><b>Body–cover: stiff, slack</b> — thick/thin only</div>
-      <div title="Both halves of the figure are gone. It was envelope timing on Ee — glottal (3 ms, a 1.25x overshoot, a briefly depressed OQ) and simultaneous (25 ms) — with aspirate already unreachable for want of a noise channel. Notes now fade in and out over a fixed 60 ms, short enough not to be heard as an attack shape, so nothing about the start or end of a note is a claim about production."><b>Onset &amp; offset</b> — not modeled; plain fades</div>
-      <div title="Not dropped but reparameterized: three articulators map many-to-one onto three formants, so they are collapsed into a direct (F1, F2, F3) target. The acoustic consequences are all present; which articulator produced them is not recoverable."><b>Tongue, jaw, lip aperture</b> — collapsed into (F1,F2,F3)</div>
-      <div class="foot">⇒ unreachable: <b>Falsetto</b>, and every distorted quality</div>
-    </div></div>
-  </div>
 </div>
 
 <script>
@@ -623,19 +618,104 @@
   // Ballpark adult-male values. F4/F5 are draggable on the resonance rails; tune by ear.
   const singer = { F4: 3500, F5: 4500, Fcluster: 2900, B: [50, 70, 110, 170, 250] };
 
-  // ---------- pitch dropdown (12-TET / A440, C2..C6, default A3=220) ----------
+  // ---------- pitch dial: the concentric analog-radio wheels from quartet.html ----------
+  // Outer wheel = coarse note: discrete, snaps per semitone, spin it to wind through octaves.
+  // Inner wheel = fine bend: smooth, absolute, 0¢ at the top to ±100¢ at the bottom. The core
+  // shows the resulting note and Hz. Geometry is quartet's, at the same 340 viewBox; only the
+  // type is scaled up, because this instance renders at ~168px rather than ~250px, and the cent
+  // wheel is labelled every 50¢ instead of every 20¢ so the numbers still fit.
   const NOTE_NAMES = ["C","C♯","D","D♯","E","F","F♯","G","G♯","A","A♯","B"];
   const midiToFreq = m => 440 * Math.pow(2, (m - 69) / 12);
-  const fundEl = document.getElementById("fund");
-  for (let m = 36; m <= 84; m++) {              // C2 .. C6
-    const name = NOTE_NAMES[m % 12] + (Math.floor(m / 12) - 1);
-    const f = midiToFreq(m);
-    const opt = document.createElement("option");
-    opt.value = String(f);
-    opt.textContent = `${name}  (${f.toFixed(1)} Hz)`;
-    if (m === 57) opt.selected = true;          // A3 = 220 Hz
-    fundEl.appendChild(opt);
+  const MIDI_LO = 36, MIDI_HI = 84;                 // C2..C6, the range the old dropdown offered
+  let pitchMidi = 57, bendCents = 0;                // A3 = 220 Hz
+  const f0Now = () => midiToFreq(pitchMidi) * Math.pow(2, bendCents / 1200);
+
+  const dialSvg = document.getElementById("fund");
+  const DVB = 340, DCX = 170, DCY = 170;
+  const R_NOTE = 152, R_OUT_HI = 138, R_OUT_LO = 100, R_INN_HI = 95, R_INN_LO = 48,
+        R_CENT = 78, R_CORE = 44;
+  const DP = (ang, r) => [DCX + r * Math.sin(ang * Math.PI / 180), DCY - r * Math.cos(ang * Math.PI / 180)];
+  const tri = (ang, rTip, rBase, half, fill) => {
+    const t = DP(ang, rTip), a = DP(ang - half, rBase), b = DP(ang + half, rBase);
+    return `<polygon points="${t[0].toFixed(1)},${t[1].toFixed(1)} ${a[0].toFixed(1)},${a[1].toFixed(1)} ${b[0].toFixed(1)},${b[1].toFixed(1)}" fill="${fill}"/>`;
+  };
+  const fmtF0 = h => h < 100 ? h.toFixed(1) : Math.round(h).toString();
+
+  function drawDial() {
+    const pc = ((pitchMidi % 12) + 12) % 12, oct = Math.floor(pitchMidi / 12) - 1;
+    const noteAng = pc * 30, bendAng = bendCents * 1.8;
+    let s = "";
+    s += `<circle cx="${DCX}" cy="${DCY}" r="${R_OUT_HI}" fill="#241a0d" stroke="#6b5128" stroke-width="2"/>`;
+    s += `<circle cx="${DCX}" cy="${DCY}" r="${R_OUT_LO}" fill="#1b130a" stroke="#4a3820" stroke-width="1.5"/>`;
+    s += `<circle cx="${DCX}" cy="${DCY}" r="${R_INN_HI}" fill="#2a1e10" stroke="#6b5128" stroke-width="2"/>`;
+    s += `<circle cx="${DCX}" cy="${DCY}" r="${R_INN_LO}" fill="#140d06" stroke="#4a3820" stroke-width="1.5"/>`;
+    for (let i = 0; i < 12; i++) {
+      const a = i * 30, sel = i === pc;
+      const t1 = DP(a, R_OUT_HI - 2), t2 = DP(a, R_OUT_HI - 12);
+      s += `<line x1="${t1[0].toFixed(1)}" y1="${t1[1].toFixed(1)}" x2="${t2[0].toFixed(1)}" y2="${t2[1].toFixed(1)}" stroke="${sel ? "#e26a10" : "#7d6743"}" stroke-width="${sel ? 3 : 1.5}"/>`;
+      const [lx, ly] = DP(a, R_NOTE);
+      s += `<text x="${lx.toFixed(1)}" y="${(ly + 7).toFixed(1)}" text-anchor="middle" font-size="21" font-weight="${sel ? 800 : 600}" fill="${sel ? "#ffb347" : "#a98a55"}">${NOTE_NAMES[i]}</text>`;
+    }
+    s += tri(noteAng, R_OUT_HI - 3, R_OUT_LO + 8, 8, "#e26a10");
+    for (let c = -100; c <= 100; c += 10) {
+      const a = c * 1.8, zero = c === 0, lbl = c % 50 === 0;
+      const t1 = DP(a, R_INN_HI - 2), t2 = DP(a, R_INN_HI - (lbl ? 11 : 6));
+      s += `<line x1="${t1[0].toFixed(1)}" y1="${t1[1].toFixed(1)}" x2="${t2[0].toFixed(1)}" y2="${t2[1].toFixed(1)}" stroke="${zero ? "#ffb347" : "#6b5128"}" stroke-width="1.5"/>`;
+      if (lbl) {
+        const la = Math.abs(c) === 100 ? Math.sign(c) * 168 : a;   // nudge the two bottom labels apart
+        const [lx, ly] = DP(la, R_CENT);
+        s += `<text x="${lx.toFixed(1)}" y="${(ly + 5).toFixed(1)}" text-anchor="middle" font-size="14" fill="${zero ? "#ffce87" : "#8a744c"}">${c > 0 ? "+" + c : c}</text>`;
+      }
+    }
+    s += tri(bendAng, R_INN_LO + 3, R_INN_LO + 18, 8, "#ffb347");
+    s += `<circle cx="${DCX}" cy="${DCY}" r="${R_CORE}" fill="#0e0904" stroke="#6b5128" stroke-width="2"/>`;
+    s += `<text x="${DCX}" y="${DCY - 2}" text-anchor="middle" font-size="30" font-weight="800" fill="#ffce87">${NOTE_NAMES[pc]}${oct}</text>`;
+    s += `<text x="${DCX}" y="${DCY + 21}" text-anchor="middle" font-size="15" font-weight="600" fill="#c9b78f">${fmtF0(f0Now())} Hz</text>`;
+    dialSvg.innerHTML = s;
   }
+
+  // pointer interaction: pick a wheel by grab radius, then drag
+  let dialDrag = null;
+  function polarAt(e) {
+    const r = dialSvg.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width * DVB - DCX, y = (e.clientY - r.top) / r.height * DVB - DCY;
+    return { ang: Math.atan2(x, -y) * 180 / Math.PI, rad: Math.hypot(x, y) };
+  }
+  function commitPitch(m) {
+    m = clamp(Math.round(m), MIDI_LO, MIDI_HI);
+    if (m !== pitchMidi) { pitchMidi = m; apply(); } else drawDial();
+  }
+  function commitBend(c) {
+    c = clamp(c, -100, 100);
+    if (c !== bendCents) { bendCents = c; apply(); } else drawDial();
+  }
+  dialSvg.addEventListener("pointerdown", e => {
+    const { ang, rad } = polarAt(e);
+    if (rad >= R_INN_LO - 6 && rad <= R_INN_HI + 3) {
+      dialDrag = { wheel: "inner", prev: clamp(ang / 1.8, -100, 100) };
+      commitBend(dialDrag.prev);
+    } else if (rad >= R_OUT_LO - 2 && rad <= R_NOTE + 10) {
+      dialDrag = { wheel: "outer", last: ang, accum: 0, start: pitchMidi };
+    } else return;
+    try { dialSvg.setPointerCapture(e.pointerId); } catch (_) {}
+    e.preventDefault();
+  });
+  window.addEventListener("pointermove", e => {
+    if (!dialDrag) return;
+    const { ang } = polarAt(e);
+    if (dialDrag.wheel === "inner") {
+      let c = clamp(ang / 1.8, -100, 100);
+      if (Math.abs(c - dialDrag.prev) > 120) c = dialDrag.prev > 0 ? 100 : -100;  // no teleporting across the bottom
+      dialDrag.prev = c; commitBend(c);
+    } else {
+      let d = ang - dialDrag.last; if (d > 180) d -= 360; else if (d < -180) d += 360;
+      dialDrag.accum += d; dialDrag.last = ang;
+      commitPitch(dialDrag.start + Math.round(dialDrag.accum / 30));   // 30° == one semitone snap
+    }
+  });
+  window.addEventListener("pointerup", () => { dialDrag = null; });
+  window.addEventListener("pointercancel", () => { dialDrag = null; });
+  window.__setMidi = m => commitPitch(m);          // DEV-ONLY: test hook for the browser check
 
   // ---------- figure state ----------
   const FIGURE_DEFS = [
@@ -676,7 +756,7 @@
   let src = null, tract = null;
 
   function recompute() {
-    const f0 = parseFloat(fundEl.value);
+    const f0 = f0Now();
     src = sourceFromFigures(fig, f0);
     if (lfManual) {                                   // DEV-ONLY override
       src.OQ = clamp(lfOverride.OQ, 0.35, 0.95);
@@ -780,7 +860,7 @@
     }
     s += `<text x="${X1}" y="${LABEL_Y+12}" fill="${GRAY_TXT}" font-size="9" text-anchor="end">Hz (log)</text>`;
 
-    const f0 = parseFloat(fundEl.value);
+    const f0 = f0Now();
     const xf = freqToX(f0);
     s += `<line x1="${xf}" y1="22" x2="${xf}" y2="${AXIS_Y}" stroke="#ffb347" stroke-opacity="0.18" stroke-width="1" stroke-dasharray="3 4"/>`;
     s += `<circle cx="${xf}" cy="${AXIS_Y}" r="4" fill="#ffb347" stroke="#2a1400" stroke-width="1"/>`;
@@ -832,7 +912,7 @@
   // source-filter graph nodes
   let srcGain = null, nasalPole = null, nasalZero = null, nasalTrim = null;
   let sourceBus = null, formantMix = null, dryGain = null;
-  let vibLFO = null, vibDepth = null, humanTimer = null;
+  let humanTimer = null;
   const bp = [], fg = [];                 // per-formant bandpass + gain nodes
   // The parallel bank sums branches, so relative sign matters. F1/F2 alternate (Klatt's trick for
   // keeping the valley between two well-separated formants from notching); F3/F4/F5 share a sign
@@ -849,19 +929,16 @@
   // reaches full scale at the default Ee and output level — roughly 20 dB above the quietest.
   const OUTPUT_TRIM = 5.5;
   const FADE_MS = 60;                     // onset/offset are not modeled: a plain fade, both ends
-  const VIB_RATE = 5.5;                   // vibrato rate (Hz)
   const JITTER_CENTS = 4;                 // random cycle-drift pitch wobble (± cents)
   const SHIMMER = 0.04;                   // random amplitude wobble (± fraction)
   const playBtn = document.getElementById("play");
   const volEl = document.getElementById("vol");
-  const eeEl = document.getElementById("ee");
   const metaEl = document.getElementById("meta");
-  const vibEl = document.getElementById("vib");
-  const vibValEl = document.getElementById("vibval");
-
-  let vibCents = parseFloat(vibEl.value);
-  const eeOf = () => parseFloat(eeEl.value);
-  const eeEffective = () => eeOf() * tract.eeBonus;
+  // Glottal effort is not a control. Eₑ is a fixed nominal drive and twang is the only thing that
+  // moves it, so loudness is a consequence of the figures rather than something set alongside
+  // them. Everything the source does still scales off this one constant.
+  const EE_NOMINAL = 0.6;
+  const eeEffective = () => EE_NOMINAL * tract.eeBonus;
 
   // iOS mutes a page's default "ambient" audio session with the ringer switch, so Web Audio goes
   // silent while native apps keep sounding. Declaring "playback" (Safari 16.4+) opts into the
@@ -929,15 +1006,6 @@
       sourceBus.connect(dryGain);
       dryGain.connect(formantMix);
 
-      // vibrato LFO (continuous); connected to the oscillator's detune at start()
-      vibLFO = ctx.createOscillator();
-      vibLFO.type = "sine";
-      vibLFO.frequency.value = VIB_RATE;
-      vibDepth = ctx.createGain();
-      vibDepth.gain.value = vibCents;       // depth in cents
-      vibLFO.connect(vibDepth);
-      vibLFO.start();
-
       syncFilters();
     }
     if (ctx.state === "suspended") ctx.resume();
@@ -977,7 +1045,7 @@
 
   function rebuildSource() {
     if (!playing || !osc || !ctx) return;
-    const f0 = parseFloat(fundEl.value);
+    const f0 = f0Now();
     osc.setPeriodicWave(computeWave(f0).wave);
     osc.frequency.setTargetAtTime(f0, ctx.currentTime, 0.02);
     srcGain.gain.setTargetAtTime(eeEffective(), ctx.currentTime, 0.03);
@@ -997,7 +1065,7 @@
     if (!playing || !osc || !ctx) return;
     const now = ctx.currentTime;
     const j = (Math.random() * 2 - 1) * JITTER_CENTS;
-    osc.detune.setTargetAtTime(j, now, 0.05);                 // vibrato LFO adds on top of this
+    osc.detune.setTargetAtTime(j, now, 0.05);
     const v = parseFloat(volEl.value) * (1 + (Math.random() * 2 - 1) * SHIMMER);
     master.gain.setTargetAtTime(Math.max(0, v), now, 0.06);
   }
@@ -1006,14 +1074,11 @@
     ensureCtx();
     recompute();
 
-    const f0 = parseFloat(fundEl.value);
+    const f0 = f0Now();
     osc = ctx.createOscillator();
     osc.frequency.value = f0;
     osc.setPeriodicWave(computeWave(f0).wave);
     osc.connect(srcGain);
-
-    vibDepth.disconnect();
-    vibDepth.connect(osc.detune);
 
     const now = ctx.currentTime;
     osc.start();
@@ -1147,7 +1212,7 @@
 
   function drawModelSpectra() {
     const sr = ctx ? ctx.sampleRate : 48000;
-    const f0 = parseFloat(fundEl.value);
+    const f0 = f0Now();
     const p = lfShape(f0, src.OQ, src.Rk, src.Ra);
     const nMax = Math.max(1, Math.floor(Math.min(HEARING_TOP, sr / 2) / f0));
     const h = lfHarmonics(p, nMax);
@@ -1237,7 +1302,7 @@
   // ---------- readout ----------
   const readoutEl = document.getElementById("readout");
   function drawReadout() {
-    const f0 = parseFloat(fundEl.value);
+    const f0 = f0Now();
     const p = lfShape(f0, src.OQ, src.Rk, src.Ra);
     const rd = rdDiagnostic(src.Ra);
     const cells = [
@@ -1248,7 +1313,7 @@
       ["glottal f", (p.Rg * f0).toFixed(0) + " Hz", ""],
       ["tilt knee", (1 / (2 * Math.PI * p.ta)).toFixed(0) + " Hz", ""],
       ["tp / te", `${(p.tp * 1000).toFixed(2)}/${(p.te * 1000).toFixed(2)} ms`, ""],
-      ["Ee eff", `${eeOf().toFixed(2)}→${eeEffective().toFixed(2)}`, `+${(20 * Math.log10(tract.eeBonus)).toFixed(1)} dB twang`],
+      ["Eₑ", eeEffective().toFixed(2), `${EE_NOMINAL} × twang, +${(20 * Math.log10(tract.eeBonus)).toFixed(1)} dB`],
       ["Rd diag", rd.toFixed(2), rd < 0.3 || rd > 2.7 ? "outside speech stats" : ""],
       ["cluster", `${(formantOn[2] ? tract.w3 : 0) > 0.5 ? 3 : 2} members`, tract.w3 < 1 ? "F3 held low by /r/" : ""],
     ];
@@ -1331,7 +1396,7 @@
 
   // ---------- meta ----------
   function updateMeta() {
-    const f0 = parseFloat(fundEl.value);
+    const f0 = f0Now();
     const on = formantOn.filter(Boolean).length;
     if (!playing) { metaEl.textContent = "Press Start to hear the voice."; return; }
     const N = Math.floor(Math.min(HEARING_TOP, (ctx?.sampleRate || 48000) / 2) / f0);
@@ -1359,6 +1424,7 @@
 
   function drawAll() {
     fitCanvases();
+    drawDial();
     drawRails();
     drawChart();
     drawReadout();
@@ -1474,31 +1540,20 @@
   // ---------- remaining controls ----------
   const f3El = document.getElementById("f3t"), f3ValEl = document.getElementById("f3val");
   const fcEl = document.getElementById("fcluster"), fcValEl = document.getElementById("fcval");
-  const eeValEl = document.getElementById("eeval"), volValEl = document.getElementById("volval");
-  const fundValEl = document.getElementById("fundv");
+  const volValEl = document.getElementById("volval");
 
   function updateSideLabels() {
-    vibValEl.textContent = vibCents <= 0 ? "off" : `±${vibCents}¢`;
     f3ValEl.textContent = `${Math.round(vowel.F3)}${tract.w3 < 1 ? " ʳ" : ""}`;
     fcValEl.textContent = `${singer.Fcluster}`;
-    eeValEl.textContent = `→${eeEffective().toFixed(2)}`;
     volValEl.textContent = parseFloat(volEl.value).toFixed(2);
-    fundValEl.textContent = "";
   }
 
   f3El.addEventListener("input", () => { vowel.F3 = parseFloat(f3El.value); apply(); });
   fcEl.addEventListener("input", () => { singer.Fcluster = parseFloat(fcEl.value); apply(); });
-  eeEl.addEventListener("input", () => apply());
   volEl.addEventListener("input", () => {
     if (playing && ctx) master.gain.setTargetAtTime(parseFloat(volEl.value), ctx.currentTime, 0.01);
     updateSideLabels();
   });
-  vibEl.addEventListener("input", () => {
-    vibCents = parseFloat(vibEl.value);
-    updateSideLabels();
-    if (vibDepth && ctx) vibDepth.gain.setTargetAtTime(vibCents, ctx.currentTime, 0.02);
-  });
-  fundEl.addEventListener("change", () => apply());
 
   playBtn.addEventListener("click", () => playing ? stop() : start());
 
@@ -1543,15 +1598,11 @@
   // ============================================================================================
   const DEV_NOTES = [
     ["fund", "Fundamental f₀",
-     "The note. Changing it re-solves the source waveform, not just the oscillator frequency — OQ drift, the harmonic count and ta/T all depend on f₀."],
-    ["ee", "Eₑ — glottal effort",
-     "Subglottal drive, roughly. The source waveform is always built with Eₑ = 1 and this is applied after it, as the gain of srcGain; twang multiplies it by up to 1.7. Kept separate from Output on purpose — twang's claim is more output for the *same* effort, which is only a claim if effort is something you can hold still."],
-    ["vol", "Output level",
+     "quartet.html's dial. Spin the outer wheel to step semitones (it winds through octaves, clamped C2–C6); drag the inner one to bend ±100¢ continuously. Changing it re-solves the source waveform, not just the oscillator frequency — the harmonic count and ta/T both depend on f₀. The bend is what lets you slide a harmonic onto a formant and watch panel 3 jump."],
+    ["vol", "Gain",
      "Master gain, the last node before the speakers. A monitoring level only — unlike effort it changes nothing about the model, and nothing measured here depends on it."],
     ["play", "Start / Stop",
      "Builds a fresh oscillator (Web Audio's are one-shot), loads the source waveform, fades in over 60 ms. That fade is not an onset — the figure is not modeled — so nothing about how a note begins here is a claim. Also where the AudioContext is created, since that needs a click."],
-    ["vib", "Vibrato depth",
-     "A 5.5 Hz sine oscillator into the voice's detune. Detune is in cents, so the gain value is the depth directly. Not an Estill figure."],
     ["meta", "Status line",
      "Harmonic count is min(20 kHz, Nyquist)/f₀. The OQ shown is the one actually being synthesized, which is the body-cover value unless the manual source sliders have taken over."],
     ["presets", "Quality fixtures",
