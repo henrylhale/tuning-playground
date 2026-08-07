@@ -740,21 +740,21 @@
     for (const t of [2200,1800,1400,1000]) {
       const x = cxOfF2(t);
       s += `<line x1="${x}" y1="${CY0}" x2="${x}" y2="${CY1}" stroke="#2c2010" stroke-width="1.5"/>`;
-      s += `<text x="${x}" y="${CY1+19}" fill="${GRAY_TXT}" font-size="18" text-anchor="middle">${t}</text>`;
+      s += `<text x="${x}" y="${CY1+16}" fill="${GRAY_TXT}" font-size="13" text-anchor="middle">${t}</text>`;
     }
     for (const t of [300,400,500,600,700,800]) {
       const y = cyOfF1(t);
       s += `<line x1="${CX0}" y1="${y}" x2="${CX1}" y2="${y}" stroke="#2c2010" stroke-width="1.5"/>`;
-      s += `<text x="${CX0-6}" y="${y+6}" fill="${GRAY_TXT}" font-size="18" text-anchor="end">${t}</text>`;
+      s += `<text x="${CX0-6}" y="${y+4.5}" fill="${GRAY_TXT}" font-size="13" text-anchor="end">${t}</text>`;
     }
-    s += `<text x="${(CX0+CX1)/2}" y="${CY0-7}" fill="#ab8c57" font-size="18" text-anchor="middle">F2 — front ← → back</text>`;
-    s += `<text transform="translate(20,${(CY0+CY1)/2}) rotate(-90)" fill="#ab8c57" font-size="18" text-anchor="middle">F1 — close ↑ open ↓</text>`;
+    s += `<text x="${(CX0+CX1)/2}" y="${CY0-6}" fill="#ab8c57" font-size="13" text-anchor="middle">F2 — front ← → back</text>`;
+    s += `<text transform="translate(21,${(CY0+CY1)/2}) rotate(-90)" fill="#ab8c57" font-size="13" text-anchor="middle">F1 — close ↑ open ↓</text>`;
 
     for (const v of VOWELS) {
       const cx = cxOfF2(v.f2), cy = cyOfF1(v.f1);
       s += `<g data-vowel="1" data-f1="${v.f1}" data-f2="${v.f2}" data-f3="${v.f3}" style="cursor:pointer">`;
-      s += `<circle cx="${cx}" cy="${cy}" r="5" fill="#9c8154"><title>${v.ipa} — ${v.word} (F1 ${v.f1}, F2 ${v.f2}, F3 ${v.f3})</title></circle>`;
-      s += `<text x="${cx+9}" y="${cy+7}" fill="#d8c39a" font-size="22" font-weight="600">${v.ipa}</text></g>`;
+      s += `<circle cx="${cx}" cy="${cy}" r="4" fill="#9c8154"><title>${v.ipa} — ${v.word} (F1 ${v.f1}, F2 ${v.f2}, F3 ${v.f3})</title></circle>`;
+      s += `<text x="${cx+7}" y="${cy+5}" fill="#d8c39a" font-size="16" font-weight="600">${v.ipa}</text></g>`;
     }
 
     const px = cxOfF2(vowel.F2), py = cyOfF1(vowel.F1);
@@ -1170,12 +1170,14 @@
 
     if (tract.nasal.FNZ - tract.nasal.FNP > 2) {        // markers only once the pair has separated
       c.font = "8px sans-serif"; c.textAlign = "center";
-      for (const [f, col, lbl] of [[tract.nasal.FNP, "#f5cf3d", "pole"], [tract.nasal.FNZ, "#e5484d", "zero"]]) {
+      c.textAlign = "left";
+      const nasal = [[tract.nasal.FNP, "#f5cf3d", "nasality pole", 8], [tract.nasal.FNZ, "#e5484d", "nasality zero", 18]];
+      for (const [f, col, lbl, dy] of nasal) {
         const x = gx(g, f);
         c.strokeStyle = col; c.globalAlpha = 0.5;
         c.beginPath(); c.moveTo(x, g.T); c.lineTo(x, yTop); c.stroke();
         c.globalAlpha = 1; c.fillStyle = col;
-        c.fillText(lbl, x, g.T + 8);
+        c.fillText(lbl, x + 3, g.T + dy);
       }
     }
 
