@@ -39,12 +39,12 @@
   .app{height:100%; display:grid; grid-template-rows:auto minmax(0,1fr); gap:5px; padding:5px 7px 6px}
   .cols{
     display:grid; min-height:0; gap:6px;
-    grid-template-columns:396px minmax(0,1fr) minmax(0,1fr);
-    grid-template-rows:minmax(0,5fr) minmax(0,4fr);
-    grid-template-areas:"ctl rails rails" "ctl specA specB";
+    grid-template-columns:repeat(3, minmax(0,1fr));
+    grid-template-rows:minmax(0,1.07fr) minmax(0,1fr);
+    grid-template-areas:"ctl vowel waves" "master master master";
   }
-  .area-ctl{grid-area:ctl} .area-rails{grid-area:rails}
-  .area-specA{grid-area:specA} .area-specB{grid-area:specB}
+  .area-ctl{grid-area:ctl} .area-vowel{grid-area:vowel}
+  .area-waves{grid-area:waves} .area-master{grid-area:master}
   .col{display:flex; flex-direction:column; gap:3px; min-height:0; overflow-y:auto; overflow-x:hidden}
 
   .panel{
@@ -85,7 +85,7 @@
   .meta b{color:var(--ink);font-weight:700}
 
   /* ---- transport / misc control rows ---- */
-  .dial{width:132px;height:auto;display:block;cursor:grab;touch-action:none}
+  .dial{width:104px;height:auto;display:block;cursor:grab;touch-action:none}
   .dial:active{cursor:grabbing}
   .dial text{user-select:none;-webkit-user-select:none}
   .ctlrow{display:flex;align-items:center;gap:5px;min-width:0}
@@ -97,8 +97,8 @@
     font-variant-numeric:tabular-nums;min-width:36px}
 
   /* ---- Estill figure sliders ---- */
-  .figs{display:flex;flex-direction:column;gap:2px}
-  .figs h3{margin:2px 0 0;font-size:9px;letter-spacing:1px;text-transform:uppercase;
+  .figs{display:flex;flex-direction:column;gap:1px}
+  .figs h3{margin:1px 0 0;font-size:8.5px;letter-spacing:1px;text-transform:uppercase;
     color:var(--muted);font-weight:800;border-bottom:1px solid rgba(143,118,73,.4)}
   .fig{display:grid;grid-template-columns:94px 30px 1fr 40px 24px;align-items:center;gap:4px}
   .fig > .nm{font-size:10px;font-weight:600}
@@ -107,10 +107,9 @@
   .fig > .val{font-size:9.5px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
 
   /* ---- derived readout ---- */
-  .readout{display:grid;grid-template-columns:1fr;gap:1px;align-content:start;flex:1 1 0;
-    min-height:0;overflow-y:auto;
+  .readout{display:grid;grid-template-columns:1fr;gap:0;align-content:start;width:118px;
     background:#120c06;border-radius:2px;padding:5px 6px;box-shadow:inset 0 1px 5px rgba(0,0,0,.6)}
-  .readout div{font-size:8px;color:#a98a55;font-variant-numeric:tabular-nums;line-height:1.15}
+  .readout div{font-size:7.5px;color:#a98a55;font-variant-numeric:tabular-nums;line-height:1.1}
   .readout b{color:var(--amber);font-weight:700}
   .readout .warn b{color:#ff8a5a}
   .readout .sub{opacity:.65;font-size:8px}
@@ -122,14 +121,12 @@
   .cap{font-size:9px;color:var(--muted);line-height:1.2}
   /* the chart is sized by the height its panel has left over, not by a fixed aspect: its box
      fills the slot and preserveAspectRatio letterboxes whichever axis is slack */
-  .vowelrow{display:flex; gap:5px; flex:1 1 0; min-height:0}
   .chartbox{flex:1 1 0; min-width:0; min-height:0; display:flex}
-  .readoutcol{flex:0 0 150px; min-height:0; display:flex}
   #chart{flex:1 1 0; min-height:0; width:100%; height:100%}
 
 
   /* what the model leaves out — greyed, and deliberately always on screen */
-  .absent{display:grid;grid-template-columns:1fr 1fr;gap:0 10px;margin-top:1px}
+  .absent{display:grid;grid-template-columns:repeat(3,1fr);gap:0 7px;margin-top:1px}
   .absent > div{font-size:8.5px;line-height:1.25;color:#7a6742;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .absent > div > b{font-weight:700;color:#6b5836}
@@ -179,9 +176,8 @@
 
   <div class="cols">
 
-    <!-- ============================ LEFT: controls ============================ -->
+    <!-- ---- top left: pitch, levels, the figures, and what they resolved to ---- -->
     <div class="col area-ctl">
-
       <div class="panel">
         <div style="display:flex;gap:8px;align-items:flex-start">
           <div class="u" data-n="fund" style="flex:0 0 auto">
@@ -195,11 +191,11 @@
             <input id="fcluster" type="range" min="2400" max="3400" step="10" value="2900">
             <span class="v" id="fcval"></span></div>
           </div>
+          <div class="u" data-n="readout"><div class="readout" id="readout"></div></div>
         </div>
       </div>
 
       <div class="panel">
-        <div class="ptitle"><span>Estill Figures</span></div>
         <div class="figs">
           <h3>Source figures</h3>
           <div id="figs-source"></div>
@@ -218,32 +214,22 @@
         </div>
       </div>
 
+    </div>
+
+    <!-- ---- top middle: the vowel target ---- -->
+    <div class="col area-vowel">
       <div class="panel grow">
-        <div class="vowelrow">
           <div class="u chartbox" data-n="chart">
             <svg id="chart" class="screen" viewBox="0 0 348 320" preserveAspectRatio="xMidYMid meet"></svg>
           </div>
-          <div class="u readoutcol" data-n="readout"><div class="readout" id="readout"></div></div>
-        </div>
         <div class="u ctlrow" data-n="f3t"><label for="f3t" class="wide">F3 (r-coloring)</label>
           <input id="f3t" type="range" min="1400" max="3200" step="10" value="2500">
           <span class="v" id="f3val"></span></div>
       </div>
-
     </div>
 
-    <!-- ============ TOP RIGHT: the tract, as a response curve and as resonances ============ -->
-    <div class="col area-rails">
-      <div class="panel grow">
-        <div class="u plot" data-n="filter">
-          <canvas id="tractSpec"></canvas>
-          <div class="cap">Source → filter → output</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ============================ BOTTOM RIGHT: waveforms ============================ -->
-    <div class="col area-specA">
+    <!-- ---- top right: the two time-domain views, source above output ---- -->
+    <div class="col area-waves">
       <div class="panel grow">
         <div class="u plot" data-n="lfWave">
           <canvas id="lfWave"></canvas>
@@ -256,11 +242,12 @@
       </div>
     </div>
 
-    <div class="col area-specB">
+    <!-- ---- the bottom half: source, filter and output on one axis ---- -->
+    <div class="col area-master">
       <div class="panel grow">
-        <div class="u plot" data-n="spectrum">
-          <canvas id="spectrum"></canvas>
-          <div class="cap">Measured spectrum</div>
+        <div class="u plot" data-n="filter">
+          <canvas id="tractSpec"></canvas>
+          <div class="cap">Source → filter → output</div>
         </div>
       </div>
     </div>
@@ -507,9 +494,9 @@
 
     return {
       F, B, w3,
-      // What was asked for, before tract-length scaling and the twang pull — i.e. what the
-      // resonance rails' drag handles set. Keeping these raw is what makes a handle stay under
-      // the pointer instead of snapping back by the length scale on the next redraw.
+      // What was asked for, before tract-length scaling and the twang pull — the vowel target
+      // and the singer's neutrals. The master pane draws these as rings against the effective
+      // centres, which is how you see what a figure did rather than only where it ended up.
       Ftarget: [vowel.F1, vowel.F2, vowel.F3, singer.F4, singer.F5],
       // Coincident pole and zero multiply to exactly 1. Nasality is introduced by separating
       // them, so velum = 0 is a true bypass with no click and no residual coloration.
@@ -768,7 +755,7 @@
   // ---------- audio ----------
   const HEARING_TOP = 20000;
   let ctx = null, osc = null, master = null, playing = false;
-  let analyser = null, scopeRAF = null, timeBuf = null, freqBuf = null;
+  let analyser = null, scopeRAF = null, timeBuf = null;
   // source-filter graph nodes
   let srcGain = null, nasalPole = null, nasalZero = null, nasalTrim = null;
   let sourceBus = null, formantMix = null;
@@ -972,8 +959,8 @@
   // device pixel ratio, and every draw routine works in CSS pixels read off the element — so a
   // shorter window means shorter plots, never squashed text.
   const tractCv = document.getElementById("tractSpec"), lfCv = document.getElementById("lfWave");
-  const scopeCv = document.getElementById("scope"), spectrumCv = document.getElementById("spectrum");
-  const CANVASES = [tractCv, lfCv, scopeCv, spectrumCv];
+  const scopeCv = document.getElementById("scope");
+  const CANVASES = [tractCv, lfCv, scopeCv];
 
   function fitCanvases() {
     const dpr = window.devicePixelRatio || 1;
@@ -1273,15 +1260,13 @@
   function startScope() {
     if (!analyser || scopeRAF) return;
     timeBuf = new Float32Array(analyser.fftSize);
-    freqBuf = new Uint8Array(analyser.frequencyBinCount);
-    const frame = () => { scopeRAF = requestAnimationFrame(frame); drawWave(); drawSpectrum(); };
+    const frame = () => { scopeRAF = requestAnimationFrame(frame); drawWave(); };
     frame();
   }
   function stopScope() {
     if (scopeRAF) cancelAnimationFrame(scopeRAF);
     scopeRAF = null;
     scopeCv.getContext("2d").clearRect(0, 0, scopeCv.clientWidth, scopeCv.clientHeight);
-    spectrumCv.getContext("2d").clearRect(0, 0, spectrumCv.clientWidth, spectrumCv.clientHeight);
     clipLbl.textContent = "level —"; clipLbl.style.color = "";
   }
   function drawWave() {
@@ -1308,37 +1293,6 @@
     clipLbl.textContent = clipped ? `peak ${peak.toFixed(2)} · CLIPPING` : `peak ${peak.toFixed(2)}`;
     clipLbl.style.color = clipped ? "#c62d1a" : (peak > 0.85 ? "#a06a10" : "");
   }
-  function drawSpectrum() {
-    const c = spectrumCv.getContext("2d"), W = spectrumCv.clientWidth, H = spectrumCv.clientHeight;
-    const base = H - 10;
-    analyser.getByteFrequencyData(freqBuf);
-    c.clearRect(0, 0, W, H);
-    const bins = freqBuf.length, nyq = ctx.sampleRate / 2;
-    const fmin = 50, fmax = Math.min(20000, nyq);
-    const lmin = Math.log10(fmin), lspan = Math.log10(fmax) - lmin;
-    const xOf = f => (Math.log10(f) - lmin) / lspan * W;
-    c.strokeStyle = "#2c2010"; c.fillStyle = "#a07f4c"; c.font = "8px sans-serif"; c.textAlign = "center"; c.lineWidth = 1;
-    for (const f of [100, 200, 500, 1000, 2000, 5000, 10000]) {
-      if (f > fmax) continue;
-      const x = xOf(f);
-      c.beginPath(); c.moveTo(x, 0); c.lineTo(x, base); c.stroke();
-      c.fillText(f >= 1000 ? (f / 1000) + "k" : f, x, H - 2);
-    }
-    for (let i = 0; i < 5; i++) {                                     // effective formant centers
-      const x = xOf(tract.F[i]);
-      c.strokeStyle = "rgba(255,179,71,0.5)"; c.beginPath(); c.moveTo(x, 0); c.lineTo(x, base); c.stroke();
-    }
-    c.beginPath();
-    for (let x = 0; x < W; x++) {
-      const f = Math.pow(10, lmin + x / W * lspan);
-      const v = freqBuf[Math.min(bins - 1, Math.round(f / nyq * bins))] / 255;
-      const y = base - v * (base - 3);
-      x ? c.lineTo(x, y) : c.moveTo(x, y);
-    }
-    c.strokeStyle = "#ff8a2e"; c.lineWidth = 1.4; c.stroke();
-    c.lineTo(W, base); c.lineTo(0, base); c.closePath(); c.fillStyle = "rgba(255,138,46,0.16)"; c.fill();
-  }
-
   // ---------- one place that redraws everything ----------
   // Anything that moves a parameter calls apply(): the audio graph is updated synchronously (so
   // a filter is never a frame behind the slider) while the drawing — which includes an LF solve
@@ -1491,8 +1445,6 @@
      "The waveform itself. tp = flow peak, te = closure and the instant the tract is struck, +ta = how fast it recovers. The shape sliders show up here first."],
     ["scope", "Radiated pressure",
      "A real tap on the output. The trace is formant ringing retriggered at every glottal closure — closure, not opening, is what excites the tract."],
-    ["spectrum", "Measured spectrum",
-     "Real FFT of the output, and the reality check on panel 3: where they disagree, the model plot is lying. Amber marks are the effective formant centres."],
   ];
 
   // The notes are prose, not markup — anything angle-bracketed in them (a `<select>`, say) is
