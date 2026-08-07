@@ -6,18 +6,9 @@
 <title>Source-filter model with Estill figures — Voice Synth</title>
 <!--
   ============================================================================================
-  TEMPORARY DEV LAYOUT — everything marked DEV-ONLY below is review scaffolding, not the app.
-  It exists so the whole instrument can be seen at once while the LF/Estill rebuild is being
-  read through, and it is meant to be deleted (or have big pieces of it deleted) afterwards.
-
-  To rip it out, in order:
-    1. delete the  <style id="dev-only">  block
-    2. delete the  <header class="bar">   element
-    3. delete the  //#region dev-notes    block in the script (the DEV_NOTES table + wiring)
-    4. unwrap the  <div class="u" data-n="…">  wrappers — they are pure containers, nothing
-       in the app reads them
-    5. restore a document-flow layout: drop `.app`/`.cols`/`.col` and let `.panel` stack
-  The synthesis model, the audio graph and every drawing routine are untouched by any of it.
+  TEMPORARY DEV LAYOUT — the fit-to-screen grid is review scaffolding, not the app's own shape.
+  To restore a document-flow layout, drop `.app` / `.cols` / `.col` and let `.panel` stack.
+  Everything else — the model, the audio graph, every drawing routine — is the real thing.
   ============================================================================================
 -->
 <style>
@@ -89,14 +80,14 @@
      the dial itself is then sized from the row's measured height in fitDial(). */
   .dialrow{display:flex; gap:8px; flex:1 1 0; min-height:0; align-items:stretch}
   .dialbox{flex:0 0 auto; display:flex; align-items:center; min-height:0}
-  .dialside{flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; min-height:0}
-  .readoutwrap{flex:1 1 0; min-height:0; display:flex}
+  .dialside{flex:1; min-width:0; display:flex; flex-direction:column; gap:5px; min-height:0;
+    justify-content:space-between}
   /* the UA rule that hides a closed details' content is author-overridable, and .stack's
      display:flex was winning — say it explicitly */
   button.play.off{background:linear-gradient(180deg,#bda887,#9d8760);color:#5c4a2a;
     box-shadow:inset 0 2px 4px rgba(60,40,15,.45)}
   .btnrow{display:flex;gap:5px}
-  .btnrow > .u{flex:1 1 0;min-width:0}
+  .btnrow > div{flex:1 1 0;min-width:0}
   .btnrow button{width:100%}
   .adv:not([open]) > *:not(summary){display:none}
   .adv > summary{font-size:9px;color:var(--muted);cursor:pointer;letter-spacing:.4px;
@@ -127,15 +118,6 @@
   .fig > .e.lo{text-align:right}
   .fig > .val{font-size:9.5px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
 
-  /* ---- derived readout ---- */
-  .readout{display:grid;grid-template-columns:1fr 1fr;gap:0 7px;align-content:start;flex:1 1 0;
-    min-height:0;overflow-y:auto;
-    background:#120c06;border-radius:2px;padding:5px 6px;box-shadow:inset 0 1px 5px rgba(0,0,0,.6)}
-  .readout div{font-size:7.5px;color:#a98a55;font-variant-numeric:tabular-nums;line-height:1.1}
-  .readout b{color:var(--amber);font-weight:700}
-  .readout .warn b{color:#ff8a5a}
-  .readout .sub{opacity:.65;font-size:8px}
-
   /* ---- responsive plots: the canvas fills its slot and is redrawn at that size ---- */
   .plot{flex:1 1 0; min-height:0; display:flex; flex-direction:column; gap:2px}
   .plot canvas{flex:1 1 0; min-height:0; width:100%; display:block; background:#120c06;
@@ -154,34 +136,12 @@
   .absent > div > b{font-weight:700;color:#6b5836}
 </style>
 
-<style id="dev-only">
-  /* ======================= DEV-ONLY: annotation scaffolding ======================= */
-  .bar{display:flex;flex-direction:column;gap:3px;
-    background:#241a0c;color:#d8c39a;border:1px solid #0e0904;border-radius:4px;padding:5px 9px}
+<style>
+  .bar{background:#241a0c;color:#d8c39a;border:1px solid #0e0904;border-radius:4px;padding:5px 9px}
   .bar .top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .bar h1{font-size:11px;font-weight:800;margin:0;letter-spacing:1.2px;text-transform:uppercase;color:#ffb347}
   .bar .tag{font-size:8.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;
     background:#8a2f12;color:#ffd9b0;border-radius:2px;padding:1px 5px}
-  #noteout{height:2.6em;overflow-y:auto;font-size:10px;line-height:1.35;color:#cdb383;
-    border-top:1px solid #3a2a13;padding-top:2px}
-  #noteout .who{color:#ffb347;font-weight:700}
-  #noteout .idx{color:#5b9cf2;font-weight:700}
-  #noteout .pin{color:#ffb347;font-weight:700}
-
-  /* every annotated element is wrapped in .u; the badge is injected by script */
-  .u{position:relative; padding-right:13px}
-  .u.plot{padding-right:0}
-  .u > .badge{
-    position:absolute; top:0; right:0; z-index:5; cursor:pointer;
-    font-size:8px; font-weight:800; line-height:1; padding:1px 4px; border-radius:2px;
-    background:rgba(91,156,242,.85); color:#08111f; opacity:.55;
-  }
-  .u:hover > .badge{opacity:1; background:#ffb347; color:#2a1400}
-  .u:hover{outline:1px dashed rgba(255,179,71,.75); outline-offset:1px; border-radius:2px}
-  /* a pinned note stays put while you drag something else around */
-  .u.pinned > .badge{opacity:1; background:#e26a10; color:#fff2e0; box-shadow:0 0 0 1px #2a1400}
-  .u.pinned{outline:1.5px solid var(--accent); outline-offset:1px; border-radius:2px}
-  /* ===================== END DEV-ONLY ===================== */
 </style>
 </head>
 <body>
@@ -193,7 +153,6 @@
       <h1>Source-filter model with Estill figures</h1>
       <span class="tag">dev layout · temporary</span>
     </div>
-    <div id="noteout"></div>
   </header>
 
   <div class="cols">
@@ -202,26 +161,25 @@
     <div class="col area-ctl">
       <div class="panel grow">
         <div class="dialrow" id="dialrow">
-          <div class="u dialbox" data-n="fund">
+          <div class="dialbox">
             <svg id="fund" class="dial" viewBox="0 0 340 340" preserveAspectRatio="xMidYMid meet"
                  role="slider" aria-label="Fundamental"></svg></div>
           <div class="dialside">
             <div class="btnrow">
-              <div class="u" data-n="play"><button id="play" class="play">▶ Start</button></div>
-              <div class="u" data-n="filt"><button id="filt" class="play">Filter</button></div>
+              <div><button id="play" class="play">▶ Start</button></div>
+              <div><button id="filt" class="play">Filter</button></div>
             </div>
-            <div class="u readoutwrap" data-n="readout"><div class="readout" id="readout"></div></div>
+            <div class="stack">
+              <div class="hd"><label for="vol">Gain</label><span class="v" id="volval"></span></div>
+              <input id="vol" type="range" min="0" max="1" step="0.01" value="0.45"></div>
+            <details class="adv">
+              <summary>Singer: AES cluster target</summary>
+              <div class="stack">
+                <div class="hd"><label for="fcluster">Cluster</label><span class="v" id="fcval"></span></div>
+                <input id="fcluster" type="range" min="2400" max="3400" step="10" value="2900"></div>
+            </details>
           </div>
         </div>
-        <div class="u stack" data-n="vol">
-          <div class="hd"><label for="vol">Gain</label><span class="v" id="volval"></span></div>
-          <input id="vol" type="range" min="0" max="1" step="0.01" value="0.45"></div>
-        <details class="adv">
-          <summary>Singer: AES cluster target</summary>
-          <div class="u stack" data-n="fcluster">
-            <div class="hd"><label for="fcluster">Cluster</label><span class="v" id="fcval"></span></div>
-            <input id="fcluster" type="range" min="2400" max="3400" step="10" value="2900"></div>
-        </details>
       </div>
 
       <div class="panel">
@@ -231,7 +189,7 @@
           <h3>Filter figures</h3>
           <div id="figs-filter"></div>
         <h3>Unmodeled figures </h3>
-        <div class="u absent" data-n="absent">
+        <div class="absent">
           <div><b>False vocal folds</b></div>
           <div><b>Torso anchoring</b></div>
           <div><b>Head &amp; neck anchoring</b></div>
@@ -248,10 +206,10 @@
     <!-- ---- top middle: the vowel target ---- -->
     <div class="col area-vowel">
       <div class="panel grow">
-          <div class="u chartbox" data-n="chart">
+          <div class="chartbox">
             <svg id="chart" class="screen" viewBox="0 0 348 320" preserveAspectRatio="xMidYMid meet"></svg>
           </div>
-        <div class="u ctlrow" data-n="f3t"><label for="f3t" class="wide">F3 (r-coloring)</label>
+        <div class="ctlrow"><label for="f3t" class="wide">F3 (r-coloring)</label>
           <input id="f3t" type="range" min="1400" max="3200" step="10" value="2500">
           <span class="v" id="f3val"></span></div>
       </div>
@@ -260,11 +218,11 @@
     <!-- ---- top right: the two time-domain views, source above output ---- -->
     <div class="col area-waves">
       <div class="panel grow">
-        <div class="u plot" data-n="lfWave">
+        <div class="plot">
           <canvas id="lfWave"></canvas>
           <div class="cap">Source waveform</div>
         </div>
-        <div class="u plot" data-n="scope">
+        <div class="plot">
           <canvas id="scope"></canvas>
           <div class="cap">Output waveform <span id="cliplbl" style="float:right">level —</span></div>
         </div>
@@ -274,7 +232,7 @@
     <!-- ---- the bottom half: source, filter and output on one axis ---- -->
     <div class="col area-master">
       <div class="panel grow">
-        <div class="u plot" data-n="filter">
+        <div class="plot">
           <canvas id="tractSpec"></canvas>
           <div class="cap">Source → filter → output</div>
         </div>
@@ -390,6 +348,9 @@
   // Fant's single shape parameter, kept only as a readout: it says how far a configuration sits
   // from natural-speech statistics. Deliberately NOT used as an input — collapsing {OQ, Rk, Ra}
   // onto one axis would re-impose exactly the covariance a trained voice is able to break.
+  // Nothing on screen shows this since the status readout came out — it stays because it is a
+  // statement about the model (section 3.3: how far a configuration sits from natural-speech
+  // statistics) and the test suite is what consumes it.
   const rdDiagnostic = Ra => (Ra * 100 + 1) / 4.8;
 
   // --- one period → harmonic amplitudes ------------------------------------------------------
@@ -1314,29 +1275,6 @@
     c.fillText(`${(p.T * 1000).toFixed(2)} ms`, L + 3, T);
   }
 
-  // ---------- readout ----------
-  const readoutEl = document.getElementById("readout");
-  function drawReadout() {
-    const f0 = f0Now();
-    const p = lfShape(f0, src.OQ, src.Rk, src.Ra);
-    const rd = rdDiagnostic(src.Ra);
-    const cells = [
-      ["OQ", src.OQ.toFixed(3), "pitch-invariant"],
-      ["Rk", src.Rk.toFixed(3), ""],
-      ["Ra", src.Ra.toFixed(4), p.taClamped ? "clamped: Ra ≥ 1−OQ" : ""],
-      ["Rg", p.Rg.toFixed(2), ""],
-      ["glottal f", (p.Rg * f0).toFixed(0) + " Hz", ""],
-      ["tilt knee", (1 / (2 * Math.PI * p.ta)).toFixed(0) + " Hz", ""],
-      ["tp / te", `${(p.tp * 1000).toFixed(2)}/${(p.te * 1000).toFixed(2)} ms`, ""],
-      ["Eₑ", eeEffective().toFixed(2), `${EE_NOMINAL} × twang, +${(20 * Math.log10(tract.eeBonus)).toFixed(1)} dB`],
-      ["Rd diag", rd.toFixed(2), rd < 0.3 || rd > 2.7 ? "outside speech stats" : ""],
-      ["cluster", `${tract.w3 > 0.5 ? 3 : 2} members`, tract.w3 < 1 ? "F3 held low by /r/" : ""],
-    ];
-    readoutEl.innerHTML = cells.map(([k, v, note]) =>
-      `<div class="${/clamped|outside/.test(note) ? "warn" : ""}">${k} <b>${v}</b>` +
-      (note ? `<br><span class="sub">${note}</span>` : "") + `</div>`).join("");
-  }
-
   // ---------- output visualization (live, from the analyser tap) ----------
   const clipLbl = document.getElementById("cliplbl");
   function startScope() {
@@ -1406,7 +1344,6 @@
     fitCanvases();
     drawDial();
     drawChart();
-    drawReadout();
     drawModelSpectra();
     updateSideLabels();
   }
@@ -1503,104 +1440,6 @@
 
   window.addEventListener("resize", () => scheduleDraw());
 
-  //#region dev-notes
-  // ============================================================================================
-  // DEV-ONLY — temporary review scaffolding. Delete this whole region, the <style id="dev-only">
-  // block and the <header class="bar"> element to get the app back. Nothing outside this region
-  // reads DEV_NOTES, the .u wrappers or the injected badges.
-  //
-  // One entry per interactive or plotted element: what it is, and how it is actually implemented
-  // — which state it writes, which function consumes it, and where it lands in the audio graph
-  // or on a canvas.
-  // ============================================================================================
-  const DEV_NOTES = [
-    ["fund", "Fundamental f₀",
-     "quartet.html's dial. Spin the outer wheel to step semitones (it winds through octaves, clamped C2–C6); drag the inner one to bend ±100¢ continuously. Changing it re-solves the source waveform, not just the oscillator frequency — the harmonic count and ta/T both depend on f₀. The bend is what lets you slide a harmonic onto a formant and watch panel 3 jump."],
-    ["vol", "Gain",
-     "Master gain, the last node before the speakers. A monitoring level only — unlike effort it changes nothing about the model, and nothing measured here depends on it."],
-    ["filt", "Filter bypass",
-     "Switches the whole tract out — all five resonances and the nasal pair — and passes the source straight through, padded so the level roughly matches. The plot follows: the response curve goes flat, the output stems collapse onto the source stems, and the resonance markers grey out. The fastest way to hear what the filter is contributing, and to hear the raw flow derivative on its own."],
-    ["play", "Start / Stop",
-     "Builds a fresh oscillator (Web Audio's are one-shot), loads the source waveform, fades in over 60 ms. That fade is not an onset — the figure is not modeled — so nothing about how a note begins here is a claim. Also where the AudioContext is created, since that needs a click."],
-
-    ["fig-body_cover", "Vocal fold cover (thick ↔ thin)",
-     "Fold thickness. Sets OQ 0.45→0.68 and Rk 0.25→0.45, and deliberately leaves Ra alone. In panel 1: H1 vs H2 moves, the slope does not."],
-    ["fig-thyroid_tilt", "Thyroid tilt (vertical ↔ tilted)",
-     "Smoother fold closure, darker sound. Sets Ra 0.004→0.075 and nothing else. At full tilt the spectral knee sits near 2·f₀ at any pitch. This is \"cry\"."],
-    ["fig-larynx_height", "Larynx height (low ↔ high)",
-     "Tract length, 0.88–1.12×. Full weight on F1/F2, half on F3–F5, since the epilarynx changes length less. On the rails every bar slides away from its ring."],
-    ["fig-twang", "AES / twang (wide ↔ narrow)",
-     "Narrows the top of the larynx. F3/F4/F5 converge near 3 kHz and sum into one big peak — the singer's formant. F1/F2 are untouched, so it survives vowel changes, and it adds ~4.6 dB to Eₑ."],
-    ["fig-velum", "Velum / nasality (raised ↔ lowered)",
-     "Nasality. Two peaking filters at +9 and −9 dB start on the same frequency and cancel exactly. Raising this walks the −9 dB one up to 450 Hz, opening a notch next to F1."],
-    ["fig-lip_protrusion", "Lip protrusion (spread ↔ protruded)",
-     "Rounding lengthens the tract and drops every formant by up to 5% — something F1/F2 alone cannot express. Weighted down on F1, which is dominated by the back cavity."],
-    ["fcluster", "AES cluster target",
-     "Where twang pulls F3/F4/F5 to. A per-singer constant; 2.9 kHz is a male ballpark. It is the dashed blue line on the rails."],
-    ["readout", "Derived source parameters",
-     "What the figures resolved to, re-solved every frame. Orange means a warning: Ra clamps when it will not fit the return phase, and Rd flags settings outside natural speech."],
-    ["chart", "Vowel chart (F1 × F2)",
-     "IPA orientation — F1 downward, F2 right to left. Grey dots are Hillenbrand 1995 male means. Clicking one sets F1, F2 and F3; dragging sets F1/F2 only."],
-    ["f3t", "F3 target (rhoticity)",
-     "F3 belongs to the vowel, not to twang. An American /r/ drops it to ~1570 Hz, which exempts it from the cluster, so rhotics ring less — which is why choirs de-rhoticize."],
-
-    ["absent", "Not modeled",
-     "Of the thirteen figures: five modeled, two half-modeled, two collapsed into the vowel target, four set aside. Each omission is an assumption that buys the orthogonality the rest of the model rests on — on screen so that a missing effect reads as a known limit, not a bug."],
-
-    ["filter", "Source → filter → output",
-     "The whole chain on one dB axis. Pale stems are the source harmonics with H1 at 0 dB; the green curve is the filter's gain at that frequency, computed from the same coefficients Web Audio is running; the bright stems are their sum — so output = source + filter is a vertical distance you can read off rather than a claim. The strip underneath says where each resonance sits — the dot is the effective centre, the bar its bandwidth — with a dropline from each peak to its marker. Hover a peak for its frequency and bandwidth. The pale line laid over the top while a note sounds is the analyser's measurement of the real output, shifted so its loudest bin meets the modelled one — absolute level is not comparable, but the shape is, and where the two disagree it is the model that is lying."],
-    ["lfWave", "Flow derivative, one period",
-     "The waveform itself. tp = flow peak, te = closure and the instant the tract is struck, +ta = how fast it recovers. The shape sliders show up here first."],
-    ["scope", "Radiated pressure",
-     "A real tap on the output. The trace is formant ringing retriggered at every glottal closure — closure, not opening, is what excites the tract."],
-  ];
-
-  // The notes are prose, not markup — anything angle-bracketed in them (a `<select>`, say) is
-  // meant to read literally, so escape before it goes through innerHTML.
-  const esc = t => t.replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-  const noteBy = new Map(DEV_NOTES.map(([k, title, body], i) =>
-    [k, { i: i + 1, title: esc(title), body: esc(body) }]));
-  const noteOut = document.getElementById("noteout");
-
-  const units = [...document.querySelectorAll(".u[data-n]")];
-  let pinned = null, hovered = null;
-  for (const u of units) {
-    const n = noteBy.get(u.dataset.n);
-    if (!n) continue;
-    const badge = document.createElement("span");
-    badge.className = "badge";
-    badge.textContent = n.i;
-    badge.title = "click to pin this note";
-    badge.addEventListener("pointerdown", e => e.stopPropagation());
-    badge.addEventListener("click", e => { e.stopPropagation(); e.preventDefault(); togglePin(u.dataset.n); });
-    u.appendChild(badge);
-    u.addEventListener("pointerenter", () => { hovered = u.dataset.n; if (!pinned) showNote(hovered); });
-  }
-
-  // Pinning exists so a note can be read while both hands are busy somewhere else — dragging a
-  // slider on the far side of the page would otherwise sweep the pointer over a dozen elements
-  // and replace the text before you got to it.
-  function togglePin(key) {
-    pinned = pinned === key ? null : key;
-    for (const u of units) u.classList.toggle("pinned", u.dataset.n === pinned);
-    showNote(pinned || hovered);
-  }
-  window.addEventListener("keydown", e => { if (e.key === "Escape" && pinned) togglePin(pinned); });
-
-  const DEFAULT_NOTE =
-    `<span class="who">Temporary dev layout.</span> Hover a numbered element for how it is ` +
-    `implemented, or click the number to pin the note so it stays put while you drag ` +
-    `something else.`;
-
-  function showNote(key) {
-    const n = noteBy.get(key);
-    noteOut.innerHTML = n
-      ? `<span class="idx">${n.i}</span> <span class="who">${n.title}</span> — ${n.body}` +
-        (pinned === key ? ` <span class="pin">pinned · click ${n.i} again or press Esc</span>` : "")
-      : DEFAULT_NOTE;
-  }
-  noteOut.innerHTML = DEFAULT_NOTE;
-  //#endregion dev-notes
 
   syncFigureInputs();
   recompute();
