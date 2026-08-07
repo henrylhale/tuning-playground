@@ -67,9 +67,13 @@
 
   /* voicing lattice: a vertical pitch axis you SPELL on. Every chord tone across the reasonable
      octaves is a peg (hollow dot + grayed function label) = a place to drop a voice. The four voices
-     sit on four pegs; drag a coloured dot to another peg to re-spell. Two voices may double one pitch
+     sit on four pegs; drag a voice to another peg to re-spell. Two voices may double one pitch
      → their dots are drawn tangent. Same 3-column grid for every row (parts | dot(s) | function/key/
-     note) so pegs and voices align on the center line. */
+     note) so pegs and voices align on the center line.
+     A voice's whole label is its drag handle (.lgrab): the part name, the dot, and — when the pitch
+     isn't doubled — the function/degree/note text, since a doubled row's info describes both voices
+     at once and so belongs to neither. Rows themselves stay pointer-transparent, so the handles are
+     exactly the inked text, not the empty gutters beside it. */
   /* the lattice fills the full height of its column (which stretches to the canvas), and .latinner
      spans it, so the whole pitch range always runs top-to-bottom the same regardless of chord */
   .lattice{position:relative;flex:1 1 auto;min-height:300px;overflow:hidden;touch-action:none}
@@ -82,9 +86,20 @@
   .lattice .lparts{justify-self:end;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;justify-content:flex-end}
   .lattice .lpart{font-size:11px;font-weight:800;text-transform:capitalize;letter-spacing:.3px;white-space:nowrap}
   .lattice .ldots{justify-self:center;display:flex;align-items:center}       /* tangent dots when doubled */
-  .lattice .ldot{width:16px;height:16px;border-radius:50%;box-sizing:border-box;pointer-events:auto;
-    cursor:grab;touch-action:none;border:1.5px solid #ffffffb0;box-shadow:0 1px 2px rgba(0,0,0,.3)}
-  .lattice .ldot.grabbing{cursor:grabbing;transform:scale(1.25);box-shadow:0 2px 6px rgba(0,0,0,.45)}
+  .lattice .ldot{position:relative;width:16px;height:16px;border-radius:50%;box-sizing:border-box;
+    flex:0 0 auto;border:1.5px solid #ffffffb0;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+  .lattice .ldot.grabbing{transform:scale(1.25);box-shadow:0 2px 6px rgba(0,0,0,.45)}
+  /* every grabbable piece of a voice */
+  .lattice .lgrab{pointer-events:auto;cursor:grab;touch-action:none}
+  /* text handles get a little padding so they're a comfortable touch target. It's symmetric, so the
+     text stays centred on its row; the only cost is 5px more air either side of the dot column. */
+  .lattice .lpart.lgrab,.lattice .linfo.lgrab{padding:3px 5px;border-radius:7px}
+  .lattice .lpart.lgrab:hover,.lattice .linfo.lgrab:hover{background:#0000000f}
+  /* the dot can't use padding — tangent dots sit flush in a flex row — so it grows its hit area
+     with an invisible overlay instead */
+  .lattice .ldot.lgrab::after{content:"";position:absolute;inset:-6px;border-radius:50%}
+  .lattice.dragging .lgrab{cursor:grabbing}
+  .lattice.dragging .lpart.lgrab:hover,.lattice.dragging .linfo.lgrab:hover{background:none}
   .lattice .pegdot{width:11px;height:11px;border-radius:50%;box-sizing:border-box;
     background:#0000000d;border:1.5px solid #00000045}
   .lattice .ldots.target .pegdot{border-color:var(--accent);background:#e26a1033;transform:scale(1.3)}
@@ -1151,22 +1166,26 @@
       const f=slotFreq(rep);
       const row=document.createElement("div"); row.className="lrow lvoice"; row.style.top=latY(f).toFixed(2)+"%";
       row.dataset.f=key;
-      const parts=ks.map(k=>`<span class="lpart" style="color:${col}">${VOICE_NAMES[k]}</span>`).join("");
-      const dots =ks.map(k=>`<span class="ldot" draggable="false" data-k="${k}" style="background:${col}"></span>`).join("");
+      const parts=ks.map(k=>`<span class="lpart lgrab" data-k="${k}" style="color:${col}">${VOICE_NAMES[k]}</span>`).join("");
+      const dots =ks.map(k=>`<span class="ldot lgrab" draggable="false" data-k="${k}" style="background:${col}"></span>`).join("");
+      // one voice on this pitch → the info text names that voice, so it drags it too. Doubled → it
+      // describes both, so it stays inert and each voice is grabbed by its own part label or dot.
+      const info=ks.length===1 ? `class="linfo lgrab" data-k="${ks[0]}"` : `class="linfo"`;
       row.innerHTML=`<span class="lparts">${parts}</span>`+
                     `<span class="ldots">${dots}</span>`+
-                    `<span class="linfo"><b style="color:${col}">${role}</b><i>${keyDeg}</i><em>${noteName(f)}</em></span>`;
+                    `<span ${info}><b style="color:${col}">${role}</b><i>${keyDeg}</i><em>${noteName(f)}</em></span>`;
       inner.appendChild(row);
     });
 
     lat.appendChild(inner);
-    inner.querySelectorAll(".ldot").forEach(d=>d.addEventListener("pointerdown",startDotDrag));
+    inner.querySelectorAll(".lgrab").forEach(h=>h.addEventListener("pointerdown",startVoiceDrag));
     voicingEl.appendChild(lat);
   }
 
-  // ---- drag a voice dot onto a peg (the only voicing edit) -------------------------------------
-  // The dragged dot keeps its part; dropping sets that part's chord tone + octave to the target peg,
-  // so its function (and colour) update. A pitch already holding MAX_PER_PITCH other voices is refused.
+  // ---- drag a voice onto a peg (the only voicing edit) -----------------------------------------
+  // Grab a voice anywhere on its label; the dragged voice keeps its part, and dropping sets that
+  // part's chord tone + octave to the target peg, so its function (and colour) update.
+  // A pitch already holding MAX_PER_PITCH other voices is refused.
   function nearestPeg(clientY){
     const r=latState.inner.getBoundingClientRect();          // maps a peg's % position to a screen Y
     let best=null, bd=Infinity;
@@ -1183,17 +1202,22 @@
     const dots=row && row.querySelector(".ldots");
     if(dots){ dots.classList.add("target"); if(!ok) dots.classList.add("bad"); }
   }
-  function startDotDrag(e){
+  function startVoiceDrag(e){
     e.preventDefault(); e.stopPropagation();
-    const dot=e.currentTarget;
-    latState.drag={k:+dot.dataset.k, pid:e.pointerId, peg:null, dot, y0:e.clientY};
-    try{ dot.setPointerCapture(e.pointerId); }catch(_){}
-    dot.classList.add("grabbing");
+    const handle=e.currentTarget, k=+handle.dataset.k;
+    // everything tagged with this voice's index — its dot, its part label, and its info text when the
+    // pitch isn't doubled — trails the finger together, so the whole grabbed label moves as one
+    const follow=[...handle.closest(".lrow").querySelectorAll(`[data-k="${k}"]`)];
+    const dot=follow.find(el=>el.classList.contains("ldot"));
+    latState.drag={k, pid:e.pointerId, peg:null, dot, follow, y0:e.clientY};
+    try{ handle.setPointerCapture(e.pointerId); }catch(_){}
+    if(dot) dot.classList.add("grabbing");
     latState.el.classList.add("dragging");
   }
   window.addEventListener("pointermove",e=>{
     const d=latState.drag; if(!d) return;
-    d.dot.style.transform=`translateY(${(e.clientY-d.y0).toFixed(0)}px) scale(1.25)`;   // dot trails the finger
+    const dy=(e.clientY-d.y0).toFixed(0);
+    d.follow.forEach(el=>{ el.style.transform=`translateY(${dy}px)`+(el===d.dot?" scale(1.25)":""); });
     const peg=nearestPeg(e.clientY);
     const ok=peg && occupancyAt(fkey(peg.f), d.k) < MAX_PER_PITCH;
     d.peg=ok ? peg : null;
