@@ -85,6 +85,14 @@
   .meta b{color:var(--ink);font-weight:700}
 
   /* ---- transport / misc control rows ---- */
+  /* The dial panel takes whatever the column has spare, so nothing is left dead at the bottom;
+     the dial itself is then sized from the row's measured height in fitDial(). */
+  .dialrow{display:flex; gap:8px; flex:1 1 0; min-height:0; align-items:stretch}
+  .dialbox{flex:0 0 auto; display:flex; align-items:center; min-height:0}
+  .dialside{flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; min-height:0}
+  .readoutwrap{flex:1 1 0; min-height:0; display:flex}
+  .botrow{display:flex; gap:10px}
+  .botrow > .stack{flex:1 1 0; min-width:0}
   .dial{width:122px;height:auto;display:block;cursor:grab;touch-action:none}
   .dial:active{cursor:grabbing}
   .dial text{user-select:none;-webkit-user-select:none}
@@ -110,7 +118,8 @@
   .fig > .val{font-size:9.5px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
 
   /* ---- derived readout ---- */
-  .readout{display:grid;grid-template-columns:1fr;gap:0;align-content:start;width:118px;
+  .readout{display:grid;grid-template-columns:1fr 1fr;gap:0 7px;align-content:start;flex:1 1 0;
+    min-height:0;overflow-y:auto;
     background:#120c06;border-radius:2px;padding:5px 6px;box-shadow:inset 0 1px 5px rgba(0,0,0,.6)}
   .readout div{font-size:7.5px;color:#a98a55;font-variant-numeric:tabular-nums;line-height:1.1}
   .readout b{color:var(--amber);font-weight:700}
@@ -181,21 +190,23 @@
 
     <!-- ---- top left: pitch, levels, the figures, and what they resolved to ---- -->
     <div class="col area-ctl">
-      <div class="panel">
-        <div style="display:flex;gap:8px;align-items:stretch">
-          <div class="u" data-n="fund" style="flex:0 0 auto">
+      <div class="panel grow">
+        <div class="dialrow" id="dialrow">
+          <div class="u dialbox" data-n="fund">
             <svg id="fund" class="dial" viewBox="0 0 340 340" preserveAspectRatio="xMidYMid meet"
                  role="slider" aria-label="Fundamental"></svg></div>
-          <div style="flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;align-self:stretch;gap:4px">
+          <div class="dialside">
+            <div class="u" data-n="play"><button id="play" class="play">▶ Start</button></div>
+            <div class="u readoutwrap" data-n="readout"><div class="readout" id="readout"></div></div>
+          </div>
+        </div>
+        <div class="botrow">
           <div class="u stack" data-n="vol">
             <div class="hd"><label for="vol">Gain</label><span class="v" id="volval"></span></div>
             <input id="vol" type="range" min="0" max="1" step="0.01" value="0.45"></div>
-          <div class="u" data-n="play"><button id="play" class="play">▶ Start</button></div>
           <div class="u stack" data-n="fcluster">
             <div class="hd"><label for="fcluster">Cluster</label><span class="v" id="fcval"></span></div>
             <input id="fcluster" type="range" min="2400" max="3400" step="10" value="2900"></div>
-          </div>
-          <div class="u" data-n="readout"><div class="readout" id="readout"></div></div>
         </div>
       </div>
 
@@ -967,7 +978,14 @@
   const scopeCv = document.getElementById("scope");
   const CANVASES = [tractCv, lfCv, scopeCv];
 
+  const dialRow = document.getElementById("dialrow");
+  function fitDial() {
+    const h = dialRow.clientHeight;
+    if (h > 0) dialSvg.style.width = clamp(Math.round(h), 92, 210) + "px";
+  }
+
   function fitCanvases() {
+    fitDial();
     const dpr = window.devicePixelRatio || 1;
     for (const cv of CANVASES) {
       const w = Math.max(8, Math.round(cv.clientWidth * dpr));
@@ -1376,7 +1394,6 @@
     updateSideLabels();
   }
 
-  // ---------- interaction ----------
   // ---------- vowel-chart interaction ----------
   let chartDrag = false;
   function setFromChart(clientX, clientY) {
@@ -1397,8 +1414,16 @@
       setFromChart(e.clientX, e.clientY);
     }
     chartDrag = true;
+    try { chartSvg.setPointerCapture(e.pointerId); } catch (_) {}
     e.preventDefault();
   });
+  chartSvg.addEventListener("pointermove", e => {
+    if (chartDrag) { setFromChart(e.clientX, e.clientY); e.preventDefault(); }
+  });
+  const endChartDrag = () => { chartDrag = false; };
+  chartSvg.addEventListener("pointerup", endChartDrag);
+  chartSvg.addEventListener("pointercancel", endChartDrag);
+  window.addEventListener("pointerup", endChartDrag);      // in case capture was refused
 
   // ---------- figure sliders ----------
   for (const d of FIGURE_DEFS) {
