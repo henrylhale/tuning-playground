@@ -192,6 +192,8 @@
   .tagwarn b{display:block;margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px;font-size:10px}
   .jsonwin textarea{width:100%;height:120px;font:11px/1.4 ui-monospace,Menlo,Consolas,monospace;
     background:var(--display);color:#c9b78f;border:1px solid var(--bezel-lo);border-radius:4px;padding:6px;resize:vertical}
+  .jsonwin input.sharelink{width:100%;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;
+    background:var(--display);color:#c9b78f;border:1px solid var(--bezel-lo);border-radius:4px;padding:8px}
   .waves{display:flex;gap:4px;flex-wrap:wrap}
   /* per-voice strips, beside the vowel chart */
   .vstrip{display:flex;flex-direction:column;gap:5px;padding:6px 8px;border-radius:4px;color:#e8d6b0;
@@ -242,19 +244,18 @@
       <div class="ctl"><label>Glide</label><input id="glide" type="range" min="0" max="1.5" step="0.05" value="0"><span id="glideval" class="val">0 ms</span></div>
       <span class="grow"></span>
       <button id="tagtoggle" class="toggle" title="Import a Great Tags plain-text export as a sequence">Import tag</button>
-      <button id="jsontoggle" class="toggle" title="View, copy, paste, or edit the whole sequence as JSON">Copy · Paste · Edit JSON</button>
+      <button id="sharetoggle" class="toggle" title="Create a link that loads this exact sequence">🔗 Share</button>
     </div>
     <div class="seqmain">
-      <!-- JSON lives at the TOP, above the canvas, so it's immediately visible when the button opens it -->
-      <div id="jsonwin" class="jsonwin" hidden>
+      <!-- Share: one button turns the current sequence into a link (copied to the clipboard); opening
+           that link loads the state. The raw JSON is never shown — this replaces the old JSON window. -->
+      <div id="sharewin" class="jsonwin" hidden>
         <div class="jsonwin-hd">
-          <span class="jsonwin-title">Sequence JSON</span>
-          <span id="jsonmsg" class="tagmsg"></span>
-          <button id="jsoncopy" class="toggle" title="Copy this JSON to your clipboard">Copy</button>
-          <button id="jsonpaste" class="toggle" title="Paste JSON from your clipboard into the box">Paste</button>
-          <button id="jsonapply" class="toggle" title="Load the JSON in the box into the sequence">Apply →</button>
+          <span class="jsonwin-title">Share link</span>
+          <span id="sharemsg" class="tagmsg"></span>
+          <button id="sharecopy" class="toggle" title="Copy the link to your clipboard">Copy</button>
         </div>
-        <textarea id="seqjson" spellcheck="false" placeholder="Paste a sequence JSON here, then click Apply →"></textarea>
+        <input id="sharelink" class="sharelink" readonly spellcheck="false" placeholder="Click 🔗 Share to create a link…">
       </div>
       <!-- Import a Great Tags plain-text export → a sequence (chords detected; default timbre for now) -->
       <div id="tagwin" class="jsonwin" hidden>
@@ -1624,7 +1625,6 @@
   const seqbarEl  = document.getElementById("seqbar");
   const chordEditorEl = document.getElementById("chordeditor");
   const glideEl   = document.getElementById("glide"), glideValEl = document.getElementById("glideval");
-  const jsonBoxEl = document.getElementById("seqjson");
   const musicTables = { DEGREES, CHORDS, ITV, rval, octRed };
   const readGlide = () => parseFloat(glideEl.value) || 0;
   const fmtGlide  = s => s<=0 ? "0 ms" : s<1 ? Math.round(s*1000)+" ms" : s.toFixed(2)+" s";
@@ -1655,7 +1655,7 @@
       hint.className = "seqhint"; hint.textContent = "Add a chord to start a sequence.";
       seqbarEl.appendChild(hint);
     }
-    updateEditor(); updatePlayEnabled(); syncJsonBox();
+    updateEditor(); updatePlayEnabled();
   }
   const realSlots  = () => [...seqbarEl.querySelectorAll(".slot:not(.seqadd)")];
   function markSeqSel(){
@@ -1689,7 +1689,7 @@
   function syncKeyAcrossSlots(){
     if(!ready) return;
     seq.slots.forEach(s=>{ s.key = state.keyFreq; if(Array.isArray(s.voices)) s.voices.forEach(v=>{ v.bend = state.bendCents; }); });
-    syncJsonBox(); scheduleAutosave();
+    scheduleAutosave();
   }
 
   function seqStep(i){
@@ -1726,7 +1726,7 @@
       el.querySelector(".cname").textContent = chordNameOf(seq.slots[seq.active]);
     }
     updateEditor();   // keep the editor's "Chord N · <name>" title in step with in-editor changes
-    syncJsonBox(); scheduleAutosave();
+    scheduleAutosave();
   }
 
   // ---- tap-to-step (chords no longer reorder — a horizontal drag scrolls the bar natively, since
@@ -1739,10 +1739,9 @@
     if(slot) seqStep(+slot.dataset.i);
   });
 
-  // ---- JSON document: copy / download / upload / paste, + localStorage autosave ----
+  // ---- the sequence document: share links + localStorage autosave ----
   const seqDoc    = () => ({ app:SEQ_DOC, v:SCHEMA_VERSION, active:seq.active, slots:seq.slots });
   const seqToJSON = () => JSON.stringify(seqDoc(), null, 2);
-  function syncJsonBox(){ if(jsonBoxEl && document.activeElement!==jsonBoxEl) jsonBoxEl.value = seqToJSON(); }
   let autosaveTimer=null;
   const scheduleAutosave = () => { clearTimeout(autosaveTimer); autosaveTimer=setTimeout(saveLS,400); };
   function saveLS(){ try{ localStorage.setItem(SEQ_LS_KEY, seqToJSON()); }catch(_){} }
@@ -1873,48 +1872,108 @@
   });
   document.getElementById("seqnext").addEventListener("click", seqAdvance);
 
-  // ---- the JSON window: one toggle opens it; Copy/Paste use the clipboard; edits apply on blur ----
-  const jsonWin = document.getElementById("jsonwin");
-  const jsonToggleBtn = document.getElementById("jsontoggle");
-  const flashBtn = (btn,msg) => { const p=btn.textContent; btn.textContent=msg; setTimeout(()=>{ btn.textContent=p; }, 1200); };
-  jsonToggleBtn.addEventListener("click", ()=>{
-    jsonWin.hidden = !jsonWin.hidden;
-    jsonToggleBtn.classList.toggle("on", !jsonWin.hidden);
-    if(!jsonWin.hidden) syncJsonBox();   // fill with the current sequence when opened
-  });
-  // Editing the box no longer auto-applies on blur (that failed silently — e.g. pasting a new doc into
-  // the pre-filled box made invalid JSON and nothing happened). Loading is now an explicit Apply click
-  // with visible pass/fail feedback in #jsonmsg.
-  const jsonMsgEl = document.getElementById("jsonmsg");
-  let jsonMsgTimer=null;
-  function showJsonMsg(text, ok){
-    jsonMsgEl.textContent = text;
-    jsonMsgEl.style.color = ok ? "#2f7d45" : "#c0473a";
-    clearTimeout(jsonMsgTimer); jsonMsgTimer = setTimeout(()=>{ jsonMsgEl.textContent=""; }, 2600);
+  // ---- Share links: the sequence is packed (deflate) into a link; opening a link loads it. ----
+  // Set SHARE_WORKER to the deployed Worker origin (e.g. "https://quartet-share.<sub>.workers.dev") to
+  // get short hosted #id= links. While it's empty, Share still works offline by inlining the whole state
+  // into a self-contained #s= link (fine for small/medium sequences; too-long ones say so).
+  const SHARE_WORKER = "https://quartet-share.henrylhale.workers.dev";
+
+  // --- byte helpers: deflate-raw via native streams (version byte: 1=deflated, 0=raw utf8 fallback) ---
+  const concatBytes = (a,b) => { const o=new Uint8Array(a.length+b.length); o.set(a,0); o.set(b,a.length); return o; };
+  async function pipeBytes(bytes, stream){ return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer()); }
+  async function packState(){
+    const body = new TextEncoder().encode(JSON.stringify(seqDoc()));
+    if(typeof CompressionStream === "function") return concatBytes(Uint8Array.of(1), await pipeBytes(body, new CompressionStream("deflate-raw")));
+    return concatBytes(Uint8Array.of(0), body);
   }
-  // Load whatever is in the box into the app, reporting the result; returns true on success.
-  function applyBox(){
-    let doc; try{ doc = JSON.parse(jsonBoxEl.value); }catch(_){ showJsonMsg("Not valid JSON", false); return false; }
-    try{ loadDoc(doc); }catch(_){ showJsonMsg("Not a sequence document", false); return false; }
-    showJsonMsg(`Loaded ${seq.slots.length} chord${seq.slots.length===1?"":"s"} ✓`, true);
-    return true;
+  async function unpackState(bytes){
+    const ver = bytes[0], rest = bytes.subarray(1);
+    let json;
+    if(ver === 1){
+      if(typeof DecompressionStream !== "function") throw new Error("compression unsupported here");
+      json = new TextDecoder().decode(await pipeBytes(rest, new DecompressionStream("deflate-raw")));
+    } else { json = new TextDecoder().decode(rest); }
+    return JSON.parse(json);
   }
-  const jsonCopyBtn = document.getElementById("jsoncopy");
-  jsonCopyBtn.addEventListener("click", async ()=>{
-    flashBtn(jsonCopyBtn, (await copyText(jsonBoxEl.value || seqToJSON())) ? "Copied ✓" : "Copy failed");
-  });
-  const jsonPasteBtn = document.getElementById("jsonpaste");
-  jsonPasteBtn.addEventListener("click", async ()=>{
+  function b64urlEnc(bytes){ let s=""; const CH=0x8000; for(let i=0;i<bytes.length;i+=CH) s+=String.fromCharCode.apply(null, bytes.subarray(i,i+CH)); return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
+  function b64urlDec(str){ str=str.replace(/-/g,"+").replace(/_/g,"/"); const bin=atob(str); const u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i); return u; }
+
+  // --- IndexedDB cache (id -> bytes). Cache only: eviction is lossless, we just re-fetch by id. ---
+  let _idb=null;
+  function idb(){ if(_idb) return _idb; _idb=new Promise((res,rej)=>{ let q; try{ q=indexedDB.open("quartet-share",1); }catch(e){ return rej(e); } q.onupgradeneeded=()=>q.result.createObjectStore("blobs"); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error); }); return _idb; }
+  async function idbGet(id){ try{ const db=await idb(); return await new Promise((res,rej)=>{ const r=db.transaction("blobs").objectStore("blobs").get(id); r.onsuccess=()=>res(r.result?new Uint8Array(r.result):null); r.onerror=()=>rej(r.error); }); }catch(_){ return null; } }
+  async function idbPut(id,bytes){ try{ const db=await idb(); const buf=bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset+bytes.byteLength); await new Promise((res,rej)=>{ const tx=db.transaction("blobs","readwrite"); tx.objectStore("blobs").put(buf,id); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); }catch(_){} }
+
+  // Base for a link: the live URL when served over http(s) (so it self-references), else the hosted app.
+  const shareBase = () => (location.protocol==="http:"||location.protocol==="https:") ? location.href.split("#")[0] : "https://henryhale.com/tuning";
+  async function makeShareLink(){
+    const bytes = await packState();
+    if(SHARE_WORKER){
+      const r = await fetch(SHARE_WORKER + "/s", { method:"POST", headers:{"content-type":"application/octet-stream"}, body: bytes });
+      if(!r.ok) throw new Error("share-server");
+      const { id } = await r.json();
+      idbPut(id, bytes);                                          // cache our own share so re-opening is instant
+      return shareBase() + "#id=" + id;
+    }
+    const link = shareBase() + "#s=" + b64urlEnc(bytes);          // no backend: inline the whole state
+    if(link.length > 1900) throw new RangeError("too-long");      // past a comfortable Discord-message length
+    return link;
+  }
+
+  const shareWin = document.getElementById("sharewin");
+  const shareBtn = document.getElementById("sharetoggle");
+  const shareLinkEl = document.getElementById("sharelink");
+  const shareMsgEl = document.getElementById("sharemsg");
+  let shareMsgTimer=null;
+  function showShareMsg(text, ok){ shareMsgEl.textContent=text; shareMsgEl.style.color = ok?"#2f7d45":"#c0473a"; clearTimeout(shareMsgTimer); shareMsgTimer=setTimeout(()=>{ shareMsgEl.textContent=""; }, 3200); }
+  shareBtn.addEventListener("click", async ()=>{
+    if(!shareWin.hidden){ shareWin.hidden = true; shareBtn.classList.remove("on"); return; }   // toggle closed
+    shareWin.hidden = false; shareBtn.classList.add("on"); shareLinkEl.value = "";
+    if(!seq.slots.length){ showShareMsg("Add a chord first", false); return; }
+    showShareMsg("Creating link…", true);
     try{
-      if(!navigator.clipboard || !navigator.clipboard.readText) throw 0;
-      jsonBoxEl.value = await navigator.clipboard.readText();      // works over https (the hosted app)
-      applyBox();                                                  // paste = fill the box AND load it
-    }catch(_){
-      jsonBoxEl.focus(); jsonBoxEl.select();                       // file:// / denied: let them ⌘V into the box
-      showJsonMsg("Press ⌘V / Ctrl-V, then Apply →", false);
+      const link = await makeShareLink();
+      shareLinkEl.value = link; shareLinkEl.focus(); shareLinkEl.select();
+      showShareMsg(await copyText(link) ? "Link copied ✓" : "Link ready — tap Copy", true);
+    }catch(e){
+      showShareMsg(e instanceof RangeError ? "Too long to link — hosting needed for big sequences" : "Couldn’t reach the share server", false);
     }
   });
-  document.getElementById("jsonapply").addEventListener("click", applyBox);
+  document.getElementById("sharecopy").addEventListener("click", async ()=>{
+    if(!shareLinkEl.value){ showShareMsg("Nothing to copy yet", false); return; }
+    const ok = await copyText(shareLinkEl.value);
+    showShareMsg(ok ? "Link copied ✓" : "Copy failed", ok);
+  });
+
+  // On load, a #id=/#s= hash means we were opened from a share link → fetch/decode → load, then clear it.
+  async function loadFromHash(){
+    const h = location.hash || "";
+    const mId = h.match(/^#id=([A-Za-z0-9_-]+)$/), mS = h.match(/^#s=(.+)$/);
+    if(!mId && !mS) return false;
+    try{
+      let bytes;
+      if(mId){
+        const id = mId[1];
+        bytes = await idbGet(id);
+        if(!bytes){
+          if(!SHARE_WORKER) throw new Error("no-worker");
+          const r = await fetch(SHARE_WORKER + "/s/" + encodeURIComponent(id));
+          if(!r.ok) throw new Error("not-found");
+          bytes = new Uint8Array(await r.arrayBuffer()); idbPut(id, bytes);
+        }
+      } else { bytes = b64urlDec(mS[1]); }
+      loadDoc(await unpackState(bytes));
+    }catch(e){
+      shareWin.hidden = false; shareBtn.classList.add("on"); shareLinkEl.value = "";
+      showShareMsg("This link could not be loaded", false);
+      return false;
+    }
+    // Loaded OK — drop the hash so later edits aren't "the shared version". replaceState throws on some
+    // file:// origins, so guard it and fall back; a clearing failure must not report a load failure.
+    try{ history.replaceState(null, "", location.pathname + location.search); }
+    catch(_){ try{ location.hash = ""; }catch(__){} }
+    return true;
+  }
 
   // ---- the tag-import window: paste a Great Tags text export, Import → builds the sequence ----
   const tagWin = document.getElementById("tagwin");
@@ -1960,9 +2019,11 @@
   // JSON doc + this localStorage autosave.
   glideValEl.textContent = fmtGlide(readGlide());
   restoreLS();
-  if(!seq.slots.length) seedDefault();
+  const openedFromShare = /^#(id|s)=/.test(location.hash || "");
+  if(!seq.slots.length && !openedFromShare) seedDefault();   // don't seed over an incoming shared state
   renderSeq();
   ready = true;
+  if(openedFromShare) loadFromHash();                        // fetch/decode the shared sequence, then take over
 })();
 </script>
 </body>
