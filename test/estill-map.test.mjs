@@ -16,7 +16,7 @@ const { sourceFromFigures, tractFromFigures, pull, QUALITIES, ONSETS } = loadReg
 );
 
 const SINGER = { F4: 3500, F5: 4500, Fcluster: 2900, bwTrim: 1, B: [50, 70, 110, 170, 250] };
-const NEUTRAL = { body_cover: 0, thyroid_tilt: 0, cricoid_tilt: 0, larynx_height: 0.5, twang: 0, velum: 0, lip_protrusion: 0 };
+const NEUTRAL = { body_cover: 0, thyroid_tilt: 0, larynx_height: 0.5, twang: 0, velum: 0, lip_protrusion: 0 };
 const SCHWA = { F1: 500, F2: 1500, F3: 2500 };
 const RHOTIC = { F1: 474, F2: 1379, F3: 1571 };          // /ɝ/, "heard"
 const figs = over => Object.assign({}, NEUTRAL, over);
@@ -42,49 +42,39 @@ test('thyroid tilt drives Ra alone', () => {
   assert.equal(vertical.Rk, tilted.Rk, 'thyroid tilt must not move Rk');
 });
 
-test('without cricoid tilt, OQ drifts upward with pitch', () => {
-  // The untrained pattern: voices thin out as they ascend.
-  const low = sourceFromFigures(figs({}), 220);
-  const oct = sourceFromFigures(figs({}), 440);
-  const two = sourceFromFigures(figs({}), 880);
-  assert.ok(Math.abs(low.drift) < 1e-12, 'no drift at the reference pitch');
-  assert.ok(Math.abs(oct.drift - 0.15) < 1e-9, `one octave up should drift 0.15, got ${oct.drift}`);
-  assert.ok(Math.abs(two.drift - 0.30) < 1e-9, `two octaves up should drift 0.30, got ${two.drift}`);
-  assert.ok(oct.OQ > low.OQ && two.OQ > oct.OQ);
-});
-
-test('the drift is one-sided: descending does not press the voice', () => {
-  // max(0, drift) — cricoid tilt is permission to hold OQ *low* at height, not a claim that low
-  // notes get pressed for free.
-  const below = sourceFromFigures(figs({}), 110);
-  assert.equal(below.drift, 0);
-  assert.equal(below.OQ, sourceFromFigures(figs({}), 220).OQ);
-});
-
-test('cricoid tilt is a constraint relaxation, not a knob with a sound of its own', () => {
-  // At the reference pitch it must do nothing at all: there is no drift to relax.
-  for (const ct of [0, 0.5, 1]) {
-    const s = sourceFromFigures(figs({ cricoid_tilt: ct }), 220);
-    assert.ok(Math.abs(s.OQ - 0.45) < 1e-12, `cricoid tilt ${ct} changed OQ at f0 = F0_REF`);
+test('OQ is pitch-invariant while cricoid tilt is set aside', () => {
+  // Cricoid tilt was the only thing that made the source depend on f0, so with it gone OQ is
+  // whatever body-cover said, at every pitch. This test exists to pin that it is genuinely gone
+  // rather than silently half-working — the previous version asserted a 0.15-per-octave drift
+  // above a global 220 Hz reference, which is exactly the behaviour that was withdrawn.
+  //
+  // To restore: put F0_REF in the singer config (per part, not global — with max(0, …) a bass
+  // never drifted at all), reinstate
+  //     drift = max(0, K_DRIFT · log2(f0/F0_REF) · (1 − cricoid_tilt))
+  // and bring back the Belt-emergence test below.
+  const at = f0 => sourceFromFigures(figs({}), f0);
+  const ref = at(220);
+  for (const f0 of [55, 110, 220, 440, 880, 1046.5]) {
+    assert.equal(at(f0).drift, 0, `drift reappeared at ${f0} Hz`);
+    assert.equal(at(f0).OQ, ref.OQ, `OQ moved with pitch at ${f0} Hz`);
+    assert.equal(at(f0).Rk, ref.Rk);
+    assert.equal(at(f0).Ra, ref.Ra);
   }
-  // Up an octave it cancels exactly as much of the drift as it is dialed in.
-  const none = sourceFromFigures(figs({ cricoid_tilt: 0 }), 440);
-  const half = sourceFromFigures(figs({ cricoid_tilt: 0.5 }), 440);
-  const full = sourceFromFigures(figs({ cricoid_tilt: 1 }), 440);
-  assert.ok(Math.abs(half.drift - none.drift / 2) < 1e-12);
-  assert.equal(full.drift, 0);
+  // A stray cricoid_tilt key left in an old preset must not quietly do anything either.
+  assert.equal(sourceFromFigures(figs({ cricoid_tilt: 1 }), 880).OQ, ref.OQ);
 });
 
-test('Belt emerges: OQ stays at 0.45 at f0 = 440', () => {
-  // The spec's main correctness test. If this needs a Belt-specific code path, cricoid tilt has
-  // been wired as a parameter instead of as a relaxation somewhere upstream.
+test('Belt is still reachable, but no longer has to emerge', () => {
+  // The spec calls Belt-at-440 the model's main correctness test: OQ must stay near 0.45 instead
+  // of drifting up. Nothing makes OQ depend on f0 now, so that claim is vacuous rather than
+  // proven — this test says only that the recipe still lands where the pedagogy wants it, and
+  // records that the real assertion is on hold with the figure.
   const belt = sourceFromFigures(figs(QUALITIES["Belt"]), 440);
   assert.ok(Math.abs(belt.OQ - 0.45) < 1e-9, `Belt at 440 Hz has OQ ${belt.OQ}, want 0.45`);
-  // And it stays put all the way up: that is what "belting" means here.
   assert.ok(Math.abs(sourceFromFigures(figs(QUALITIES["Belt"]), 880).OQ - 0.45) < 1e-9);
-  // Same figures without the cricoid tilt is the untrained version, which thins out.
-  const untrained = sourceFromFigures(figs(Object.assign({}, QUALITIES["Belt"], { cricoid_tilt: 0 })), 440);
-  assert.ok(untrained.OQ > belt.OQ + 0.1, 'without cricoid tilt Belt should thin out at pitch');
+  const t = tract(QUALITIES["Belt"]);
+  assert.ok(t.eeBonus > 1.6, 'near-full twang');
+  assert.ok(t.F[0] > tract(QUALITIES["Speech"]).F[0], 'a high larynx raises F1');
 });
 
 test('OQ stays inside the range the LF solve can handle', () => {
@@ -205,7 +195,7 @@ test('bandwidth trim scales every formant and nothing else', () => {
 // --- the qualities are recipes, not implementations ------------------------------------------
 
 test('every quality fixture is a complete, in-range figure recipe', () => {
-  const required = ['body_cover', 'thyroid_tilt', 'cricoid_tilt', 'larynx_height', 'twang', 'velum'];
+  const required = ['body_cover', 'thyroid_tilt', 'larynx_height', 'twang', 'velum'];
   for (const [name, q] of Object.entries(QUALITIES)) {
     for (const k of required) {
       assert.ok(k in q, `${name} is missing ${k}`);
@@ -213,6 +203,8 @@ test('every quality fixture is a complete, in-range figure recipe', () => {
     }
     // lip_protrusion is not part of the fixture table and must be left wherever the user put it.
     assert.ok(!('lip_protrusion' in q), `${name} should not dictate lip protrusion`);
+    // Set aside with the figure — putting it back has to be a deliberate edit here too.
+    assert.ok(!('cricoid_tilt' in q), `${name} still carries a cricoid_tilt setting`);
   }
   assert.ok(!('Falsetto' in QUALITIES), 'falsetto needs aspiration and must not be faked');
 });
@@ -235,8 +227,6 @@ test('the qualities land where the pedagogy says they should', () => {
   // Opera is a low larynx *plus* strong twang — a long tract that still rings.
   assert.ok(opera.tr.F[0] < speech.tr.F[0] && opera.tr.eeBonus > 1.5);
 
-  // Belt is the loud end: thick folds, high larynx, near-full twang, held together at pitch.
-  assert.ok(belt.tr.F[0] > speech.tr.F[0], 'a high larynx raises F1');
+  // Belt is the loud end: thick folds, high larynx, near-full twang.
   assert.ok(belt.src.OQ < sob.src.OQ, 'belt is pressed where sob is open');
-  assert.ok(belt.tr.eeBonus > 1.6);
 });

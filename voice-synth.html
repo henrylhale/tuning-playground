@@ -38,7 +38,7 @@
   }
 
   /* ---- fit-to-screen shell: header, then controls | graphs | graphs ---- */
-  .app{height:100%; display:grid; grid-template-rows:auto minmax(0,1fr); gap:5px; padding:5px 7px 6px}
+  .app{height:100%; display:grid; grid-template-rows:auto minmax(0,1fr) auto; gap:5px; padding:5px 7px 6px}
   .cols{
     display:grid; min-height:0; gap:6px;
     grid-template-columns:352px minmax(0,1fr) minmax(0,1fr);
@@ -131,6 +131,19 @@
     font-variant-numeric:tabular-nums}
   .lfu.mode label{display:flex;gap:3px;align-items:center;cursor:pointer;color:var(--ink);font-weight:700}
   #figs-source.overridden{opacity:.4}
+
+  /* what the model leaves out — greyed, and deliberately always on screen */
+  .absentbar{padding:4px 8px;gap:2px}
+  .absentbar .ptitle{color:#6b5836}
+  .absent{display:grid;grid-template-columns:repeat(4,1fr);gap:1px 16px}
+  .absent > .head{font-size:9px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;
+    color:#6b5836;cursor:default}
+  .absent > .head > span{font-weight:500;letter-spacing:0;text-transform:none;opacity:.75}
+  .absent > div{font-size:8.5px;line-height:1.3;color:#7a6742;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:help}
+  .absent > div > b{font-weight:700;color:#6b5836}
+  .absent > .foot{color:#8a6f3e;cursor:default}
+  .absent > .foot > b{color:#8a6f3e}
 </style>
 
 <style id="dev-only">
@@ -222,7 +235,7 @@
       </div>
 
       <div class="panel">
-        <div class="ptitle"><span>Thirteen Figures</span><span class="note">8 modeled · 2 partial · 3 dropped</span></div>
+        <div class="ptitle"><span>Thirteen Figures</span><span class="note">5 modeled · 2 partial · 2 collapsed · 4 set aside</span></div>
         <div class="u" data-n="presets"><div class="presets" id="presets"></div></div>
         <div class="figs">
           <h3>Source figures</h3>
@@ -244,7 +257,7 @@
 
       <div class="panel">
         <div class="u" data-n="chart">
-          <svg id="chart" class="screen" viewBox="0 0 380 168" preserveAspectRatio="xMidYMid meet"></svg>
+          <svg id="chart" class="screen" viewBox="0 0 380 150" preserveAspectRatio="xMidYMid meet"></svg>
         </div>
         <div class="u ctlrow" data-n="f3t"><label for="f3t">F3</label>
           <input id="f3t" type="range" min="1400" max="3200" step="10" value="2500">
@@ -319,6 +332,21 @@
       </div>
     </div>
 
+  </div>
+
+  <!-- DEV-ONLY in placement only: the content is a real statement about the model's scope -->
+  <div class="panel absentbar">
+    <div class="u" data-n="absent"><div class="absent">
+      <div class="head">Not modeled <span>— assumptions, not oversights; hover for why</span></div>
+      <div title="Assumed permanently retracted — the trained state. Its interesting outputs (subharmonics, biphonation, regime bifurcation) are chaotic and need a second coupled mass-spring oscillator above the source, not a jitter parameter."><b>False vocal folds</b> — assumed retracted</div>
+      <div title="Not a signal parameter. Unanchored singing shows characteristic couplings — f0 rising with subglottal pressure, larynx height drifting with pitch, tract collapse under load — and anchoring is the reduction of those couplings toward zero."><b>Torso anchoring</b> — assumed optimal</div>
+      <div title="Same as torso anchoring: a constraint on other parameters' trajectories, not a sound of its own. Assuming both ideal is what licenses treating every other figure as independent."><b>Head &amp; neck anchoring</b> — assumed optimal</div>
+      <div title="Set aside. It acted only through an OQ drift with pitch, measured against one global 220 Hz reference — but a reference pitch belongs to the singer, so with max(0, …) a bass never drifted at all. Restore it with F0_REF in the singer config, per part."><b>Cricoid cartilage</b> — set aside</div>
+      <div title="Thick and thin are modeled. Stiff (falsetto) needs incomplete closure, a DC flow offset and aspiration noise; slack needs a nonlinear oscillator capable of period doubling."><b>Body–cover: stiff, slack</b> — thick/thin only</div>
+      <div title="Glottal and simultaneous are modeled. Aspirate needs one noise generator through the same formant filters with its own gain envelope — the smallest possible addition to this file."><b>Onset: aspirate</b> — needs a noise channel</div>
+      <div title="Not dropped but reparameterized: three articulators map many-to-one onto three formants, so they are collapsed into a direct (F1, F2, F3) target. The acoustic consequences are all present; which articulator produced them is not recoverable."><b>Tongue, jaw, lip aperture</b> — collapsed into (F1,F2,F3)</div>
+      <div class="foot">⇒ unreachable: <b>Falsetto</b>, and every distorted quality</div>
+    </div></div>
   </div>
 </div>
 
@@ -472,22 +500,32 @@
   // real larynx shows are deliberately suppressed here. Every such suppression is commented, so
   // that a later reader does not "fix" one back in.
 
-  const F0_REF = 220.0;      // Hz
-  const K_DRIFT = 0.15;      // OQ rise per octave in an untrained voice
   const PULL_FLOOR = 2200.0; // below this a resonance is articulatory and will not join the cluster
 
   // 4.1 body_cover (0 thick → 1 thin): primarily OQ, secondarily Rk.
   // 4.2 thyroid_tilt (0 vertical → 1 tilted): Ra alone. In a real larynx tilt also raises OQ;
   //     that coupling is suppressed so tilt stays a pure spectral-tilt axis.
-  // 4.3 cricoid_tilt: not a parameter at all — a constraint relaxation. Untrained voices thin
-  //     out as they ascend (OQ drifts up with f0); cricoid tilt is permission to hold OQ low at
-  //     pitch. Belt has to *emerge* from this plus thick folds, high larynx and narrow AES.
+  //
+  // 4.3 cricoid_tilt is SET ASIDE for now, so OQ is currently pitch-invariant. It was not a
+  // parameter but a constraint relaxation: untrained voices thin out as they ascend, and cricoid
+  // tilt is permission to hold OQ low at pitch. The implementation was one line —
+  //
+  //     drift = max(0, 0.15 · log2(f0 / F0_REF) · (1 − cricoid_tilt));  OQ = OQbase + drift
+  //
+  // — and the problem is F0_REF. It was a single global 220 Hz, but a reference pitch is a
+  // property of the singer, not of the piece: with max(0, …) a bass never drifted at all, so the
+  // figure was dead below A3 and the drift you measured between two voices mostly reported which
+  // part they sang. Restore it with F0_REF moved into the singer config, per part.
+  //
+  // Cost of setting it aside: Belt no longer *emerges*. It is still a reachable recipe (thick
+  // folds, high larynx, narrow AES), but the claim the spec calls the model's main correctness
+  // test — that OQ stays near 0.45 at f0 = 440 rather than drifting — is currently untestable,
+  // because nothing makes OQ depend on f0 at all.
   function sourceFromFigures(fig, f0) {
     const OQbase = lerp(0.45, 0.68, fig.body_cover);
     const Rk = lerp(0.25, 0.45, fig.body_cover);
     const Ra = lerp(0.004, 0.075, fig.thyroid_tilt);
-    const drift = Math.max(0, K_DRIFT * Math.log2(f0 / F0_REF) * (1 - fig.cricoid_tilt));
-    return { OQbase, drift, Rk, Ra, OQ: clamp(OQbase + drift, 0.35, 0.95) };
+    return { OQbase, drift: 0, Rk, Ra, OQ: clamp(OQbase, 0.35, 0.95) };
   }
 
   // 4.4 onset_type: envelope timing on Ee. Aspirate is unavailable without a noise channel.
@@ -557,15 +595,15 @@
   }
 
   // Recipes, not implementations. Each must sound like its quality with no quality-specific code
-  // path anywhere. Belt at f0 = 440 is the critical one: OQ must stay near 0.45, which only
-  // happens if cricoid_tilt is wired as a constraint relaxation rather than as a knob of its own.
-  // lip_protrusion is not part of the fixture table and is left wherever the user put it.
+  // path anywhere. The cricoid_tilt column is gone with the figure (see above), which is what
+  // took the teeth out of the Belt fixture — it is still reachable, it just no longer has to
+  // *emerge* from anything. lip_protrusion was never in the table and is left where the user put it.
   const QUALITIES = {
-    "Speech":    { body_cover: 0.0, thyroid_tilt: 0.0, cricoid_tilt: 0.0, larynx_height: 0.50, twang: 0.20, velum: 0.0 },
-    "Sob / Cry": { body_cover: 1.0, thyroid_tilt: 1.0, cricoid_tilt: 0.0, larynx_height: 0.15, twang: 0.10, velum: 0.0 },
-    "Twang":     { body_cover: 0.3, thyroid_tilt: 0.0, cricoid_tilt: 0.0, larynx_height: 0.70, twang: 1.00, velum: 0.3 },
-    "Opera":     { body_cover: 0.8, thyroid_tilt: 1.0, cricoid_tilt: 1.0, larynx_height: 0.15, twang: 0.80, velum: 0.0 },
-    "Belt":      { body_cover: 0.0, thyroid_tilt: 0.0, cricoid_tilt: 1.0, larynx_height: 0.85, twang: 0.90, velum: 0.2 },
+    "Speech":    { body_cover: 0.0, thyroid_tilt: 0.0, larynx_height: 0.50, twang: 0.20, velum: 0.0 },
+    "Sob / Cry": { body_cover: 1.0, thyroid_tilt: 1.0, larynx_height: 0.15, twang: 0.10, velum: 0.0 },
+    "Twang":     { body_cover: 0.3, thyroid_tilt: 0.0, larynx_height: 0.70, twang: 1.00, velum: 0.3 },
+    "Opera":     { body_cover: 0.8, thyroid_tilt: 1.0, larynx_height: 0.15, twang: 0.80, velum: 0.0 },
+    "Belt":      { body_cover: 0.0, thyroid_tilt: 0.0, larynx_height: 0.85, twang: 0.90, velum: 0.2 },
   };
   //#endregion estill-map
 
@@ -613,7 +651,6 @@
   const FIGURE_DEFS = [
     { id: "body_cover",     col: "source", nm: "Body–cover",     lo: "thick",    hi: "thin",      def: 0.0 },
     { id: "thyroid_tilt",   col: "source", nm: "Thyroid tilt",   lo: "vertical", hi: "tilted",    def: 0.0 },
-    { id: "cricoid_tilt",   col: "source", nm: "Cricoid tilt",   lo: "vertical", hi: "tilted",    def: 0.0 },
     { id: "larynx_height",  col: "filter", nm: "Larynx height",  lo: "low",      hi: "high",      def: 0.5 },
     { id: "twang",          col: "filter", nm: "AES / twang",    lo: "wide",     hi: "narrow",    def: 0.2 },
     { id: "velum",          col: "filter", nm: "Velum",          lo: "raised",   hi: "lowered",   def: 0.0 },
@@ -683,8 +720,8 @@
   // ---------- vowel chart (F1 vertical, F2 horizontal — IPA orientation) ----------
   const chartSvg = document.getElementById("chart");
   const vmetaEl = document.getElementById("vmeta");
-  const CVBW = 380, CVBH = 168;
-  const CX0 = 44, CX1 = 358, CY0 = 11, CY1 = 145; // plot box
+  const CVBW = 380, CVBH = 150;
+  const CX0 = 44, CX1 = 358, CY0 = 10, CY1 = 128; // plot box
   const F1LO = 250, F1HI = 900;   // top -> bottom (close -> open)
   const F2HI = 2400, F2LO = 700;  // left -> right (front -> back)
   const cxOfF2 = f2 => CX0 + (F2HI - clamp(f2, F2LO, F2HI)) / (F2HI - F2LO) * (CX1 - CX0);
@@ -1241,8 +1278,7 @@
     const p = lfShape(f0, src.OQ, src.Rk, src.Ra);
     const rd = rdDiagnostic(src.Ra);
     const cells = [
-      ["OQ", src.OQ.toFixed(3), lfManual ? "manual" :
-        (src.drift > 0.001 ? `${src.OQbase.toFixed(2)} + drift ${src.drift.toFixed(3)}` : "held at base")],
+      ["OQ", src.OQ.toFixed(3), lfManual ? "manual" : "pitch-invariant"],
       ["Rk", src.Rk.toFixed(3), ""],
       ["Ra", src.Ra.toFixed(4), p.taClamped ? "clamped: Ra ≥ 1−OQ" : ""],
       ["Rg", p.Rg.toFixed(2), ""],
@@ -1569,8 +1605,6 @@
      "Fold thickness. Sets OQ 0.45→0.68 and Rk 0.25→0.45, and deliberately leaves Ra alone. In panel 1: H1 vs H2 moves, the slope does not."],
     ["fig-thyroid_tilt", "Thyroid tilt (vertical ↔ tilted)",
      "Smoother fold closure, darker sound. Sets Ra 0.004→0.075 and nothing else. At full tilt the spectral knee sits near 2·f₀ at any pitch. This is \"cry\"."],
-    ["fig-cricoid_tilt", "Cricoid tilt (vertical ↔ tilted)",
-     "Not a parameter — permission to hold OQ low at high pitch. Untrained voices thin out as they ascend; this cancels that drift. At f₀ = 220 it does nothing; an octave up it does everything."],
     ["fig-larynx_height", "Larynx height (low ↔ high)",
      "Tract length, 0.88–1.12×. Full weight on F1/F2, half on F3–F5, since the epilarynx changes length less. On the rails every bar slides away from its ring."],
     ["fig-twang", "AES / twang (wide ↔ narrow)",
@@ -1590,6 +1624,8 @@
     ["f3t", "F3 target (rhoticity)",
      "F3 belongs to the vowel, not to twang. An American /r/ drops it to ~1570 Hz, which exempts it from the cluster, so rhotics ring less — which is why choirs de-rhoticize."],
 
+    ["absent", "Not modeled",
+     "Of the thirteen figures: five modeled, two half-modeled, two collapsed into the vowel target, four set aside. Each omission is an assumption that buys the orthogonality the rest of the model rests on — on screen so that a missing effect reads as a known limit, not a bug. Hover any line for the reason."],
     ["lfmode", "Manual LF override",
      "Temporary. The three sliders normally follow whatever the figures worked out; touching one freezes them so you can drive the waveform directly. The source figures grey out while it is on."],
     ["lf-OQ", "OQ — open quotient",
