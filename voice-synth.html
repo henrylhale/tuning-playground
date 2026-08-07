@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LF Source + Estill Figures — Voice Synth</title>
+<title>Modeled Source + Estill Figures — Voice Synth</title>
 <!--
   ============================================================================================
   TEMPORARY DEV LAYOUT — everything marked DEV-ONLY below is review scaffolding, not the app.
@@ -15,7 +15,7 @@
     2. delete the  <header class="bar">   element
     3. delete the  //#region dev-notes    block in the script (the DEV_NOTES table + wiring)
     4. delete the  <div class="lfrow">  strip under the rails, its wiring near the other
-       controls, and the `if (lfManual)` branch in recompute() — the manual LF sliders
+       controls, and the `if (lfManual)` branch in recompute() — the manual source sliders
     5. unwrap the  <div class="u" data-n="…">  wrappers — they are pure containers, nothing
        in the app reads them
     6. restore a document-flow layout: drop `.app`/`.cols`/`.col` and let `.panel` stack
@@ -121,7 +121,7 @@
     border-radius:2px; box-shadow:inset 0 1px 5px rgba(0,0,0,.6), inset 0 0 0 1px #0e0904}
   .cap{font-size:9px;color:var(--muted);line-height:1.2}
 
-  /* DEV-ONLY: direct LF shape controls, a strip under the rails */
+  /* DEV-ONLY: direct source-shape controls, a strip under the rails */
   .lfrow{display:flex;gap:9px;align-items:center}
   .lfu{display:flex;gap:4px;align-items:center;flex:1 1 0;min-width:0}
   .lfu.mode{flex:0 0 auto}
@@ -198,7 +198,7 @@
   <!-- DEV-ONLY: title bar + the readout every annotation prints into -->
   <header class="bar">
     <div class="top">
-      <h1>LF Source + Estill Figures</h1>
+      <h1>Modeled Source + Estill Figures</h1>
       <span class="tag">dev layout · temporary</span>
       <button id="notemode">Notes: hover</button>
       <button id="notestep">▸ walk through</button>
@@ -215,8 +215,6 @@
       <div class="panel">
         <div class="u ctlrow" data-n="fund"><label for="fund">f₀</label>
           <select id="fund"></select><span class="v" id="fundv"></span></div>
-        <div class="u ctlrow" data-n="ee"><label for="ee">E<sub>e</sub></label>
-          <input id="ee" type="range" min="0.05" max="1" step="0.01" value="0.6"><span class="v" id="eeval"></span></div>
         <div class="u ctlrow" data-n="vol"><label for="vol">Output</label>
           <input id="vol" type="range" min="0" max="1" step="0.01" value="0.45"><span class="v" id="volval"></span></div>
         <div style="display:flex;gap:6px">
@@ -249,9 +247,14 @@
             <option value="simultaneous" selected>Simultaneous — 25 ms</option>
             <option value="aspirate" disabled>Aspirate — needs a noise channel</option>
           </select><span class="v"></span></div>
-        <div class="u ctlrow" data-n="fcluster"><label for="fcluster">Cluster</label>
-          <input id="fcluster" type="range" min="2400" max="3400" step="10" value="2900">
-          <span class="v" id="fcval"></span></div>
+        <div style="display:flex;gap:6px">
+          <div class="u ctlrow tight" data-n="ee"><label for="ee">Effort E<sub>e</sub></label>
+            <input id="ee" type="range" min="0.05" max="1" step="0.01" value="0.6">
+            <span class="v" id="eeval"></span></div>
+          <div class="u ctlrow tight" data-n="fcluster"><label for="fcluster">Cluster</label>
+            <input id="fcluster" type="range" min="2400" max="3400" step="10" value="2900">
+            <span class="v" id="fcval"></span></div>
+        </div>
         <div class="u" data-n="readout"><div class="readout" id="readout"></div></div>
       </div>
 
@@ -275,10 +278,10 @@
         <div class="u" data-n="plot">
           <svg id="plot" class="screen" viewBox="0 0 760 236" preserveAspectRatio="xMidYMid meet"></svg>
         </div>
-        <!-- DEV-ONLY: the LF shape parameters, exposed directly -->
+        <!-- DEV-ONLY: the source shape parameters, exposed directly -->
         <div class="lfrow">
           <div class="u lfu mode" data-n="lfmode">
-            <label><input type="checkbox" id="lfmanual"> Manual LF</label></div>
+            <label><input type="checkbox" id="lfmanual"> Manual source</label></div>
           <div class="u lfu" data-n="lf-OQ"><label for="lf-OQ">OQ</label>
             <input id="lf-OQ" type="range" min="0.35" max="0.95" step="0.001" value="0.45">
             <span class="v" id="lf-OQv"></span></div>
@@ -344,6 +347,7 @@
       <div title="Set aside. It acted only through an OQ drift with pitch, measured against one global 220 Hz reference — but a reference pitch belongs to the singer, so with max(0, …) a bass never drifted at all. Restore it with F0_REF in the singer config, per part."><b>Cricoid cartilage</b> — set aside</div>
       <div title="Thick and thin are modeled. Stiff (falsetto) needs incomplete closure, a DC flow offset and aspiration noise; slack needs a nonlinear oscillator capable of period doubling."><b>Body–cover: stiff, slack</b> — thick/thin only</div>
       <div title="Glottal and simultaneous are modeled. Aspirate needs one noise generator through the same formant filters with its own gain envelope — the smallest possible addition to this file."><b>Onset: aspirate</b> — needs a noise channel</div>
+      <div title="Estill treats onset and offset as a single figure; only onset is modeled here. A release has its own vocabulary and its own OQ trajectory, and this does not attempt either — stopping is a plain 60 ms fade, short enough not to be heard as an offset at all."><b>Offset</b> — not modeled; a plain fade</div>
       <div title="Not dropped but reparameterized: three articulators map many-to-one onto three formants, so they are collapsed into a direct (F1, F2, F3) target. The acoustic consequences are all present; which articulator produced them is not recoverable."><b>Tongue, jaw, lip aperture</b> — collapsed into (F1,F2,F3)</div>
       <div class="foot">⇒ unreachable: <b>Falsetto</b>, and every distorted quality</div>
     </div></div>
@@ -530,7 +534,12 @@
 
   // 4.4 onset_type: envelope timing on Ee. Aspirate is unavailable without a noise channel.
   // Glottal onset also starts with OQ depressed and relaxes over ~30 ms — that transient
-  // pressedness is the audible part of a hard attack. Offset mirrors onset.
+  // pressedness is the audible part of a hard attack.
+  //
+  // Offset is NOT modeled. Estill treats onset and offset as one figure and the spec mirrors the
+  // onset constants on the way down, but a release has its own vocabulary (and its own OQ
+  // trajectory) that this does not attempt; releases here are a single fixed fade, chosen to be
+  // inaudible rather than expressive. Do not read the tail of a note as a modeled offset.
   const ONSETS = {
     glottal:      { ms: 3,  overshoot: 1.25, oqDip: 0.10 },
     simultaneous: { ms: 25, overshoot: 1.0,  oqDip: 0 },
@@ -861,6 +870,7 @@
   // loudest configuration in the space (a tilted, twanged voice whose F1 lands on f0) just
   // reaches full scale at the default Ee and output level — roughly 20 dB above the quietest.
   const OUTPUT_TRIM = 5.5;
+  const RELEASE_MS = 60;                  // plain fade on stop; offset is not modeled
   const VIB_RATE = 5.5;                   // vibrato rate (Hz)
   const JITTER_CENTS = 4;                 // random cycle-drift pitch wobble (± cents)
   const SHIMMER = 0.04;                   // random amplitude wobble (± fraction)
@@ -1077,8 +1087,8 @@
     clearOnsetTimers();
     oqDip = 0;
     stopScope();
-    // Offset mirrors onset with the same time constant: a glottal release is an audible cutoff.
-    const secs = ONSETS[onsetType].ms / 1000;
+    // Offset is not modeled — a plain fade, deliberately short enough not to be heard as one.
+    const secs = RELEASE_MS / 1000;
     const now = ctx.currentTime;
     srcGain.gain.cancelScheduledValues(now);
     srcGain.gain.setValueAtTime(srcGain.gain.value, now);
@@ -1372,7 +1382,7 @@
     const on = formantOn.filter(Boolean).length;
     if (!playing) { metaEl.textContent = "Press Start to hear the voice."; return; }
     const N = Math.floor(Math.min(HEARING_TOP, (ctx?.sampleRate || 48000) / 2) / f0);
-    metaEl.innerHTML = `LF source · <b>${N}</b> harmonics · f₀ <b>${f0.toFixed(1)} Hz</b> · ` +
+    metaEl.innerHTML = `source · <b>${N}</b> harmonics · f₀ <b>${f0.toFixed(1)} Hz</b> · ` +
       `OQ <b>${src.OQ.toFixed(2)}</b> · <b>${on}</b>/5 resonances active`;
   }
 
@@ -1544,7 +1554,7 @@
 
   playBtn.addEventListener("click", () => playing ? stop() : start());
 
-  // DEV-ONLY: manual LF shape sliders
+  // DEV-ONLY: manual source-shape sliders
   const lfManualEl = document.getElementById("lfmanual");
   const LF_KEYS = ["OQ", "Rk", "Ra"];
   const lfInputs = {}, lfVals = {};
@@ -1585,13 +1595,13 @@
   // ============================================================================================
   const DEV_NOTES = [
     ["fund", "Fundamental f₀",
-     "The note. Changing it re-solves the LF waveform, not just the oscillator frequency — OQ drift, the harmonic count and ta/T all depend on f₀."],
-    ["ee", "Eₑ — excitation strength",
-     "Loudness. The LF waveform is always built with Eₑ = 1; this is applied after it, as the gain of the srcGain node. Twang multiplies it by up to 1.7."],
+     "The note. Changing it re-solves the source waveform, not just the oscillator frequency — OQ drift, the harmonic count and ta/T all depend on f₀."],
+    ["ee", "Eₑ — glottal effort",
+     "Subglottal drive, roughly. The source waveform is always built with Eₑ = 1 and this is applied after it, as the gain of srcGain; twang multiplies it by up to 1.7. Kept separate from Output on purpose — twang's claim is more output for the *same* effort, which is only a claim if effort is something you can hold still."],
     ["vol", "Output level",
-     "Master gain, the last node before the speakers. A listening level only — unlike Eₑ it changes nothing about the model."],
+     "Master gain, the last node before the speakers. A monitoring level only — unlike effort it changes nothing about the model, and nothing measured here depends on it."],
     ["play", "Start / Stop",
-     "Builds a fresh oscillator (Web Audio's are one-shot), loads the LF wave, starts the onset envelope. Also where the AudioContext is created, since that needs a click."],
+     "Builds a fresh oscillator (Web Audio's are one-shot), loads the source waveform, starts the onset envelope. Also where the AudioContext is created, since that needs a click."],
     ["vib", "Vibrato depth",
      "A 5.5 Hz sine oscillator into the voice's detune. Detune is in cents, so the gain value is the depth directly. Not an Estill figure."],
     ["bwtrim", "Bandwidth trim ×",
@@ -1613,8 +1623,8 @@
      "Nasality. Two peaking filters at +9 and −9 dB start on the same frequency and cancel exactly. Raising this walks the −9 dB one up to 450 Hz, opening a notch next to F1."],
     ["fig-lip_protrusion", "Lip protrusion (spread ↔ protruded)",
      "Rounding lengthens the tract and drops every formant by up to 5% — something F1/F2 alone cannot express. Weighted down on F1. Not in the quality presets."],
-    ["onset", "Onset / offset type",
-     "Attack shape. Glottal: 3 ms, a 1.25× overshoot, and a briefly pressed OQ. Simultaneous: 25 ms, no overshoot. Aspirate would need a noise channel, which does not exist here."],
+    ["onset", "Onset type",
+     "Attack shape only — offset is not modeled, and stopping is a plain 60 ms fade. Glottal: 3 ms, a 1.25× overshoot, and a briefly pressed OQ. Simultaneous: 25 ms, no overshoot. Aspirate would need a noise channel, which does not exist here."],
     ["fcluster", "AES cluster target",
      "Where twang pulls F3/F4/F5 to. A per-singer constant; 2.9 kHz is a male ballpark. It is the dashed blue line on the rails."],
     ["readout", "Derived source parameters",
@@ -1626,7 +1636,7 @@
 
     ["absent", "Not modeled",
      "Of the thirteen figures: five modeled, two half-modeled, two collapsed into the vowel target, four set aside. Each omission is an assumption that buys the orthogonality the rest of the model rests on — on screen so that a missing effect reads as a known limit, not a bug. Hover any line for the reason."],
-    ["lfmode", "Manual LF override",
+    ["lfmode", "Manual source override",
      "Temporary. The three sliders normally follow whatever the figures worked out; touching one freezes them so you can drive the waveform directly. The source figures grey out while it is on."],
     ["lf-OQ", "OQ — open quotient",
      "The fraction of each cycle the glottis is open, so te lands at exactly OQ·T. Low = pressed and buzzy, high = thin. Body-cover and pitch drift both end up here."],
@@ -1644,7 +1654,7 @@
     ["outSpec", "Panel 3 — radiated spectrum",
      "Panel 1 + panel 2, added in dB. All three share a dB-per-pixel scale so that is visible rather than merely claimed. Move f₀ until a harmonic hits a formant and watch it jump."],
     ["lfWave", "Flow derivative, one period",
-     "The waveform itself. tp = flow peak, te = closure and the instant the tract is struck, +ta = how fast it recovers. The LF sliders show up here first."],
+     "The waveform itself. tp = flow peak, te = closure and the instant the tract is struck, +ta = how fast it recovers. The shape sliders show up here first."],
     ["scope", "Radiated pressure",
      "A real tap on the output. The trace is formant ringing retriggered at every glottal closure — closure, not opening, is what excites the tract."],
     ["spectrum", "Measured spectrum",
