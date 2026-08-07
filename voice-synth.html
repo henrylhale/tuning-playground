@@ -85,9 +85,12 @@
   .meta b{color:var(--ink);font-weight:700}
 
   /* ---- transport / misc control rows ---- */
-  .dial{width:104px;height:auto;display:block;cursor:grab;touch-action:none}
+  .dial{width:122px;height:auto;display:block;cursor:grab;touch-action:none}
   .dial:active{cursor:grabbing}
   .dial text{user-select:none;-webkit-user-select:none}
+  .stack{display:flex;flex-direction:column;gap:1px;min-width:0}
+  .stack > .hd{display:flex;justify-content:space-between;align-items:baseline;gap:4px}
+  .stack > .hd > .v{font-size:9.5px;color:var(--ink);font-variant-numeric:tabular-nums}
   .ctlrow{display:flex;align-items:center;gap:5px;min-width:0}
   .ctlrow > label{flex:0 0 44px}
   .ctlrow > label.wide{flex:0 0 auto}
@@ -179,17 +182,18 @@
     <!-- ---- top left: pitch, levels, the figures, and what they resolved to ---- -->
     <div class="col area-ctl">
       <div class="panel">
-        <div style="display:flex;gap:8px;align-items:flex-start">
+        <div style="display:flex;gap:8px;align-items:stretch">
           <div class="u" data-n="fund" style="flex:0 0 auto">
             <svg id="fund" class="dial" viewBox="0 0 340 340" preserveAspectRatio="xMidYMid meet"
                  role="slider" aria-label="Fundamental"></svg></div>
-          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
-        <div class="u ctlrow" data-n="vol"><label for="vol">Gain</label>
-          <input id="vol" type="range" min="0" max="1" step="0.01" value="0.45"><span class="v" id="volval"></span></div>
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;align-self:stretch;gap:4px">
+          <div class="u stack" data-n="vol">
+            <div class="hd"><label for="vol">Gain</label><span class="v" id="volval"></span></div>
+            <input id="vol" type="range" min="0" max="1" step="0.01" value="0.45"></div>
           <div class="u" data-n="play"><button id="play" class="play">▶ Start</button></div>
-          <div class="u ctlrow" data-n="fcluster"><label for="fcluster">Cluster</label>
-            <input id="fcluster" type="range" min="2400" max="3400" step="10" value="2900">
-            <span class="v" id="fcval"></span></div>
+          <div class="u stack" data-n="fcluster">
+            <div class="hd"><label for="fcluster">Cluster</label><span class="v" id="fcval"></span></div>
+            <input id="fcluster" type="range" min="2400" max="3400" step="10" value="2900"></div>
           </div>
           <div class="u" data-n="readout"><div class="readout" id="readout"></div></div>
         </div>
@@ -650,6 +654,7 @@
   window.addEventListener("pointercancel", () => { dialDrag = null; });
   window.__setMidi = m => commitPitch(m);          // DEV-ONLY: test hook for the browser check
   window.vowelPeek = () => vowel;                  // DEV-ONLY: test hook
+  window.__redrawMaster = () => masterArgs && drawMaster(...masterArgs);   // DEV-ONLY: test hook
 
   // ---------- figure state ----------
   const FIGURE_DEFS = [
@@ -755,7 +760,7 @@
   // ---------- audio ----------
   const HEARING_TOP = 20000;
   let ctx = null, osc = null, master = null, playing = false;
-  let analyser = null, scopeRAF = null, timeBuf = null;
+  let analyser = null, scopeRAF = null, timeBuf = null, specBuf = null;
   // source-filter graph nodes
   let srcGain = null, nasalPole = null, nasalZero = null, nasalTrim = null;
   let sourceBus = null, formantMix = null;
@@ -1051,16 +1056,18 @@
     const h = lfHarmonics(p, nMax);
     const mag = k => Math.hypot(h.real[k], h.imag[k]);
     const h1 = dB(mag(1));
-    drawMaster(sr, f0, p, h, k => dB(mag(k)) - h1);
+    masterArgs = [sr, f0, p, h, k => dB(mag(k)) - h1];
+    drawMaster(...masterArgs);
     drawLfPeriod(p);
   }
 
   // The tract read two ways in one frame: |H(f)| as a curve, and — on a strip under it, at the
   // same log-frequency positions — where each of the five resonances actually sits. Separating
   // them meant that reading a peak and finding out which formant it was were different glances.
-  const STRIP = 34;                          // height of the resonance strip, in CSS px
+  const STRIP = 42;                          // height of the resonance strip, in CSS px
   let formantDots = [];                      // where the peak markers landed, for hit-testing
   let hoverF = -1;
+  let masterArgs = null;                     // last model draw, replayed under the live trace
 
   function drawMaster(sr, f0, p, h, srcDb) {
     const c = tractCv.getContext("2d"), g0 = geomOf(tractCv);
@@ -1076,7 +1083,45 @@
     // filter's gain at that frequency, and the bright stems are their sum.
     stems(c, g, T, f0, h.n, srcDb, "#ffd9a8", 0.30, 2);
     envelope(c, g, T, "#5dd28f", f => dB(tractMag(f, sr)));
+    let outMax = -1e9;
+    for (let k = 1; k <= h.n && k * f0 <= SPEC_FMAX; k++) outMax = Math.max(outMax, outDb(k));
     stems(c, g, T, f0, h.n, outDb, "#ff8a2e", 0.62, 2.6);
+
+    // What the analyser actually hears, over the top of what the model predicted. Its absolute
+    // level is meaningless here — the model's dB axis is relative to H1 — so the trace is offset
+    // to put its loudest bin on the modelled output's loudest harmonic. What that leaves
+    // comparable is the shape, which is the part worth checking.
+    if (playing && analyser && specBuf) {
+      analyser.getFloatFrequencyData(specBuf);
+      const nyq = sr / 2, bins = specBuf.length, perHz = bins / nyq;
+      const x0 = g.L, x1 = g.W - g.R;
+      const vals = new Float64Array(x1 - x0 + 1);
+      let measMax = -Infinity;
+      for (let px = x0; px <= x1; px++) {
+        const bLo = gfreq(g, px - 0.5) * perHz, bHi = gfreq(g, px + 0.5) * perHz;
+        let v;
+        if (bHi - bLo < 1) {                       // sparser than a bin per pixel: interpolate
+          const bf = clamp((bLo + bHi) / 2, 0, bins - 1);
+          const i0 = Math.min(bins - 2, Math.floor(bf)), t = bf - i0;
+          v = specBuf[i0] * (1 - t) + specBuf[i0 + 1] * t;
+        } else {                                   // denser: take the peak, do not sample past it
+          v = -Infinity;
+          const a = Math.max(0, Math.floor(bLo)), b = Math.min(bins - 1, Math.ceil(bHi));
+          for (let k = a; k <= b; k++) if (specBuf[k] > v) v = specBuf[k];
+        }
+        vals[px - x0] = v;
+        if (v > measMax) measMax = v;
+      }
+      if (measMax > -Infinity) {
+        const off = outMax - measMax;
+        c.strokeStyle = "rgba(226,220,255,0.42)"; c.lineWidth = 1.1; c.beginPath();
+        for (let px = x0; px <= x1; px++) {
+          const y = clamp(gy(g, vals[px - x0] + off, T), g.T - 20, g.H - g.B);
+          px === x0 ? c.moveTo(px, y) : c.lineTo(px, y);
+        }
+        c.stroke(); c.lineWidth = 1;
+      }
+    }
 
     // source landmarks: the glottal formant, and where the spectral tilt breaks
     c.font = "8px sans-serif";
@@ -1124,7 +1169,7 @@
     c.strokeStyle = "#3a2a13"; c.lineWidth = 1;
     c.beginPath(); c.moveTo(g.L, yTop); c.lineTo(g.W - g.R, yTop); c.stroke();
 
-    const yBar = yTop + 15;
+    const yBar = yTop + 13;
     formantDots = [];
     for (let i = 4; i >= 0; i--) {
       const col = COLORS[i], F = tract.F[i], Ft = tract.Ftarget[i], B = tract.B[i];
@@ -1142,24 +1187,26 @@
       if (hot) { c.strokeStyle = "#fff2e0"; c.lineWidth = 1.2; c.stroke(); }
       formantDots.push({ i, x, y: yPeak });
 
-      // bandwidth span, then the centre
-      c.strokeStyle = col; c.globalAlpha = 0.45; c.lineWidth = 5;
-      c.beginPath(); c.moveTo(lo, yBar); c.lineTo(hi, yBar); c.stroke();
-      c.globalAlpha = 1; c.lineWidth = 2;
-      c.beginPath(); c.moveTo(x, yBar - 6); c.lineTo(x, yBar + 6); c.stroke();
-
-      // the raw target, and what the figures did to it
+      // where it came from: dotted back to the raw target, ending in a small hollow ring
       if (Math.abs(xt - x) > 1.5) {
-        c.globalAlpha = 0.55; c.lineWidth = 1; c.setLineDash([2, 2]);
+        c.strokeStyle = col; c.globalAlpha = 0.5; c.lineWidth = 1; c.setLineDash([2, 2]);
         c.beginPath(); c.moveTo(xt, yBar); c.lineTo(x, yBar); c.stroke();
-        c.setLineDash([]); c.globalAlpha = 1;
+        c.setLineDash([]); c.globalAlpha = 0.85; c.lineWidth = 1.4;
+        c.beginPath(); c.arc(xt, yBar, 2.8, 0, 7); c.stroke();
+        c.globalAlpha = 1;
       }
-      c.lineWidth = 1.6;
-      c.beginPath(); c.arc(xt, yBar, 3.4, 0, 7); c.stroke();
 
-      // just the number — the frequency is one hover away, on the curve
+      // bandwidth span, and the effective centre — the dot sits on the dropline's x, so the
+      // line always terminates in the circle rather than beside it
+      c.strokeStyle = col; c.globalAlpha = 0.4; c.lineWidth = 6;
+      c.beginPath(); c.moveTo(lo, yBar); c.lineTo(hi, yBar); c.stroke();
+      c.globalAlpha = 1; c.lineWidth = 1;
+      c.fillStyle = col;
+      c.beginPath(); c.arc(x, yBar, 3.2, 0, 7); c.fill();
+
+      // label, always below the marker; two rows so a formed cluster stays readable
       c.font = "8.5px sans-serif"; c.textAlign = "center"; c.fillStyle = col;
-      c.fillText(`F${i + 1}`, x, i % 2 ? yBar + 15 : yBar - 9);
+      c.fillText(`F${i + 1}`, x, yBar + (i % 2 ? 21 : 12));
     }
     c.lineWidth = 1;
 
@@ -1260,13 +1307,22 @@
   function startScope() {
     if (!analyser || scopeRAF) return;
     timeBuf = new Float32Array(analyser.fftSize);
-    const frame = () => { scopeRAF = requestAnimationFrame(frame); drawWave(); };
+    specBuf = new Float32Array(analyser.frequencyBinCount);
+    let tick = 0;
+    const frame = () => {
+      scopeRAF = requestAnimationFrame(frame);
+      drawWave();
+      // every other frame: the master pane costs a full envelope evaluation to redraw, and the
+      // analyser is smoothed anyway, so 30 Hz is plenty for the live trace
+      if ((tick++ & 1) === 0 && masterArgs) drawMaster(...masterArgs);
+    };
     frame();
   }
   function stopScope() {
     if (scopeRAF) cancelAnimationFrame(scopeRAF);
     scopeRAF = null;
     scopeCv.getContext("2d").clearRect(0, 0, scopeCv.clientWidth, scopeCv.clientHeight);
+    if (masterArgs) drawMaster(...masterArgs);        // drop the live trace off the master pane
     clipLbl.textContent = "level —"; clipLbl.style.color = "";
   }
   function drawWave() {
@@ -1440,7 +1496,7 @@
      "Of the thirteen figures: five modeled, two half-modeled, two collapsed into the vowel target, four set aside. Each omission is an assumption that buys the orthogonality the rest of the model rests on — on screen so that a missing effect reads as a known limit, not a bug."],
 
     ["filter", "Source → filter → output",
-     "The whole chain on one dB axis. Pale stems are the source harmonics with H1 at 0 dB; the green curve is the filter's gain at that frequency, computed from the same coefficients Web Audio is running; the bright stems are their sum — so output = source + filter is a vertical distance you can read off rather than a claim. The strip underneath says where each resonance sits: bar = effective centre with its bandwidth, ring = the raw target, dotted line = what the figures did in between, with a dropline from each peak to its marker. Hover a peak for its frequency and bandwidth."],
+     "The whole chain on one dB axis. Pale stems are the source harmonics with H1 at 0 dB; the green curve is the filter's gain at that frequency, computed from the same coefficients Web Audio is running; the bright stems are their sum — so output = source + filter is a vertical distance you can read off rather than a claim. The strip underneath says where each resonance sits: bar = effective centre with its bandwidth, ring = the raw target, dotted line = what the figures did in between, with a dropline from each peak to its marker. Hover a peak for its frequency and bandwidth. The pale line laid over the top while a note sounds is the analyser's measurement of the real output, shifted so its loudest bin meets the modelled one — absolute level is not comparable, but the shape is, and where the two disagree it is the model that is lying."],
     ["lfWave", "Flow derivative, one period",
      "The waveform itself. tp = flow peak, te = closure and the instant the tract is struck, +ta = how fast it recovers. The shape sliders show up here first."],
     ["scope", "Radiated pressure",
