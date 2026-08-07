@@ -233,7 +233,7 @@
       </div>
 
       <div class="panel">
-        <div class="ptitle"><span>Thirteen Figures</span><span class="note">5 modeled · 2 partial · 2 collapsed · 4 set aside</span></div>
+        <div class="ptitle"><span>Thirteen Figures</span><span class="note">5 modeled · 1 partial · 2 collapsed · 5 set aside</span></div>
         <div class="u" data-n="presets"><div class="presets" id="presets"></div></div>
         <div class="figs">
           <h3>Source figures</h3>
@@ -241,12 +241,6 @@
           <h3>Filter figures</h3>
           <div id="figs-filter"></div>
         </div>
-        <div class="u ctlrow" data-n="onset"><label for="onset">Onset</label>
-          <select id="onset">
-            <option value="glottal">Glottal — 3 ms, ×1.25</option>
-            <option value="simultaneous" selected>Simultaneous — 25 ms</option>
-            <option value="aspirate" disabled>Aspirate — needs a noise channel</option>
-          </select><span class="v"></span></div>
         <div style="display:flex;gap:6px">
           <div class="u ctlrow tight" data-n="ee"><label for="ee">Effort E<sub>e</sub></label>
             <input id="ee" type="range" min="0.05" max="1" step="0.01" value="0.6">
@@ -346,8 +340,7 @@
       <div title="Same as torso anchoring: a constraint on other parameters' trajectories, not a sound of its own. Assuming both ideal is what licenses treating every other figure as independent."><b>Head &amp; neck anchoring</b> — assumed optimal</div>
       <div title="Set aside. It acted only through an OQ drift with pitch, measured against one global 220 Hz reference — but a reference pitch belongs to the singer, so with max(0, …) a bass never drifted at all. Restore it with F0_REF in the singer config, per part."><b>Cricoid cartilage</b> — set aside</div>
       <div title="Thick and thin are modeled. Stiff (falsetto) needs incomplete closure, a DC flow offset and aspiration noise; slack needs a nonlinear oscillator capable of period doubling."><b>Body–cover: stiff, slack</b> — thick/thin only</div>
-      <div title="Glottal and simultaneous are modeled. Aspirate needs one noise generator through the same formant filters with its own gain envelope — the smallest possible addition to this file."><b>Onset: aspirate</b> — needs a noise channel</div>
-      <div title="Estill treats onset and offset as a single figure; only onset is modeled here. A release has its own vocabulary and its own OQ trajectory, and this does not attempt either — stopping is a plain 60 ms fade, short enough not to be heard as an offset at all."><b>Offset</b> — not modeled; a plain fade</div>
+      <div title="Both halves of the figure are gone. It was envelope timing on Ee — glottal (3 ms, a 1.25x overshoot, a briefly depressed OQ) and simultaneous (25 ms) — with aspirate already unreachable for want of a noise channel. Notes now fade in and out over a fixed 60 ms, short enough not to be heard as an attack shape, so nothing about the start or end of a note is a claim about production."><b>Onset &amp; offset</b> — not modeled; plain fades</div>
       <div title="Not dropped but reparameterized: three articulators map many-to-one onto three formants, so they are collapsed into a direct (F1, F2, F3) target. The acoustic consequences are all present; which articulator produced them is not recoverable."><b>Tongue, jaw, lip aperture</b> — collapsed into (F1,F2,F3)</div>
       <div class="foot">⇒ unreachable: <b>Falsetto</b>, and every distorted quality</div>
     </div></div>
@@ -532,18 +525,11 @@
     return { OQbase, drift: 0, Rk, Ra, OQ: clamp(OQbase, 0.35, 0.95) };
   }
 
-  // 4.4 onset_type: envelope timing on Ee. Aspirate is unavailable without a noise channel.
-  // Glottal onset also starts with OQ depressed and relaxes over ~30 ms — that transient
-  // pressedness is the audible part of a hard attack.
-  //
-  // Offset is NOT modeled. Estill treats onset and offset as one figure and the spec mirrors the
-  // onset constants on the way down, but a release has its own vocabulary (and its own OQ
-  // trajectory) that this does not attempt; releases here are a single fixed fade, chosen to be
-  // inaudible rather than expressive. Do not read the tail of a note as a modeled offset.
-  const ONSETS = {
-    glottal:      { ms: 3,  overshoot: 1.25, oqDip: 0.10 },
-    simultaneous: { ms: 25, overshoot: 1.0,  oqDip: 0 },
-  };
+  // 4.4 onset/offset of the true vocal folds is NOT modeled — the figure is gone, both halves.
+  // It used to be envelope timing on Ee (glottal: 3 ms with a 1.25x overshoot and a briefly
+  // depressed OQ; simultaneous: 25 ms), with aspirate unreachable for want of a noise channel.
+  // Notes now start and stop on a plain fixed fade, short enough not to be heard as an attack
+  // shape at all. Nothing about the beginning or end of a note here is a claim about production.
 
   // 5.2 Proximity weight: a resonance held low by articulation does not join the AES cluster.
   // 1.0 for a plain vowel, 0.0 for an American /r/.
@@ -668,8 +654,6 @@
   const fig = {};
   const figInputs = {}, figVals = {};
   for (const d of FIGURE_DEFS) fig[d.id] = d.def;
-  let onsetType = "simultaneous";
-  let oqDip = 0;                      // transient OQ depression during a glottal onset
 
   // DEV-ONLY: hand control of {OQ, Rk, Ra} to the sliders under the rails. While it is off the
   // sliders track whatever the figures resolved to, so you can watch where a figure puts them
@@ -699,9 +683,8 @@
   function recompute() {
     const f0 = parseFloat(fundEl.value);
     src = sourceFromFigures(fig, f0);
-    src.OQ = clamp(src.OQ - oqDip, 0.35, 0.95);
     if (lfManual) {                                   // DEV-ONLY override
-      src.OQ = clamp(lfOverride.OQ - oqDip, 0.35, 0.95);
+      src.OQ = clamp(lfOverride.OQ, 0.35, 0.95);
       src.Rk = lfOverride.Rk;
       src.Ra = lfOverride.Ra;
     } else {
@@ -854,7 +837,7 @@
   // source-filter graph nodes
   let srcGain = null, nasalPole = null, nasalZero = null, nasalTrim = null;
   let sourceBus = null, formantMix = null, dryGain = null;
-  let vibLFO = null, vibDepth = null, humanTimer = null, onsetTimers = [];
+  let vibLFO = null, vibDepth = null, humanTimer = null;
   const bp = [], fg = [];                 // per-formant bandpass + gain nodes
   // The parallel bank sums branches, so relative sign matters. F1/F2 alternate (Klatt's trick for
   // keeping the valley between two well-separated formants from notching); F3/F4/F5 share a sign
@@ -870,7 +853,7 @@
   // loudest configuration in the space (a tilted, twanged voice whose F1 lands on f0) just
   // reaches full scale at the default Ee and output level — roughly 20 dB above the quietest.
   const OUTPUT_TRIM = 5.5;
-  const RELEASE_MS = 60;                  // plain fade on stop; offset is not modeled
+  const FADE_MS = 60;                     // onset/offset are not modeled: a plain fade, both ends
   const VIB_RATE = 5.5;                   // vibrato rate (Hz)
   const JITTER_CENTS = 4;                 // random cycle-drift pitch wobble (± cents)
   const SHIMMER = 0.04;                   // random amplitude wobble (± fraction)
@@ -916,7 +899,7 @@
       formantMix.gain.value = OUTPUT_TRIM;
       formantMix.connect(master);
 
-      // Ee lives on its own node so the onset envelope and the twang bonus both act on the
+      // Ee lives on its own node so the twang bonus and the start/stop fade both act on the
       // excitation strength rather than on the output level.
       srcGain = ctx.createGain();
       srcGain.gain.value = 0;
@@ -1024,25 +1007,8 @@
     master.gain.setTargetAtTime(Math.max(0, v), now, 0.06);
   }
 
-  function clearOnsetTimers() { onsetTimers.forEach(clearTimeout); onsetTimers = []; }
-
-  // Glottal onset starts pressed and relaxes to target OQ over ~30 ms. A PeriodicWave can't be
-  // automated, so the dip is stepped; under the attack ramp the steps are inaudible.
-  function scheduleOnsetTransient(dip) {
-    if (dip <= 0) return;
-    const steps = 5;
-    for (let i = 1; i <= steps; i++) {
-      onsetTimers.push(setTimeout(() => {
-        oqDip = dip * (1 - i / steps);
-        apply();
-      }, i * 30 / steps));
-    }
-  }
-
   function start() {
     ensureCtx();
-    const o = ONSETS[onsetType];
-    oqDip = o.oqDip;
     recompute();
 
     const f0 = parseFloat(fundEl.value);
@@ -1055,24 +1021,18 @@
     vibDepth.connect(osc.detune);
 
     const now = ctx.currentTime;
-    osc.detune.setValueAtTime(onsetType === "glottal" ? 0 : -40, now);
-    osc.detune.linearRampToValueAtTime(0, now + 0.12);
     osc.start();
     playing = true;
     syncFilters();
 
-    // Ee envelope: rise over onset_ms to onset_overshoot·Ee, then settle to Ee.
-    const ee = eeEffective();
+    // Not an onset — just a fade in, deliberately unshaped. No overshoot, no pitch scoop, no
+    // transient pressedness: those were the modeled onset, and it is gone.
     srcGain.gain.cancelScheduledValues(now);
     srcGain.gain.setValueAtTime(0, now);
-    srcGain.gain.linearRampToValueAtTime(ee * o.overshoot, now + o.ms / 1000);
-    srcGain.gain.setTargetAtTime(ee, now + o.ms / 1000, 0.05);
+    srcGain.gain.linearRampToValueAtTime(eeEffective(), now + FADE_MS / 1000);
 
     master.gain.cancelScheduledValues(now);
     master.gain.setValueAtTime(parseFloat(volEl.value), now);
-
-    clearOnsetTimers();
-    scheduleOnsetTransient(o.oqDip);
 
     humanTimer = setInterval(tickHuman, 110);
     startScope();
@@ -1084,11 +1044,9 @@
   function stop() {
     if (!playing) return;
     clearInterval(humanTimer); humanTimer = null;
-    clearOnsetTimers();
-    oqDip = 0;
     stopScope();
-    // Offset is not modeled — a plain fade, deliberately short enough not to be heard as one.
-    const secs = RELEASE_MS / 1000;
+    // Likewise not an offset — the same plain fade on the way out.
+    const secs = FADE_MS / 1000;
     const now = ctx.currentTime;
     srcGain.gain.cancelScheduledValues(now);
     srcGain.gain.setValueAtTime(srcGain.gain.value, now);
@@ -1524,7 +1482,6 @@
   const bwEl = document.getElementById("bwtrim"), bwValEl = document.getElementById("bwval");
   const eeValEl = document.getElementById("eeval"), volValEl = document.getElementById("volval");
   const fundValEl = document.getElementById("fundv");
-  const onsetEl = document.getElementById("onset");
 
   function updateSideLabels() {
     vibValEl.textContent = vibCents <= 0 ? "off" : `±${vibCents}¢`;
@@ -1539,7 +1496,6 @@
   f3El.addEventListener("input", () => { vowel.F3 = parseFloat(f3El.value); apply(); });
   fcEl.addEventListener("input", () => { singer.Fcluster = parseFloat(fcEl.value); apply(); });
   bwEl.addEventListener("input", () => { singer.bwTrim = parseFloat(bwEl.value); apply(); });
-  onsetEl.addEventListener("change", () => { onsetType = onsetEl.value; });
   eeEl.addEventListener("input", () => apply());
   volEl.addEventListener("input", () => {
     if (playing && ctx) master.gain.setTargetAtTime(parseFloat(volEl.value), ctx.currentTime, 0.01);
@@ -1601,13 +1557,13 @@
     ["vol", "Output level",
      "Master gain, the last node before the speakers. A monitoring level only — unlike effort it changes nothing about the model, and nothing measured here depends on it."],
     ["play", "Start / Stop",
-     "Builds a fresh oscillator (Web Audio's are one-shot), loads the source waveform, starts the onset envelope. Also where the AudioContext is created, since that needs a click."],
+     "Builds a fresh oscillator (Web Audio's are one-shot), loads the source waveform, fades in over 60 ms. That fade is not an onset — the figure is not modeled — so nothing about how a note begins here is a claim. Also where the AudioContext is created, since that needs a click."],
     ["vib", "Vibrato depth",
      "A 5.5 Hz sine oscillator into the voice's detune. Detune is in cents, so the gain value is the depth directly. Not an Estill figure."],
     ["bwtrim", "Bandwidth trim ×",
      "Scales all five formant bandwidths. They are otherwise fixed constants — only nasality (B1) and twang (B3–B5) move them. A lab knob, no Estill meaning."],
     ["meta", "Status line",
-     "Harmonic count is min(20 kHz, Nyquist)/f₀. The OQ shown includes pitch drift and any onset dip, so it can disagree with the body-cover slider. That is the point."],
+     "Harmonic count is min(20 kHz, Nyquist)/f₀. The OQ shown is the one actually being synthesized, which is the body-cover value unless the manual source sliders have taken over."],
     ["presets", "Quality fixtures",
      "The six Estill qualities. Each button only assigns figure values — there is no quality-specific code anywhere. Belt is the test case."],
 
@@ -1623,8 +1579,6 @@
      "Nasality. Two peaking filters at +9 and −9 dB start on the same frequency and cancel exactly. Raising this walks the −9 dB one up to 450 Hz, opening a notch next to F1."],
     ["fig-lip_protrusion", "Lip protrusion (spread ↔ protruded)",
      "Rounding lengthens the tract and drops every formant by up to 5% — something F1/F2 alone cannot express. Weighted down on F1. Not in the quality presets."],
-    ["onset", "Onset type",
-     "Attack shape only — offset is not modeled, and stopping is a plain 60 ms fade. Glottal: 3 ms, a 1.25× overshoot, and a briefly pressed OQ. Simultaneous: 25 ms, no overshoot. Aspirate would need a noise channel, which does not exist here."],
     ["fcluster", "AES cluster target",
      "Where twang pulls F3/F4/F5 to. A per-singer constant; 2.9 kHz is a male ballpark. It is the dashed blue line on the rails."],
     ["readout", "Derived source parameters",

@@ -9,9 +9,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadRegion } from '../test-utils/load-region.mjs';
 
-const { sourceFromFigures, tractFromFigures, pull, QUALITIES, ONSETS } = loadRegion(
+const { sourceFromFigures, tractFromFigures, pull, QUALITIES } = loadRegion(
   ['math-utils', 'estill-map'],
-  ['sourceFromFigures', 'tractFromFigures', 'pull', 'QUALITIES', 'ONSETS'],
+  ['sourceFromFigures', 'tractFromFigures', 'pull', 'QUALITIES'],
   'voice-synth.html',
 );
 
@@ -84,12 +84,15 @@ test('OQ stays inside the range the LF solve can handle', () => {
   }
 });
 
-test('onset options: glottal is abrupt and overshoots, aspirate is absent', () => {
-  assert.ok(ONSETS.glottal.ms < ONSETS.simultaneous.ms);
-  assert.ok(ONSETS.glottal.overshoot > 1 && ONSETS.simultaneous.overshoot === 1);
-  assert.ok(ONSETS.glottal.oqDip > 0, 'a hard attack starts pressed');
-  assert.equal(ONSETS.simultaneous.oqDip, 0);
-  assert.ok(!('aspirate' in ONSETS), 'aspirate needs a noise channel and must not be faked');
+test('the onset/offset figure is gone, both halves', () => {
+  // Notes fade in and out over a fixed 60 ms now. That fade is not an attack shape, and the
+  // point of this test is that no onset table survives for something to start reading again:
+  // asking the region for one has to fail outright.
+  assert.throws(
+    () => loadRegion(['math-utils', 'estill-map'], ['ONSETS'], 'voice-synth.html'),
+    /ONSETS is not defined/,
+    'an ONSETS table came back — the figure is being modeled again',
+  );
 });
 
 // --- filter figures ------------------------------------------------------------------------
