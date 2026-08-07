@@ -146,7 +146,6 @@ test('larynx height scales the tract, harder on F1/F2 than on the epilarynx clus
   assert.ok(Math.abs(high.F[0] / SCHWA.F1 - 1.12) < 1e-9);
   assert.ok(Math.abs(low.F[0] / SCHWA.F1 - 0.88) < 1e-9);
   // Half weight above F2: the epilarynx tube's length changes less than the whole tract's.
-  // (Read off F, not Ftarget — Ftarget is the raw request the rails' drag handles set.)
   const relF1 = high.F[0] / low.F[0], relF4 = high.F[3] / low.F[3];
   assert.ok(relF4 < relF1 && relF4 > 1, `F4 scaling ${relF4} should be positive but weaker than F1's ${relF1}`);
 });
@@ -178,13 +177,15 @@ test('velum separates a pole/zero pair that is otherwise an exact bypass', () =>
   for (let i = 0; i < 5; i++) assert.ok(Math.abs(low.F[i] - raised.F[i]) < 1e-9, `velum moved F${i + 1}`);
 });
 
-test('Ftarget stays the raw request, whatever the figures do to it', () => {
-  // The resonance rails draw each drag handle at Ftarget and set the raw value from where it is
-  // dropped. If Ftarget were the post-scaling frequency, a handle would snap away from the
-  // pointer by the tract-length scale on the very next redraw.
+test('every resonance ends up somewhere other than where it was asked for', () => {
+  // With larynx height, lip protrusion and twang all engaged, none of the five should still be
+  // sitting on its raw input — F1/F2 moved by tract length, F3/F4/F5 by that and the twang pull.
+  // The tract no longer reports the raw values (nothing draws them), so compare against the
+  // inputs directly.
+  const raw = [SCHWA.F1, SCHWA.F2, SCHWA.F3, SINGER.F4, SINGER.F5];
   const t = tract({ larynx_height: 1, lip_protrusion: 1, twang: 1 });
-  assert.deepEqual([...t.Ftarget], [SCHWA.F1, SCHWA.F2, SCHWA.F3, SINGER.F4, SINGER.F5]);
-  for (let i = 0; i < 5; i++) assert.notEqual(t.F[i], t.Ftarget[i], `F${i + 1} should have moved`);
+  for (let i = 0; i < 5; i++) assert.notEqual(t.F[i], raw[i], `F${i + 1} did not move`);
+  assert.ok(!('Ftarget' in t), 'the raw request is no longer part of the tract');
 });
 
 test('bandwidths are singer constants, moved only by nasality and twang', () => {

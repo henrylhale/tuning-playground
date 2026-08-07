@@ -509,10 +509,6 @@
 
     return {
       F, B, w3,
-      // What was asked for, before tract-length scaling and the twang pull — the vowel target
-      // and the singer's neutrals. The master pane draws these as rings against the effective
-      // centres, which is how you see what a figure did rather than only where it ended up.
-      Ftarget: [vowel.F1, vowel.F2, vowel.F3, singer.F4, singer.F5],
       // Coincident pole and zero multiply to exactly 1. Nasality is introduced by separating
       // them, so velum = 0 is a true bypass with no click and no residual coloration.
       nasal: { FNP: 270.0, FNZ: lerp(270.0, 450.0, fig.velum), Q: 2.7, dB: 9.0 },
@@ -1190,8 +1186,8 @@
     const yBar = yTop + 13;
     formantDots = [];
     for (let i = 4; i >= 0; i--) {
-      const col = COLORS[i], F = tract.F[i], Ft = tract.Ftarget[i], B = tract.B[i];
-      const x = gx(g, F), xt = gx(g, Ft);
+      const col = COLORS[i], F = tract.F[i], B = tract.B[i];
+      const x = gx(g, F);
       const lo = gx(g, Math.max(SPEC_FMIN, F - B / 2)), hi = gx(g, F + B / 2);
 
       // a dropline from the peak it is responsible for, down into the strip
@@ -1204,15 +1200,6 @@
       c.beginPath(); c.arc(x, yPeak, hot ? 4.5 : 3, 0, 7); c.fill();
       if (hot) { c.strokeStyle = "#fff2e0"; c.lineWidth = 1.2; c.stroke(); }
       formantDots.push({ i, x, y: yPeak });
-
-      // where it came from: dotted back to the raw target, ending in a small hollow ring
-      if (Math.abs(xt - x) > 1.5) {
-        c.strokeStyle = col; c.globalAlpha = 0.5; c.lineWidth = 1; c.setLineDash([2, 2]);
-        c.beginPath(); c.moveTo(xt, yBar); c.lineTo(x, yBar); c.stroke();
-        c.setLineDash([]); c.globalAlpha = 0.85; c.lineWidth = 1.4;
-        c.beginPath(); c.arc(xt, yBar, 2.8, 0, 7); c.stroke();
-        c.globalAlpha = 1;
-      }
 
       // bandwidth span, and the effective centre — the dot sits on the dropline's x, so the
       // line always terminates in the circle rather than beside it
@@ -1521,7 +1508,7 @@
      "Of the thirteen figures: five modeled, two half-modeled, two collapsed into the vowel target, four set aside. Each omission is an assumption that buys the orthogonality the rest of the model rests on — on screen so that a missing effect reads as a known limit, not a bug."],
 
     ["filter", "Source → filter → output",
-     "The whole chain on one dB axis. Pale stems are the source harmonics with H1 at 0 dB; the green curve is the filter's gain at that frequency, computed from the same coefficients Web Audio is running; the bright stems are their sum — so output = source + filter is a vertical distance you can read off rather than a claim. The strip underneath says where each resonance sits: bar = effective centre with its bandwidth, ring = the raw target, dotted line = what the figures did in between, with a dropline from each peak to its marker. Hover a peak for its frequency and bandwidth. The pale line laid over the top while a note sounds is the analyser's measurement of the real output, shifted so its loudest bin meets the modelled one — absolute level is not comparable, but the shape is, and where the two disagree it is the model that is lying."],
+     "The whole chain on one dB axis. Pale stems are the source harmonics with H1 at 0 dB; the green curve is the filter's gain at that frequency, computed from the same coefficients Web Audio is running; the bright stems are their sum — so output = source + filter is a vertical distance you can read off rather than a claim. The strip underneath says where each resonance sits — the dot is the effective centre, the bar its bandwidth — with a dropline from each peak to its marker. Hover a peak for its frequency and bandwidth. The pale line laid over the top while a note sounds is the analyser's measurement of the real output, shifted so its loudest bin meets the modelled one — absolute level is not comparable, but the shape is, and where the two disagree it is the model that is lying."],
     ["lfWave", "Flow derivative, one period",
      "The waveform itself. tp = flow peak, te = closure and the instant the tract is struck, +ta = how fast it recovers. The shape sliders show up here first."],
     ["scope", "Radiated pressure",
