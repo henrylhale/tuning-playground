@@ -4,6 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LF Source + Estill Figures — Voice Synth</title>
+<!--
+  ============================================================================================
+  TEMPORARY DEV LAYOUT — everything marked DEV-ONLY below is review scaffolding, not the app.
+  It exists so the whole instrument can be seen at once while the LF/Estill rebuild is being
+  read through, and it is meant to be deleted (or have big pieces of it deleted) afterwards.
+
+  To rip it out, in order:
+    1. delete the  <style id="dev-only">  block
+    2. delete the  <header class="bar">   element
+    3. delete the  //#region dev-notes    block in the script (the DEV_NOTES table + wiring)
+    4. unwrap the  <div class="u" data-n="…">  wrappers — they are pure containers, nothing
+       in the app reads them
+    5. restore a document-flow layout: drop `.app`/`.cols`/`.col` and let `.panel` stack
+  The synthesis model, the audio graph and every drawing routine are untouched by any of it.
+  ============================================================================================
+-->
 <style>
   :root{
     --case:#bfa97f; --panel:#d9c7a1; --keycap:#e7d8b7; --keycap-hi:#f7eed7; --keycap-edge:#b39868;
@@ -11,241 +27,276 @@
     --amber:#ffb347; --line:#a98e62; --bezel-hi:#f3e8ce; --bezel-lo:#8f7649;
   }
   *{box-sizing:border-box}
-  html{height:100%}
+  html,body{height:100%}
   body{
-    min-height:100%; margin:0;
+    margin:0; overflow:hidden;
     background:radial-gradient(125% 80% at 50% -10%, #cfbb91 0%, var(--case) 60%);
     color:var(--ink);
-    font:14px/1.5 "Helvetica Neue",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-    display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
-    gap:20px; padding:28px 20px;
+    font:11px/1.35 "Helvetica Neue",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   }
-  h1{font-size:17px;font-weight:800;margin:0;letter-spacing:1.5px;text-transform:uppercase;
-    color:#3a2810; text-shadow:0 1px 0 var(--bezel-hi)}
-  .sub{color:var(--muted);font-size:12.5px;margin-top:-12px;text-align:center;max-width:660px}
+
+  /* ---- fit-to-screen shell: header, then controls | graphs | graphs ---- */
+  .app{height:100%; display:grid; grid-template-rows:auto minmax(0,1fr); gap:5px; padding:5px 7px 6px}
+  .cols{
+    display:grid; min-height:0; gap:6px;
+    grid-template-columns:352px minmax(0,1fr) minmax(0,1fr);
+    grid-template-rows:auto minmax(0,1fr);
+    grid-template-areas:"ctl rails rails" "ctl specA specB";
+  }
+  .area-ctl{grid-area:ctl} .area-rails{grid-area:rails}
+  .area-specA{grid-area:specA} .area-specB{grid-area:specB}
+  .col{display:flex; flex-direction:column; gap:3px; min-height:0; overflow-y:auto; overflow-x:hidden}
+
   .panel{
     background:linear-gradient(180deg,#e3d4af,#d2bf98);
-    border:1px solid var(--bezel-lo); border-radius:5px;
-    box-shadow:inset 0 1px 0 var(--bezel-hi), 0 2px 7px rgba(60,40,15,.22);
-    padding:20px 22px; display:flex; flex-direction:column; gap:16px;
-    width:900px; max-width:100%;
+    border:1px solid var(--bezel-lo); border-radius:4px;
+    box-shadow:inset 0 1px 0 var(--bezel-hi), 0 1px 4px rgba(60,40,15,.2);
+    padding:4px 7px; display:flex; flex-direction:column; gap:3px; min-height:0;
   }
-  .panel.narrow{width:520px}
-  .ptitle{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
-  .ptitle b{font-weight:700}
-  .ptitle .note{color:var(--muted);font-size:12px;font-weight:400}
-  .toprow{display:flex;align-items:center;gap:18px 20px;flex-wrap:wrap}
-  .ctl{display:flex;align-items:center;gap:10px}
-  label{color:var(--muted);font-size:12.5px;font-weight:600}
+  .panel.grow{flex:1 1 0}
+  .ptitle{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+    font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#54401f}
+  .ptitle .note{color:var(--muted);font-size:9.5px;font-weight:500;letter-spacing:0;text-transform:none}
+
+  label{color:var(--muted);font-size:10px;font-weight:600}
   select{
     background:linear-gradient(180deg,var(--keycap-hi),var(--keycap));
-    color:var(--ink); border:1px solid var(--bezel-lo); border-radius:4px;
-    padding:7px 10px; font-size:14px; font-weight:600;
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.55), 0 1px 2px rgba(60,40,15,.18);
+    color:var(--ink); border:1px solid var(--bezel-lo); border-radius:3px;
+    padding:2px 4px; font-size:10.5px; font-weight:600; font-family:inherit;
   }
-  input[type=range]{width:140px; max-width:42vw; accent-color:var(--accent)}
+  input[type=range]{width:100%; height:10px; accent-color:var(--accent); margin:0}
   button.play,button.wave{
     appearance:none; cursor:pointer; color:var(--ink); font-family:inherit; font-weight:700;
     background:linear-gradient(180deg,var(--keycap-hi),var(--keycap) 55%,var(--keycap-edge));
-    border:1px solid var(--bezel-lo); border-radius:4px;
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.6), 0 2px 0 var(--keycap-edge), 0 3px 5px rgba(60,40,15,.25);
-    transition:transform .06s, box-shadow .06s, filter .1s;
+    border:1px solid var(--bezel-lo); border-radius:3px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.6), 0 1px 0 var(--keycap-edge);
   }
-  button.play{padding:10px 18px; font-size:14px; margin-left:auto}
-  button.wave{padding:7px 11px; font-size:12.5px; color:var(--muted)}
+  button.play{padding:4px 10px; font-size:11px}
+  button.wave{padding:2px 6px; font-size:10px; color:var(--muted)}
   button.play:hover,button.wave:hover{filter:brightness(1.05)}
-  button.play:active,button.wave:active{transform:translateY(2px);
-    box-shadow:inset 0 2px 4px rgba(60,40,15,.4)}
   button.play.on,button.wave.on{
     background:linear-gradient(180deg,#ffbf6f,var(--accent) 60%,var(--accent-deep));
     color:#2a1400; border-color:var(--accent-deep);
-    box-shadow:inset 0 1px 0 rgba(255,231,195,.6), 0 0 12px rgba(226,106,16,.55), 0 2px 0 var(--accent-deep);
   }
-  button.wave[disabled]{opacity:.42; cursor:not-allowed; box-shadow:none}
-  .waves{display:flex;gap:6px;flex-wrap:wrap}
+  button.wave[disabled]{opacity:.42; cursor:not-allowed}
+  .waves{display:flex;gap:3px;flex-wrap:wrap}
+
   svg{display:block;width:100%;height:auto;touch-action:none;user-select:none}
-  .screen{
-    background:var(--display); border-radius:3px; padding:6px;
-    box-shadow:inset 0 2px 9px rgba(0,0,0,.6), inset 0 0 0 2px #0e0904, 0 1px 0 var(--bezel-hi);
-  }
-  canvas.screen{padding:0;width:100%;height:auto;display:block;background:#120c06;border-radius:3px}
-  .meta{color:var(--muted);font-size:12px;text-align:center}
+  .screen{background:var(--display); border-radius:2px;
+    box-shadow:inset 0 1px 5px rgba(0,0,0,.6), inset 0 0 0 1px #0e0904;}
+  .meta{color:var(--muted);font-size:9.5px}
   .meta b{color:var(--ink);font-weight:700}
 
-  /* --- Estill figure controls --- */
-  .figs{display:grid;grid-template-columns:1fr 1fr;gap:14px 26px}
-  .figcol{display:flex;flex-direction:column;gap:9px}
-  .figcol > h3{margin:0;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;
-    color:var(--muted);font-weight:800;border-bottom:1px solid rgba(143,118,73,.4);padding-bottom:4px}
-  .fig{display:grid;grid-template-columns:112px 1fr 44px;align-items:center;gap:8px}
-  .fig > .nm{font-size:12.5px;font-weight:600;color:var(--ink)}
-  .fig input[type=range]{width:100%;max-width:none}
-  .fig > .val{font-size:11.5px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
-  .fig > .ends{grid-column:2;font-size:10px;color:var(--muted);display:flex;
-    justify-content:space-between;margin-top:-7px}
-  .presets{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-  .readout{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:6px 14px;
-    background:#120c06;border-radius:3px;padding:10px 12px;
-    box-shadow:inset 0 2px 9px rgba(0,0,0,.6)}
-  .readout div{font-size:11.5px;color:#a98a55;font-variant-numeric:tabular-nums}
+  /* ---- transport / misc control rows ---- */
+  .ctlrow{display:flex;align-items:center;gap:5px;min-width:0}
+  .ctlrow > label{flex:0 0 44px}
+  .ctlrow.tight{flex:1}  .ctlrow.tight > label{flex:0 0 auto}
+  .ctlrow > input,.ctlrow > select{flex:1 1 auto;min-width:0}
+  .ctlrow > .v{flex:0 0 auto;font-size:9.5px;color:var(--ink);text-align:right;
+    font-variant-numeric:tabular-nums;min-width:36px}
+
+  /* ---- Estill figure sliders ---- */
+  .figs{display:flex;flex-direction:column;gap:2px}
+  .figs h3{margin:2px 0 0;font-size:9px;letter-spacing:1px;text-transform:uppercase;
+    color:var(--muted);font-weight:800;border-bottom:1px solid rgba(143,118,73,.4)}
+  .fig{display:grid;grid-template-columns:74px 30px 1fr 40px 24px;align-items:center;gap:4px}
+  .fig > .nm{font-size:10px;font-weight:600}
+  .fig > .e{font-size:7.5px;color:var(--muted);line-height:1;white-space:nowrap;overflow:hidden}
+  .fig > .e.lo{text-align:right}
+  .fig > .val{font-size:9.5px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+  .presets{display:flex;gap:3px;flex-wrap:wrap;align-items:center}
+
+  /* ---- derived readout ---- */
+  .readout{display:grid;grid-template-columns:repeat(4,1fr);gap:1px 6px;
+    background:#120c06;border-radius:2px;padding:5px 6px;box-shadow:inset 0 1px 5px rgba(0,0,0,.6)}
+  .readout div{font-size:8px;color:#a98a55;font-variant-numeric:tabular-nums;line-height:1.15}
   .readout b{color:var(--amber);font-weight:700}
   .readout .warn b{color:#ff8a5a}
-  @media (max-width:760px){
-    .figs{grid-template-columns:1fr}
-    .fig{grid-template-columns:100px 1fr 40px}
+  .readout .sub{opacity:.65;font-size:8px}
+
+  /* ---- responsive plots: the canvas fills its slot and is redrawn at that size ---- */
+  .plot{flex:1 1 0; min-height:0; display:flex; flex-direction:column; gap:2px}
+  .plot canvas{flex:1 1 0; min-height:0; width:100%; display:block; background:#120c06;
+    border-radius:2px; box-shadow:inset 0 1px 5px rgba(0,0,0,.6), inset 0 0 0 1px #0e0904}
+  .cap{font-size:9px;color:var(--muted);line-height:1.2}
+</style>
+
+<style id="dev-only">
+  /* ======================= DEV-ONLY: annotation scaffolding ======================= */
+  .bar{display:flex;flex-direction:column;gap:3px;
+    background:#241a0c;color:#d8c39a;border:1px solid #0e0904;border-radius:4px;padding:5px 9px}
+  .bar .top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .bar h1{font-size:11px;font-weight:800;margin:0;letter-spacing:1.2px;text-transform:uppercase;color:#ffb347}
+  .bar .tag{font-size:8.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;
+    background:#8a2f12;color:#ffd9b0;border-radius:2px;padding:1px 5px}
+  .bar .hint{font-size:9.5px;color:#9c8154;margin-left:auto}
+  .bar button{appearance:none;cursor:pointer;font-family:inherit;font-weight:700;font-size:9.5px;
+    background:#3a2a13;color:#e7d8b7;border:1px solid #5a4324;border-radius:3px;padding:2px 7px}
+  .bar button:hover{background:#4a361a}
+  #noteout{height:3.4em;overflow-y:auto;font-size:9.5px;line-height:1.4;color:#cdb383;
+    border-top:1px solid #3a2a13;padding-top:2px}
+  #noteout .who{color:#ffb347;font-weight:700}
+  #noteout .idx{color:#5b9cf2;font-weight:700}
+
+  /* every annotated element is wrapped in .u; the badge is injected by script */
+  .u{position:relative; padding-right:13px}
+  .u.plot{padding-right:0}
+  .u > .badge{
+    position:absolute; top:0; right:0; z-index:5; pointer-events:none;
+    font-size:8px; font-weight:800; line-height:1; padding:1px 3px; border-radius:2px;
+    background:rgba(91,156,242,.85); color:#08111f; opacity:.55;
   }
-  @media (max-width:600px){
-    body{padding:16px 10px; gap:14px}
-    .panel{padding:14px 13px; gap:14px}
-    .sub{font-size:12px; margin-top:-8px}
-    .toprow{gap:12px 16px}
-    button.play{margin-left:0}
+  .u:hover > .badge{opacity:1; background:#ffb347; color:#2a1400}
+  .u:hover{outline:1px dashed rgba(255,179,71,.75); outline-offset:1px; border-radius:2px}
+  body.notes-off .u > .badge{display:none}
+  body.notes-off .u:hover{outline:none}
+
+  /* inline mode: print every note in place; columns become scrollable */
+  .u > .inline{display:none}
+  body.notes-inline .u > .inline{
+    display:block; font-size:9px; line-height:1.35; color:#5f4a26;
+    background:rgba(255,255,255,.34); border-left:2px solid rgba(91,156,242,.6);
+    padding:3px 5px; margin-top:3px; border-radius:0 2px 2px 0;
   }
+  body.notes-inline .plot{flex:0 0 auto}
+  body.notes-inline .plot canvas{flex:0 0 auto; height:96px}
+  /* ===================== END DEV-ONLY ===================== */
 </style>
 </head>
 <body>
-  <h1>LF Source + Estill Figures</h1>
-  <div class="sub">A Liljencrants–Fant glottal source driving a five-formant tract, parameterized by
-  Estill figures rather than by waveform shape. The source generates the <i>flow derivative</i>, so
-  lip radiation is already baked in — there is no brightness knob. The six voice qualities are test
-  fixtures: they must <i>emerge</i> from the figure settings, not be presets with their own code path.</div>
+<div class="app">
 
-  <div class="panel">
-    <div class="toprow">
-      <div class="ctl">
-        <label for="fund">Fundamental</label>
-        <select id="fund"></select>
+  <!-- DEV-ONLY: title bar + the readout every annotation prints into -->
+  <header class="bar">
+    <div class="top">
+      <h1>LF Source + Estill Figures</h1>
+      <span class="tag">dev layout · temporary</span>
+      <button id="notemode">Notes: hover</button>
+      <button id="notestep">▸ walk through</button>
+      <span class="hint">hover any numbered element — its implementation is described below</span>
+    </div>
+    <div id="noteout"></div>
+  </header>
+
+  <div class="cols">
+
+    <!-- ============================ LEFT: controls ============================ -->
+    <div class="col area-ctl">
+
+      <div class="panel">
+        <div class="u ctlrow" data-n="fund"><label for="fund">f₀</label>
+          <select id="fund"></select><span class="v" id="fundv"></span></div>
+        <div class="u ctlrow" data-n="ee"><label for="ee">E<sub>e</sub></label>
+          <input id="ee" type="range" min="0.05" max="1" step="0.01" value="0.6"><span class="v" id="eeval"></span></div>
+        <div class="u ctlrow" data-n="vol"><label for="vol">Output</label>
+          <input id="vol" type="range" min="0" max="1" step="0.01" value="0.45"><span class="v" id="volval"></span></div>
+        <div style="display:flex;gap:6px">
+          <div class="u ctlrow tight" data-n="vib"><label for="vib">Vib</label>
+            <input id="vib" type="range" min="0" max="8" step="0.5" value="3">
+            <span class="v" id="vibval"></span></div>
+          <div class="u ctlrow tight" data-n="bwtrim"><label for="bwtrim">B×</label>
+            <input id="bwtrim" type="range" min="0.5" max="2" step="0.05" value="1">
+            <span class="v" id="bwval"></span></div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <div class="u" data-n="waves" style="flex:1"><div class="waves" id="waves">
+            <button class="wave on" data-mode="voice">LF voice</button>
+            <button class="wave" data-mode="sine">Sine</button>
+            <button class="wave" data-mode="sawtooth">Saw</button>
+            <button class="wave" data-mode="triangle">Tri</button>
+            <button class="wave" data-mode="square">Sq</button>
+          </div></div>
+          <div class="u" data-n="play"><button id="play" class="play">▶ Start</button></div>
+        </div>
+        <div class="u" data-n="meta"><div class="meta" id="meta">Press Start to hear the voice.</div></div>
       </div>
-      <div class="ctl">
-        <label for="ee">E<sub>e</sub></label>
-        <input id="ee" type="range" min="0.05" max="1" step="0.01" value="0.6">
-        <span id="eeval" style="color:var(--ink);font-size:12px;min-width:64px"></span>
+
+      <div class="panel">
+        <div class="ptitle"><span>Thirteen Figures</span><span class="note">8 modeled · 2 partial · 3 dropped</span></div>
+        <div class="u" data-n="presets"><div class="presets" id="presets"></div></div>
+        <div class="figs">
+          <h3>Source figures</h3>
+          <div id="figs-source"></div>
+          <h3>Filter figures</h3>
+          <div id="figs-filter"></div>
+        </div>
+        <div class="u ctlrow" data-n="onset"><label for="onset">Onset</label>
+          <select id="onset">
+            <option value="glottal">Glottal — 3 ms, ×1.25</option>
+            <option value="simultaneous" selected>Simultaneous — 25 ms</option>
+            <option value="aspirate" disabled>Aspirate — needs a noise channel</option>
+          </select><span class="v"></span></div>
+        <div class="u ctlrow" data-n="fcluster"><label for="fcluster">Cluster</label>
+          <input id="fcluster" type="range" min="2400" max="3400" step="10" value="2900">
+          <span class="v" id="fcval"></span></div>
+        <div class="u" data-n="readout"><div class="readout" id="readout"></div></div>
       </div>
-      <div class="ctl">
-        <label for="vol">Output</label>
-        <input id="vol" type="range" min="0" max="1" step="0.01" value="0.45">
+
+      <div class="panel">
+        <div class="u" data-n="chart">
+          <svg id="chart" class="screen" viewBox="0 0 380 168" preserveAspectRatio="xMidYMid meet"></svg>
+        </div>
+        <div class="u ctlrow" data-n="f3t"><label for="f3t">F3</label>
+          <input id="f3t" type="range" min="1400" max="3200" step="10" value="2500">
+          <span class="v" id="f3val"></span></div>
+        <div class="meta" id="vmeta"></div>
       </div>
-      <button id="play" class="play">▶ Start</button>
+
     </div>
 
-    <div class="toprow">
-      <div class="ctl">
-        <label for="vib">Vibrato</label>
-        <input id="vib" type="range" min="0" max="8" step="0.5" value="3">
-        <span id="vibval" style="color:var(--ink);font-size:12px;min-width:78px"></span>
-      </div>
-      <div class="ctl">
-        <label for="bwtrim">Bandwidth ×</label>
-        <input id="bwtrim" type="range" min="0.5" max="2" step="0.05" value="1">
-        <span id="bwval" style="color:var(--ink);font-size:12px;min-width:34px"></span>
-      </div>
-      <div class="ctl">
-        <label>Source</label>
-        <div class="waves" id="waves">
-          <button class="wave on" data-mode="voice">LF voice</button>
-          <button class="wave" data-mode="sine">Sine</button>
-          <button class="wave" data-mode="sawtooth">Saw</button>
-          <button class="wave" data-mode="triangle">Triangle</button>
-          <button class="wave" data-mode="square">Square</button>
+    <!-- ============================ TOP RIGHT: rails ============================ -->
+    <div class="col area-rails">
+      <div class="panel">
+        <div class="ptitle"><span>Resonances</span>
+          <span class="note">ring = raw target · bar = after twang &amp; tract-length scaling</span></div>
+        <div class="u" data-n="plot">
+          <svg id="plot" class="screen" viewBox="0 0 760 236" preserveAspectRatio="xMidYMid meet"></svg>
         </div>
       </div>
     </div>
 
-    <div class="meta" id="meta">Press Start to hear the voice.</div>
-  </div>
-
-  <div class="panel">
-    <div class="ptitle">
-      <b>Thirteen Figures <span class="note">— eight modeled, two partial, three dropped</span></b>
-      <div class="note">0…1 per figure · qualities below are fixtures, not presets</div>
-    </div>
-
-    <div class="presets" id="presets"></div>
-
-    <div class="figs">
-      <div class="figcol" id="figs-source"><h3>Source figures</h3></div>
-      <div class="figcol" id="figs-filter"><h3>Filter figures</h3></div>
-    </div>
-
-    <div class="toprow">
-      <div class="ctl">
-        <label for="onset">Onset / offset</label>
-        <select id="onset">
-          <option value="glottal">Glottal (3 ms, ×1.25 overshoot)</option>
-          <option value="simultaneous" selected>Simultaneous (25 ms)</option>
-          <option value="aspirate" disabled>Aspirate — needs a noise channel</option>
-        </select>
-      </div>
-      <div class="ctl">
-        <label for="fcluster">AES cluster target</label>
-        <input id="fcluster" type="range" min="2400" max="3400" step="10" value="2900">
-        <span id="fcval" style="color:var(--ink);font-size:12px;min-width:52px"></span>
+    <!-- ====================== BOTTOM RIGHT A: model spectra ====================== -->
+    <div class="col area-specA">
+      <div class="panel grow">
+        <div class="ptitle"><span>Model spectra</span>
+          <span class="note">computed, not measured · same dB/px: 3 = 1 + 2</span></div>
+        <div class="u plot" data-n="srcSpec">
+          <canvas id="srcSpec"></canvas>
+          <div class="cap">1 · source |dU/dt| — glottal formant, tilt knee, −6 → −12 dB/oct</div>
+        </div>
+        <div class="u plot" data-n="tractSpec">
+          <canvas id="tractSpec"></canvas>
+          <div class="cap">2 · tract |H(f)| — F1–F5, AES cluster, nasal pole/zero</div>
+        </div>
+        <div class="u plot" data-n="outSpec">
+          <canvas id="outSpec"></canvas>
+          <div class="cap">3 · radiated spectrum — harmonics against the tract envelope</div>
+        </div>
       </div>
     </div>
 
-    <div class="readout" id="readout"></div>
-  </div>
+    <!-- ================== BOTTOM RIGHT B: waveform + measured ================== -->
+    <div class="col area-specB">
+      <div class="panel grow">
+        <div class="ptitle"><span>Waveform &amp; measured output</span>
+          <span id="cliplbl" class="note">level —</span></div>
+        <div class="u plot" data-n="lfWave">
+          <canvas id="lfWave"></canvas>
+          <div class="cap">Flow derivative, one period — closure at t<sub>e</sub> is the excitation</div>
+        </div>
+        <div class="u plot" data-n="scope">
+          <canvas id="scope"></canvas>
+          <div class="cap">Radiated pressure — formant ringing retriggered at every closure</div>
+        </div>
+        <div class="u plot" data-n="spectrum">
+          <canvas id="spectrum"></canvas>
+          <div class="cap">Measured spectrum (log f) — amber marks are effective formant centers</div>
+        </div>
+      </div>
+    </div>
 
-  <div class="panel narrow">
-    <div class="ptitle">
-      <b>Vowel target</b>
-      <div class="note">drag the dot · click a vowel to snap</div>
-    </div>
-    <svg id="chart" class="screen" viewBox="0 0 380 300" preserveAspectRatio="xMidYMid meet"></svg>
-    <div class="ctl" style="justify-content:space-between">
-      <label for="f3t">F3 target <span style="font-weight:400">(rhoticity)</span></label>
-      <input id="f3t" type="range" min="1400" max="3200" step="10" value="2500" style="flex:1">
-      <span id="f3val" style="color:var(--ink);font-size:12px;min-width:80px;text-align:right"></span>
-    </div>
-    <div class="meta" id="vmeta"></div>
   </div>
-
-  <div class="panel">
-    <div class="ptitle">
-      <b>Resonances</b>
-      <div class="note">ring = target · bar = after twang &amp; tract length</div>
-    </div>
-    <svg id="plot" class="screen" viewBox="0 0 760 345" preserveAspectRatio="xMidYMid meet"></svg>
-    <div class="meta">Drag F1–F3 to articulate, F4/F5 to re-voice the singer. Toggle a formant to isolate it.</div>
-  </div>
-
-  <div class="panel">
-    <div class="ptitle">
-      <b>Model spectra <span class="note">— computed from the parameters, not measured</span></b>
-      <div class="note">same dB-per-pixel in all three: panel 3 is panel 1 + panel 2</div>
-    </div>
-    <div>
-      <canvas id="srcSpec" class="screen" width="880" height="132"></canvas>
-      <div class="meta" style="margin-top:4px">1 · source |dU/dt| — glottal formant at R<sub>g</sub>·f₀, tilt knee at 1/2πt<sub>a</sub>, slope breaking −6 → −12 dB/oct</div>
-    </div>
-    <div>
-      <canvas id="tractSpec" class="screen" width="880" height="132"></canvas>
-      <div class="meta" style="margin-top:4px">2 · vocal tract |H(f)| — F1–F5, the AES cluster, and the nasal pole/zero pair</div>
-    </div>
-    <div>
-      <canvas id="outSpec" class="screen" width="880" height="132"></canvas>
-      <div class="meta" style="margin-top:4px">3 · radiated spectrum — harmonics of f₀ against the tract envelope</div>
-    </div>
-    <div>
-      <canvas id="lfWave" class="screen" width="880" height="132"></canvas>
-      <div class="meta" style="margin-top:4px">Flow derivative, one period — closure at t<sub>e</sub> (depth E<sub>e</sub>) is the excitation, not opening</div>
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="ptitle">
-      <b>Output <span class="note">— measured from the final mix</span></b>
-      <div id="cliplbl" style="font-size:12px;color:var(--muted)">level —</div>
-    </div>
-    <div>
-      <canvas id="scope" class="screen" width="880" height="150"></canvas>
-      <div class="meta" style="margin-top:6px">Radiated pressure — a decaying formant ringing retriggered at every glottal closure. Peaks flattening at the dashed ±1 lines (and turning red) is clipping.</div>
-    </div>
-    <div>
-      <canvas id="spectrum" class="screen" width="880" height="150"></canvas>
-      <div class="meta" style="margin-top:6px">Measured spectrum (log frequency) — amber marks are the effective formant centers</div>
-    </div>
-  </div>
+</div>
 
 <script>
 (() => {
@@ -580,8 +631,8 @@
   // ---------- geometry / frequency scale (log) ----------
   const VBW = 760, X0 = 70, X1 = 730;
   const FMIN = 55, FMAX = 9000;
-  const RAIL_CY = { 0: 244, 1: 194, 2: 144, 3: 94, 4: 44 }; // red bottom -> blue top
-  const AXIS_Y = 300, LABEL_Y = 318;
+  const RAIL_CY = { 0: 170, 1: 136, 2: 102, 3: 68, 4: 34 }; // red bottom -> blue top
+  const AXIS_Y = 205, LABEL_Y = 219;
   const logR = Math.log(FMAX / FMIN);
   const freqToX = f => X0 + Math.log(Math.max(FMIN, Math.min(FMAX, f)) / FMIN) / logR * (X1 - X0);
   const xToFreq = x => FMIN * Math.exp((Math.max(X0, Math.min(X1, x)) - X0) / (X1 - X0) * logR);
@@ -595,8 +646,8 @@
   // ---------- vowel chart (F1 vertical, F2 horizontal — IPA orientation) ----------
   const chartSvg = document.getElementById("chart");
   const vmetaEl = document.getElementById("vmeta");
-  const CVBW = 380, CVBH = 300;
-  const CX0 = 46, CX1 = 356, CY0 = 18, CY1 = 250; // plot box
+  const CVBW = 380, CVBH = 168;
+  const CX0 = 44, CX1 = 358, CY0 = 11, CY1 = 145; // plot box
   const F1LO = 250, F1HI = 900;   // top -> bottom (close -> open)
   const F2HI = 2400, F2LO = 700;  // left -> right (front -> back)
   const cxOfF2 = f2 => CX0 + (F2HI - clamp(f2, F2LO, F2HI)) / (F2HI - F2LO) * (CX1 - CX0);
@@ -627,31 +678,32 @@
     for (const t of [2200,1800,1400,1000]) {
       const x = cxOfF2(t);
       s += `<line x1="${x}" y1="${CY0}" x2="${x}" y2="${CY1}" stroke="#2c2010" stroke-width="1"/>`;
-      s += `<text x="${x}" y="${CY1+14}" fill="${GRAY_TXT}" font-size="9.5" text-anchor="middle">${t}</text>`;
+      s += `<text x="${x}" y="${CY1+12}" fill="${GRAY_TXT}" font-size="10" text-anchor="middle">${t}</text>`;
     }
     for (const t of [300,400,500,600,700,800]) {
       const y = cyOfF1(t);
       s += `<line x1="${CX0}" y1="${y}" x2="${CX1}" y2="${y}" stroke="#2c2010" stroke-width="1"/>`;
-      s += `<text x="${CX0-6}" y="${y+3}" fill="${GRAY_TXT}" font-size="9.5" text-anchor="end">${t}</text>`;
+      s += `<text x="${CX0-4}" y="${y+3}" fill="${GRAY_TXT}" font-size="10" text-anchor="end">${t}</text>`;
     }
-    s += `<text x="${(CX0+CX1)/2}" y="${CY0-6}" fill="var(--muted)" font-size="10.5" text-anchor="middle">F2 — front ← → back</text>`;
-    s += `<text transform="translate(13,${(CY0+CY1)/2}) rotate(-90)" fill="var(--muted)" font-size="10.5" text-anchor="middle">F1 — close ↑ open ↓</text>`;
+    s += `<text x="${(CX0+CX1)/2}" y="${CY0-5}" fill="#ab8c57" font-size="10" text-anchor="middle">F2 — front ← → back</text>`;
+    s += `<text transform="translate(11,${(CY0+CY1)/2}) rotate(-90)" fill="#ab8c57" font-size="10" text-anchor="middle">F1 — close ↑ open ↓</text>`;
 
     for (const v of VOWELS) {
       const cx = cxOfF2(v.f2), cy = cyOfF1(v.f1);
       s += `<g data-vowel="1" data-f1="${v.f1}" data-f2="${v.f2}" data-f3="${v.f3}" style="cursor:pointer">`;
-      s += `<circle cx="${cx}" cy="${cy}" r="3.5" fill="#9c8154"><title>${v.ipa} — ${v.word} (F1 ${v.f1}, F2 ${v.f2}, F3 ${v.f3})</title></circle>`;
-      s += `<text x="${cx+6}" y="${cy+4}" fill="#d8c39a" font-size="12" font-weight="600">${v.ipa}</text></g>`;
+      s += `<circle cx="${cx}" cy="${cy}" r="3" fill="#9c8154"><title>${v.ipa} — ${v.word} (F1 ${v.f1}, F2 ${v.f2}, F3 ${v.f3})</title></circle>`;
+      s += `<text x="${cx+5}" y="${cy+4}" fill="#d8c39a" font-size="12" font-weight="600">${v.ipa}</text></g>`;
     }
 
     const px = cxOfF2(vowel.F2), py = cyOfF1(vowel.F1);
-    s += `<circle cx="${px}" cy="${py}" r="7.5" fill="#ffb347" fill-opacity="0.25" stroke="#ffb347" stroke-width="2"/>`;
+    s += `<circle cx="${px}" cy="${py}" r="7" fill="#ffb347" fill-opacity="0.25" stroke="#ffb347" stroke-width="2"/>`;
     s += `<circle cx="${px}" cy="${py}" r="2.5" fill="#ffb347"/>`;
 
     chartSvg.innerHTML = s;
     const rhotic = tract.w3 < 1;
-    vmetaEl.innerHTML = `F1 <b>${Math.round(vowel.F1)}</b> · F2 <b>${Math.round(vowel.F2)}</b> · F3 <b>${Math.round(vowel.F3)}</b> Hz` +
-      (rhotic ? ` · <b style="color:var(--accent)">F3 is ${(100*(1-tract.w3)).toFixed(0)}% exempt from the cluster</b>` : "");
+    vmetaEl.innerHTML = `<span style="opacity:.65">vowel — drag / click to snap ·</span> ` +
+      `F1 <b>${Math.round(vowel.F1)}</b> · F2 <b>${Math.round(vowel.F2)}</b> · F3 <b>${Math.round(vowel.F3)}</b> Hz` +
+      (rhotic ? ` · <b style="color:var(--accent-deep)">F3 ${(100*(1-tract.w3)).toFixed(0)}% exempt from the cluster</b>` : "");
   }
 
   // ---------- resonance rails ----------
@@ -662,22 +714,22 @@
     s += `<line x1="${X0}" y1="${AXIS_Y}" x2="${X1}" y2="${AXIS_Y}" stroke="#5a4324" stroke-width="1.5"/>`;
     for (const t of [100,200,300,500,700,1000,2000,3000,5000,8000]) {
       const x = freqToX(t);
-      s += `<line x1="${x}" y1="${AXIS_Y-4}" x2="${x}" y2="${AXIS_Y+4}" stroke="#6b5128" stroke-width="1"/>`;
+      s += `<line x1="${x}" y1="${AXIS_Y-3}" x2="${x}" y2="${AXIS_Y+3}" stroke="#6b5128" stroke-width="1"/>`;
       s += `<text x="${x}" y="${LABEL_Y}" fill="${GRAY_TXT}" font-size="10" text-anchor="middle">${fmtHz(t)}</text>`;
     }
-    s += `<text x="${X1}" y="${LABEL_Y+13}" fill="${GRAY_TXT}" font-size="9.5" text-anchor="end">Hz (log)</text>`;
+    s += `<text x="${X1}" y="${LABEL_Y+12}" fill="${GRAY_TXT}" font-size="9" text-anchor="end">Hz (log)</text>`;
 
     const f0 = parseFloat(fundEl.value);
     const xf = freqToX(f0);
-    s += `<line x1="${xf}" y1="34" x2="${xf}" y2="${AXIS_Y}" stroke="#ffb347" stroke-opacity="0.18" stroke-width="1" stroke-dasharray="3 4"/>`;
-    s += `<circle cx="${xf}" cy="${AXIS_Y}" r="5" fill="#ffb347" stroke="#2a1400" stroke-width="1"/>`;
-    s += `<text x="${xf}" y="${AXIS_Y-9}" fill="#ffb347" font-size="10" text-anchor="middle">f₀</text>`;
+    s += `<line x1="${xf}" y1="22" x2="${xf}" y2="${AXIS_Y}" stroke="#ffb347" stroke-opacity="0.18" stroke-width="1" stroke-dasharray="3 4"/>`;
+    s += `<circle cx="${xf}" cy="${AXIS_Y}" r="4" fill="#ffb347" stroke="#2a1400" stroke-width="1"/>`;
+    s += `<text x="${xf}" y="${AXIS_Y-7}" fill="#ffb347" font-size="10" text-anchor="middle">f₀</text>`;
 
     // AES cluster target — where twang is pulling F3/F4/F5
     if (fig.twang > 0.02) {
       const xc = freqToX(singer.Fcluster);
-      s += `<line x1="${xc}" y1="24" x2="${xc}" y2="${RAIL_CY[0]+24}" stroke="#5b9cf2" stroke-opacity="${0.15+0.35*fig.twang}" stroke-width="1" stroke-dasharray="2 5"/>`;
-      s += `<text x="${xc}" y="20" fill="#5b9cf2" fill-opacity="${0.4+0.6*fig.twang}" font-size="9.5" text-anchor="middle">AES cluster</text>`;
+      s += `<line x1="${xc}" y1="14" x2="${xc}" y2="${RAIL_CY[0]+16}" stroke="#5b9cf2" stroke-opacity="${0.15+0.35*fig.twang}" stroke-width="1" stroke-dasharray="2 5"/>`;
+      s += `<text x="${xc}" y="11" fill="#5b9cf2" fill-opacity="${0.4+0.6*fig.twang}" font-size="9.5" text-anchor="middle">AES cluster</text>`;
     }
 
     for (let i = RAILS.length - 1; i >= 0; i--) {
@@ -687,26 +739,26 @@
       const txt = on ? COLORS[i] : GRAY_TXT;
       const lx = freqToX(F - B / 2), mx = freqToX(F), rx = freqToX(F + B / 2), tx = freqToX(Ft);
 
-      s += `<line x1="${freqToX(RAILS[i].min)}" y1="${cy+17}" x2="${freqToX(RAILS[i].max)}" y2="${cy+17}" stroke="${col}" stroke-opacity="0.25" stroke-width="1.5" stroke-dasharray="2 3"/>`;
+      s += `<line x1="${freqToX(RAILS[i].min)}" y1="${cy+12}" x2="${freqToX(RAILS[i].max)}" y2="${cy+12}" stroke="${col}" stroke-opacity="0.25" stroke-width="1.2" stroke-dasharray="2 3"/>`;
 
       s += `<g data-toggle="1" data-i="${i}" style="cursor:pointer">`;
-      s += `<rect x="8" y="${cy-15}" width="44" height="30" rx="8" fill="${on ? col : '#241a0c'}" stroke="${col}" stroke-width="1.5"/>`;
-      s += `<text x="30" y="${cy+4}" fill="${on ? '#120c06' : txt}" font-size="12" font-weight="700" text-anchor="middle">F${i+1}</text></g>`;
+      s += `<rect x="8" y="${cy-11}" width="38" height="22" rx="6" fill="${on ? col : '#241a0c'}" stroke="${col}" stroke-width="1.2"/>`;
+      s += `<text x="27" y="${cy+4}" fill="${on ? '#120c06' : txt}" font-size="11" font-weight="700" text-anchor="middle">F${i+1}</text></g>`;
 
       // target → effective displacement (twang pull + tract-length scaling)
       if (Math.abs(tx - mx) > 1.5) {
         s += `<line x1="${tx}" y1="${cy}" x2="${mx}" y2="${cy}" stroke="${col}" stroke-opacity="0.5" stroke-width="1" stroke-dasharray="2 2"/>`;
       }
-      s += `<line x1="${lx}" y1="${cy}" x2="${rx}" y2="${cy}" stroke="${col}" stroke-opacity="0.45" stroke-width="7" stroke-linecap="round"/>`;
-      s += `<line x1="${lx}" y1="${cy-12}" x2="${lx}" y2="${cy+12}" stroke="${col}" stroke-width="2"/>`;
-      s += `<line x1="${rx}" y1="${cy-12}" x2="${rx}" y2="${cy+12}" stroke="${col}" stroke-width="2"/>`;
-      s += `<line x1="${mx}" y1="${cy-20}" x2="${mx}" y2="${cy+20}" stroke="${col}" stroke-width="2.5"/>`;
-      s += `<circle cx="${tx}" cy="${cy-22}" r="7" fill="#120c06" stroke="${col}" stroke-width="2" style="cursor:ew-resize"/>`;
+      s += `<line x1="${lx}" y1="${cy}" x2="${rx}" y2="${cy}" stroke="${col}" stroke-opacity="0.45" stroke-width="6" stroke-linecap="round"/>`;
+      s += `<line x1="${lx}" y1="${cy-8}" x2="${lx}" y2="${cy+8}" stroke="${col}" stroke-width="1.6"/>`;
+      s += `<line x1="${rx}" y1="${cy-8}" x2="${rx}" y2="${cy+8}" stroke="${col}" stroke-width="1.6"/>`;
+      s += `<line x1="${mx}" y1="${cy-13}" x2="${mx}" y2="${cy+13}" stroke="${col}" stroke-width="2"/>`;
+      s += `<circle cx="${tx}" cy="${cy-15}" r="5.5" fill="#120c06" stroke="${col}" stroke-width="1.8" style="cursor:ew-resize"/>`;
 
       const shifted = Math.abs(Ft - F) > 2;
-      s += `<text x="${X1}" y="${cy-22}" fill="${txt}" font-size="10.5" text-anchor="end">` +
+      s += `<text x="${X1}" y="${cy-14}" fill="${txt}" font-size="10" text-anchor="end">` +
            `${shifted ? Math.round(Ft) + "→" : ""}F=${Math.round(F)}  B=${Math.round(B)}</text>`;
-      s += `<rect data-handle="1" data-i="${i}" x="${tx-11}" y="${cy-33}" width="22" height="58" fill="transparent" style="cursor:ew-resize"/>`;
+      s += `<rect data-handle="1" data-i="${i}" x="${tx-10}" y="${cy-23}" width="20" height="40" fill="transparent" style="cursor:ew-resize"/>`;
     }
 
     svg.innerHTML = s;
@@ -976,31 +1028,53 @@
     apply();
   }
 
+  // ---------- canvases size themselves to their grid slot ----------
+  // The layout is height-driven (everything has to fit one screen), so the plots cannot have a
+  // fixed aspect ratio. Each canvas takes its backing store from its measured CSS box times the
+  // device pixel ratio, and every draw routine works in CSS pixels read off the element — so a
+  // shorter window means shorter plots, never squashed text.
+  const srcCv = document.getElementById("srcSpec"), tractCv = document.getElementById("tractSpec");
+  const outCv = document.getElementById("outSpec"), lfCv = document.getElementById("lfWave");
+  const scopeCv = document.getElementById("scope"), spectrumCv = document.getElementById("spectrum");
+  const CANVASES = [srcCv, tractCv, outCv, lfCv, scopeCv, spectrumCv];
+
+  function fitCanvases() {
+    const dpr = window.devicePixelRatio || 1;
+    for (const cv of CANVASES) {
+      const w = Math.max(8, Math.round(cv.clientWidth * dpr));
+      const h = Math.max(8, Math.round(cv.clientHeight * dpr));
+      if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+      cv.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+  }
+
   // ---------- model spectra (computed, not measured) ----------
-  const SPEC = { W: 880, H: 132, L: 46, R: 12, T: 8, B: 20, FMIN: 50, FMAX: 10000, SPAN: 78 };
-  const specX = f => SPEC.L + (Math.log10(clamp(f, SPEC.FMIN, SPEC.FMAX)) - Math.log10(SPEC.FMIN)) /
-    (Math.log10(SPEC.FMAX) - Math.log10(SPEC.FMIN)) * (SPEC.W - SPEC.L - SPEC.R);
-  const specY = (db, top) => SPEC.T + (top - db) / SPEC.SPAN * (SPEC.H - SPEC.T - SPEC.B);
+  const SPEC_FMIN = 50, SPEC_FMAX = 10000, SPEC_SPAN = 78;   // dB shown per panel
+  const LOGMIN = Math.log10(SPEC_FMIN), LOGSPAN = Math.log10(SPEC_FMAX) - LOGMIN;
+  const geomOf = cv => ({ W: cv.clientWidth, H: cv.clientHeight, L: 34, R: 6, T: 5, B: 13 });
+  const gx = (g, f) => g.L + (Math.log10(clamp(f, SPEC_FMIN, SPEC_FMAX)) - LOGMIN) / LOGSPAN * (g.W - g.L - g.R);
+  const gfreq = (g, x) => Math.pow(10, LOGMIN + (x - g.L) / (g.W - g.L - g.R) * LOGSPAN);
+  const gy = (g, db, top) => g.T + (top - db) / SPEC_SPAN * (g.H - g.T - g.B);
   const dB = v => 20 * Math.log10(Math.max(1e-9, v));
 
-  function specFrame(g, top, label) {
-    g.clearRect(0, 0, SPEC.W, SPEC.H);
-    g.font = "9px sans-serif"; g.lineWidth = 1;
-    g.strokeStyle = "#2c2010"; g.fillStyle = "#a07f4c"; g.textAlign = "center";
+  function specFrame(c, g, top, label) {
+    c.clearRect(0, 0, g.W, g.H);
+    c.font = "8px sans-serif"; c.lineWidth = 1;
+    c.strokeStyle = "#2c2010"; c.fillStyle = "#a07f4c"; c.textAlign = "center";
     for (const f of [100, 200, 500, 1000, 2000, 5000, 10000]) {
-      const x = specX(f);
-      g.beginPath(); g.moveTo(x, SPEC.T); g.lineTo(x, SPEC.H - SPEC.B); g.stroke();
-      g.fillText(f >= 1000 ? (f / 1000) + "k" : f, x, SPEC.H - 7);
+      const x = gx(g, f);
+      c.beginPath(); c.moveTo(x, g.T); c.lineTo(x, g.H - g.B); c.stroke();
+      c.fillText(f >= 1000 ? (f / 1000) + "k" : f, x, g.H - 4);
     }
-    g.textAlign = "right";
-    for (let d = top; d > top - SPEC.SPAN; d -= 20) {
-      const y = specY(d, top);
-      g.strokeStyle = "#241a0c";
-      g.beginPath(); g.moveTo(SPEC.L, y); g.lineTo(SPEC.W - SPEC.R, y); g.stroke();
-      g.fillStyle = "#7d6438"; g.fillText(d + " dB", SPEC.L - 5, y + 3);
+    c.textAlign = "right";
+    for (let d = top; d > top - SPEC_SPAN; d -= 20) {
+      const y = gy(g, d, top);
+      c.strokeStyle = "#241a0c";
+      c.beginPath(); c.moveTo(g.L, y); c.lineTo(g.W - g.R, y); c.stroke();
+      c.fillStyle = "#7d6438"; c.fillText(d, g.L - 3, y + 3);
     }
-    g.textAlign = "left"; g.fillStyle = "#c9a76a"; g.font = "10px sans-serif";
-    g.fillText(label, SPEC.L + 4, SPEC.T + 11);
+    c.textAlign = "left"; c.fillStyle = "#c9a76a"; c.font = "9px sans-serif";
+    c.fillText(label, g.L + 3, g.T + 9);
   }
 
   // Tract magnitude at frequency f, from the same coefficients Web Audio is running.
@@ -1022,8 +1096,27 @@
     return Math.hypot(re, im) * Math.hypot(p.re, p.im) * Math.hypot(z.re, z.im) * tract.gainCorrection;
   }
 
-  const srcCv = document.getElementById("srcSpec"), tractCv = document.getElementById("tractSpec");
-  const outCv = document.getElementById("outSpec"), lfCv = document.getElementById("lfWave");
+  function stems(c, g, top, f0, n, valueAt) {
+    c.strokeStyle = "#ff8a2e"; c.fillStyle = "#ffb347";
+    for (let k = 1; k <= n; k++) {
+      const f = k * f0; if (f > SPEC_FMAX) break;
+      const x = gx(g, f), y = gy(g, valueAt(k), top);
+      if (y > g.H - g.B) continue;
+      c.globalAlpha = 0.7;
+      c.beginPath(); c.moveTo(x, g.H - g.B); c.lineTo(x, y); c.stroke();
+      c.globalAlpha = 1;
+      c.fillRect(x - 1, y - 1, 2, 2);
+    }
+  }
+
+  function envelope(c, g, top, style, valueAt) {
+    c.strokeStyle = style; c.lineWidth = 1.4; c.beginPath();
+    for (let x = g.L; x <= g.W - g.R; x++) {
+      const y = clamp(gy(g, valueAt(gfreq(g, x)), top), g.T - 20, g.H - g.B);
+      x === g.L ? c.moveTo(x, y) : c.lineTo(x, y);
+    }
+    c.stroke(); c.lineWidth = 1;
+  }
 
   function drawModelSpectra() {
     const sr = ctx ? ctx.sampleRate : 48000;
@@ -1032,124 +1125,86 @@
     const nMax = Math.max(1, Math.floor(Math.min(HEARING_TOP, sr / 2) / f0));
     const h = lfHarmonics(p, nMax);
     const mag = k => Math.hypot(h.real[k], h.imag[k]);
+    const h1 = dB(mag(1));
 
     // --- panel 1: source ---
-    let g = srcCv.getContext("2d");
-    const h1 = dB(mag(1));
-    specFrame(g, 6, "1 · source |dU/dt|   (0 dB = H1)");
-    // glottal formant + tilt knee
-    const gf = p.Rg * f0, knee = 1 / (2 * Math.PI * p.ta);
-    for (const [f, col, lbl] of [[gf, "#5dd28f", "Rg·f₀"], [knee, "#5b9cf2", "1/2πta"]]) {
-      if (f < SPEC.FMIN || f > SPEC.FMAX) continue;
-      const x = specX(f);
-      g.strokeStyle = col; g.globalAlpha = 0.45;
-      g.beginPath(); g.moveTo(x, SPEC.T); g.lineTo(x, SPEC.H - SPEC.B); g.stroke();
-      g.globalAlpha = 1; g.fillStyle = col; g.font = "9px sans-serif";
-      // The tilt knee runs off the right edge at low Ra — flip the label inside the plot there.
-      const flip = x > SPEC.W - SPEC.R - 44;
-      g.textAlign = flip ? "right" : "left";
-      g.fillText(lbl, x + (flip ? -3 : 3), SPEC.H - SPEC.B - 3);
+    let c = srcCv.getContext("2d"), g = geomOf(srcCv);
+    specFrame(c, g, 6, "1 · source |dU/dt|   0 dB = H1");
+    for (const [f, col, lbl] of [[p.Rg * f0, "#5dd28f", "Rg·f₀"], [1 / (2 * Math.PI * p.ta), "#5b9cf2", "1/2πta"]]) {
+      if (f < SPEC_FMIN || f > SPEC_FMAX) continue;
+      const x = gx(g, f);
+      c.strokeStyle = col; c.globalAlpha = 0.45;
+      c.beginPath(); c.moveTo(x, g.T); c.lineTo(x, g.H - g.B); c.stroke();
+      c.globalAlpha = 1; c.fillStyle = col; c.font = "8px sans-serif";
+      const flip = x > g.W - g.R - 34;                  // the knee runs off the right edge at low Ra
+      c.textAlign = flip ? "right" : "left";
+      c.fillText(lbl, x + (flip ? -2 : 2), g.H - g.B - 2);
     }
-    g.strokeStyle = "#ff8a2e"; g.fillStyle = "#ffb347";
-    for (let k = 1; k <= h.n; k++) {
-      const f = k * f0; if (f > SPEC.FMAX) break;
-      const x = specX(f), y = specY(dB(mag(k)) - h1, 6);
-      if (y > SPEC.H - SPEC.B) continue;
-      g.globalAlpha = 0.75;
-      g.beginPath(); g.moveTo(x, SPEC.H - SPEC.B); g.lineTo(x, y); g.stroke();
-      g.globalAlpha = 1;
-      g.fillRect(x - 1.2, y - 1.2, 2.4, 2.4);
-    }
+    stems(c, g, 6, f0, h.n, k => dB(mag(k)) - h1);
 
     // --- panel 2: tract ---
-    g = tractCv.getContext("2d");
-    specFrame(g, 24, "2 · vocal tract |H(f)|");
-    g.strokeStyle = "#5dd28f"; g.lineWidth = 1.6; g.beginPath();
-    for (let x = SPEC.L; x <= SPEC.W - SPEC.R; x++) {
-      const f = Math.pow(10, Math.log10(SPEC.FMIN) + (x - SPEC.L) / (SPEC.W - SPEC.L - SPEC.R) *
-        (Math.log10(SPEC.FMAX) - Math.log10(SPEC.FMIN)));
-      const y = clamp(specY(dB(tractMag(f, sr)), 24), SPEC.T - 20, SPEC.H - SPEC.B);
-      x === SPEC.L ? g.moveTo(x, y) : g.lineTo(x, y);
-    }
-    g.stroke(); g.lineWidth = 1;
-    // nasal pole/zero markers, only once they have separated
-    if (tract.nasal.FNZ - tract.nasal.FNP > 2) {
+    c = tractCv.getContext("2d"); g = geomOf(tractCv);
+    specFrame(c, g, 24, "2 · vocal tract |H(f)|");
+    envelope(c, g, 24, "#5dd28f", f => dB(tractMag(f, sr)));
+    if (tract.nasal.FNZ - tract.nasal.FNP > 2) {        // markers only once the pair has separated
+      c.font = "8px sans-serif"; c.textAlign = "center";
       for (const [f, col, lbl] of [[tract.nasal.FNP, "#f5cf3d", "pole"], [tract.nasal.FNZ, "#e5484d", "zero"]]) {
-        const x = specX(f);
-        g.strokeStyle = col; g.globalAlpha = 0.5;
-        g.beginPath(); g.moveTo(x, SPEC.T); g.lineTo(x, SPEC.H - SPEC.B); g.stroke();
-        g.globalAlpha = 1; g.fillStyle = col; g.textAlign = "center";
-        g.fillText(lbl, x, SPEC.T + 9);
+        const x = gx(g, f);
+        c.strokeStyle = col; c.globalAlpha = 0.5;
+        c.beginPath(); c.moveTo(x, g.T); c.lineTo(x, g.H - g.B); c.stroke();
+        c.globalAlpha = 1; c.fillStyle = col;
+        c.fillText(lbl, x, g.T + 8);
       }
     }
 
-    // --- panel 3: output ---
-    g = outCv.getContext("2d");
-    let peak = -1e9;
+    // --- panel 3: output = panel 1 + panel 2, in dB ---
+    c = outCv.getContext("2d"); g = geomOf(outCv);
     const out = new Float64Array(h.n + 1);
+    let peak = -1e9;
     for (let k = 1; k <= h.n; k++) {
       out[k] = dB(mag(k)) + dB(tractMag(k * f0, sr));
-      if (k * f0 <= SPEC.FMAX && out[k] > peak) peak = out[k];
+      if (k * f0 <= SPEC_FMAX && out[k] > peak) peak = out[k];
     }
-    specFrame(g, 4, "3 · radiated spectrum   (source + tract, dB)");
-    // tract envelope, shifted to sit with the harmonics
-    g.strokeStyle = "rgba(93,210,143,0.45)"; g.beginPath();
-    for (let x = SPEC.L; x <= SPEC.W - SPEC.R; x++) {
-      const f = Math.pow(10, Math.log10(SPEC.FMIN) + (x - SPEC.L) / (SPEC.W - SPEC.L - SPEC.R) *
-        (Math.log10(SPEC.FMAX) - Math.log10(SPEC.FMIN)));
-      const y = clamp(specY(dB(tractMag(f, sr)) + h1 - peak + 4, 4), SPEC.T - 20, SPEC.H - SPEC.B);
-      x === SPEC.L ? g.moveTo(x, y) : g.lineTo(x, y);
-    }
-    g.stroke();
-    g.strokeStyle = "#ff8a2e"; g.fillStyle = "#ffb347";
-    for (let k = 1; k <= h.n; k++) {
-      const f = k * f0; if (f > SPEC.FMAX) break;
-      const x = specX(f), y = specY(out[k] - peak + 4, 4);
-      if (y > SPEC.H - SPEC.B) continue;
-      g.globalAlpha = 0.75;
-      g.beginPath(); g.moveTo(x, SPEC.H - SPEC.B); g.lineTo(x, y); g.stroke();
-      g.globalAlpha = 1;
-      g.fillRect(x - 1.2, y - 1.2, 2.4, 2.4);
-    }
+    specFrame(c, g, 4, "3 · radiated spectrum   source + tract");
+    envelope(c, g, 4, "rgba(93,210,143,0.45)", f => dB(tractMag(f, sr)) + h1 - peak + 4);
+    stems(c, g, 4, f0, h.n, k => out[k] - peak + 4);
 
     drawLfPeriod(p);
   }
 
   function drawLfPeriod(p) {
-    const g = lfCv.getContext("2d"), W = SPEC.W, H = SPEC.H, L = 46, R = 12, T = 12, Bm = 20;
-    g.clearRect(0, 0, W, H);
-    const x0 = L, x1 = W - R, mid = T + (H - T - Bm) * 0.42, amp = (H - T - Bm) * 0.42;
+    const c = lfCv.getContext("2d"), W = lfCv.clientWidth, H = lfCv.clientHeight;
+    const L = 30, R = 6, T = 10, Bm = 13;
+    c.clearRect(0, 0, W, H);
+    const x0 = L, x1 = W - R, mid = T + (H - T - Bm) * 0.4, amp = (H - T - Bm) * 0.4;
     const xt = t => x0 + t / p.T * (x1 - x0);
     const yv = v => mid - v * amp;
 
-    g.strokeStyle = "#2c2010"; g.lineWidth = 1;
-    g.beginPath(); g.moveTo(x0, yv(0)); g.lineTo(x1, yv(0)); g.stroke();
+    c.strokeStyle = "#2c2010"; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(x0, yv(0)); c.lineTo(x1, yv(0)); c.stroke();
 
-    // landmarks
-    g.font = "9px sans-serif"; g.textAlign = "center";
-    for (const [t, col, lbl] of [[p.tp, "#5dd28f", "tp"], [p.te, "#e5484d", "te"], [p.te + p.ta, "#5b9cf2", "te+ta"]]) {
+    c.font = "8px sans-serif"; c.textAlign = "center";
+    for (const [t, col, lbl] of [[p.tp, "#5dd28f", "tp"], [p.te, "#e5484d", "te"], [p.te + p.ta, "#5b9cf2", "+ta"]]) {
       const x = clamp(xt(t), x0, x1);
-      g.strokeStyle = col; g.globalAlpha = 0.45;
-      g.beginPath(); g.moveTo(x, T); g.lineTo(x, H - Bm); g.stroke();
-      g.globalAlpha = 1; g.fillStyle = col;
-      g.fillText(lbl, x, H - 7);
+      c.strokeStyle = col; c.globalAlpha = 0.45;
+      c.beginPath(); c.moveTo(x, T); c.lineTo(x, H - Bm); c.stroke();
+      c.globalAlpha = 1; c.fillStyle = col;
+      c.fillText(lbl, x, H - 4);
     }
-    // Ee depth
-    g.strokeStyle = "#e5484d"; g.setLineDash([3, 3]); g.globalAlpha = 0.5;
-    g.beginPath(); g.moveTo(x0, yv(-1)); g.lineTo(x1, yv(-1)); g.stroke();
-    g.setLineDash([]); g.globalAlpha = 1;
-    g.fillStyle = "#e5484d"; g.textAlign = "right"; g.fillText("−Ee", x0 - 4, yv(-1) + 3);
-    g.fillStyle = "#7d6438"; g.fillText("0", x0 - 4, yv(0) + 3);
+    c.strokeStyle = "#e5484d"; c.setLineDash([3, 3]); c.globalAlpha = 0.5;
+    c.beginPath(); c.moveTo(x0, yv(-1)); c.lineTo(x1, yv(-1)); c.stroke();
+    c.setLineDash([]); c.globalAlpha = 1;
+    c.fillStyle = "#e5484d"; c.textAlign = "right"; c.fillText("−Ee", x0 - 2, yv(-1) + 3);
+    c.fillStyle = "#7d6438"; c.fillText("0", x0 - 2, yv(0) + 3);
 
-    g.strokeStyle = "#ffb347"; g.lineWidth = 1.8; g.beginPath();
+    c.strokeStyle = "#ffb347"; c.lineWidth = 1.6; c.beginPath();
     for (let x = x0; x <= x1; x++) {
-      const t = (x - x0) / (x1 - x0) * p.T;
-      const y = clamp(yv(lfSample(p, t)), T - 30, H - Bm);
-      x === x0 ? g.moveTo(x, y) : g.lineTo(x, y);
+      const y = clamp(yv(lfSample(p, (x - x0) / (x1 - x0) * p.T)), T - 30, H - Bm);
+      x === x0 ? c.moveTo(x, y) : c.lineTo(x, y);
     }
-    g.stroke(); g.lineWidth = 1;
-    g.fillStyle = "#c9a76a"; g.font = "10px sans-serif"; g.textAlign = "left";
-    g.fillText(`dU/dt · one period (${(p.T * 1000).toFixed(2)} ms)`, L + 4, T + 2);
+    c.stroke(); c.lineWidth = 1;
+    c.fillStyle = "#c9a76a"; c.font = "9px sans-serif"; c.textAlign = "left";
+    c.fillText(`dU/dt · one period (${(p.T * 1000).toFixed(2)} ms)`, L + 3, T);
   }
 
   // ---------- readout ----------
@@ -1159,24 +1214,23 @@
     const p = lfShape(f0, src.OQ, src.Rk, src.Ra);
     const rd = rdDiagnostic(src.Ra);
     const cells = [
-      ["OQ", src.OQ.toFixed(3), src.drift > 0.001 ? `base ${src.OQbase.toFixed(2)} + drift ${src.drift.toFixed(3)}` : "held at base"],
+      ["OQ", src.OQ.toFixed(3), src.drift > 0.001 ? `${src.OQbase.toFixed(2)} + drift ${src.drift.toFixed(3)}` : "held at base"],
       ["Rk", src.Rk.toFixed(3), ""],
       ["Ra", src.Ra.toFixed(4), p.taClamped ? "clamped: Ra ≥ 1−OQ" : ""],
       ["Rg", p.Rg.toFixed(2), ""],
-      ["glottal formant", (p.Rg * f0).toFixed(0) + " Hz", ""],
+      ["glottal f", (p.Rg * f0).toFixed(0) + " Hz", ""],
       ["tilt knee", (1 / (2 * Math.PI * p.ta)).toFixed(0) + " Hz", ""],
-      ["tp / te", `${(p.tp * 1000).toFixed(2)} / ${(p.te * 1000).toFixed(2)} ms`, ""],
-      ["Ee → effective", `${eeOf().toFixed(2)} → ${eeEffective().toFixed(2)}`, `+${(20 * Math.log10(tract.eeBonus)).toFixed(1)} dB from twang`],
-      ["Rd (diagnostic)", rd.toFixed(2), rd < 0.3 || rd > 2.7 ? "outside speech statistics" : ""],
-      ["cluster members", `${(formantOn[2] ? tract.w3 : 0) > 0.5 ? 3 : 2}`, tract.w3 < 1 ? "F3 held low by /r/" : ""],
+      ["tp / te", `${(p.tp * 1000).toFixed(2)}/${(p.te * 1000).toFixed(2)} ms`, ""],
+      ["Ee eff", `${eeOf().toFixed(2)}→${eeEffective().toFixed(2)}`, `+${(20 * Math.log10(tract.eeBonus)).toFixed(1)} dB twang`],
+      ["Rd diag", rd.toFixed(2), rd < 0.3 || rd > 2.7 ? "outside speech stats" : ""],
+      ["cluster", `${(formantOn[2] ? tract.w3 : 0) > 0.5 ? 3 : 2} members`, tract.w3 < 1 ? "F3 held low by /r/" : ""],
     ];
     readoutEl.innerHTML = cells.map(([k, v, note]) =>
       `<div class="${/clamped|outside/.test(note) ? "warn" : ""}">${k} <b>${v}</b>` +
-      (note ? `<br><span style="opacity:.7">${note}</span>` : "") + `</div>`).join("");
+      (note ? `<br><span class="sub">${note}</span>` : "") + `</div>`).join("");
   }
 
   // ---------- output visualization (live, from the analyser tap) ----------
-  const scopeCv = document.getElementById("scope"), spectrumCv = document.getElementById("spectrum");
   const clipLbl = document.getElementById("cliplbl");
   function startScope() {
     if (!analyser || scopeRAF) return;
@@ -1188,62 +1242,64 @@
   function stopScope() {
     if (scopeRAF) cancelAnimationFrame(scopeRAF);
     scopeRAF = null;
-    scopeCv.getContext("2d").clearRect(0, 0, scopeCv.width, scopeCv.height);
-    spectrumCv.getContext("2d").clearRect(0, 0, spectrumCv.width, spectrumCv.height);
-    clipLbl.textContent = "level —"; clipLbl.style.color = "var(--muted)";
+    scopeCv.getContext("2d").clearRect(0, 0, scopeCv.clientWidth, scopeCv.clientHeight);
+    spectrumCv.getContext("2d").clearRect(0, 0, spectrumCv.clientWidth, spectrumCv.clientHeight);
+    clipLbl.textContent = "level —"; clipLbl.style.color = "";
   }
   function drawWave() {
-    const g = scopeCv.getContext("2d"), W = scopeCv.width, H = scopeCv.height, mid = H / 2, amp = (H / 2) * 0.82;
+    const c = scopeCv.getContext("2d"), W = scopeCv.clientWidth, H = scopeCv.clientHeight;
+    const mid = H / 2, amp = (H / 2) * 0.86;
     analyser.getFloatTimeDomainData(timeBuf);
-    g.clearRect(0, 0, W, H);
-    g.strokeStyle = "#2c2010"; g.lineWidth = 1;
-    g.beginPath(); g.moveTo(0, mid); g.lineTo(W, mid); g.stroke();           // zero line
-    g.strokeStyle = "#6b5128"; g.setLineDash([4, 4]);                        // ±1 (clip threshold)
-    g.beginPath(); g.moveTo(0, mid - amp); g.lineTo(W, mid - amp); g.moveTo(0, mid + amp); g.lineTo(W, mid + amp); g.stroke();
-    g.setLineDash([]);
+    c.clearRect(0, 0, W, H);
+    c.strokeStyle = "#2c2010"; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(0, mid); c.lineTo(W, mid); c.stroke();           // zero line
+    c.strokeStyle = "#6b5128"; c.setLineDash([4, 4]);                        // ±1 (clip threshold)
+    c.beginPath(); c.moveTo(0, mid - amp); c.lineTo(W, mid - amp); c.moveTo(0, mid + amp); c.lineTo(W, mid + amp); c.stroke();
+    c.setLineDash([]);
     const N = timeBuf.length, step = N / W;
     let peak = 0;
-    g.beginPath();
+    c.beginPath();
     for (let x = 0; x < W; x++) {
       const v = timeBuf[Math.floor(x * step)];
       if (Math.abs(v) > peak) peak = Math.abs(v);
       let y = mid - v * amp; if (y < 0) y = 0; else if (y > H) y = H;
-      x ? g.lineTo(x, y) : g.moveTo(x, y);
+      x ? c.lineTo(x, y) : c.moveTo(x, y);
     }
     const clipped = peak >= 1.0;
-    g.strokeStyle = clipped ? "#ff5a4a" : "#ffb347"; g.lineWidth = 1.5; g.stroke();
+    c.strokeStyle = clipped ? "#ff5a4a" : "#ffb347"; c.lineWidth = 1.4; c.stroke();
     clipLbl.textContent = clipped ? `peak ${peak.toFixed(2)} · CLIPPING` : `peak ${peak.toFixed(2)}`;
-    clipLbl.style.color = clipped ? "#ff5a5a" : (peak > 0.85 ? "#ffce54" : "var(--muted)");
+    clipLbl.style.color = clipped ? "#c62d1a" : (peak > 0.85 ? "#a06a10" : "");
   }
   function drawSpectrum() {
-    const g = spectrumCv.getContext("2d"), W = spectrumCv.width, H = spectrumCv.height, base = H - 12;
+    const c = spectrumCv.getContext("2d"), W = spectrumCv.clientWidth, H = spectrumCv.clientHeight;
+    const base = H - 10;
     analyser.getByteFrequencyData(freqBuf);
-    g.clearRect(0, 0, W, H);
+    c.clearRect(0, 0, W, H);
     const bins = freqBuf.length, nyq = ctx.sampleRate / 2;
     const fmin = 50, fmax = Math.min(20000, nyq);
     const lmin = Math.log10(fmin), lspan = Math.log10(fmax) - lmin;
     const xOf = f => (Math.log10(f) - lmin) / lspan * W;
-    g.strokeStyle = "#2c2010"; g.fillStyle = "#a07f4c"; g.font = "9px sans-serif"; g.textAlign = "center"; g.lineWidth = 1;
+    c.strokeStyle = "#2c2010"; c.fillStyle = "#a07f4c"; c.font = "8px sans-serif"; c.textAlign = "center"; c.lineWidth = 1;
     for (const f of [100, 200, 500, 1000, 2000, 5000, 10000]) {
       if (f > fmax) continue;
       const x = xOf(f);
-      g.beginPath(); g.moveTo(x, 0); g.lineTo(x, base); g.stroke();
-      g.fillText(f >= 1000 ? (f / 1000) + "k" : f, x, H - 2);
+      c.beginPath(); c.moveTo(x, 0); c.lineTo(x, base); c.stroke();
+      c.fillText(f >= 1000 ? (f / 1000) + "k" : f, x, H - 2);
     }
     if (oscMode === "voice") for (let i = 0; i < 5; i++) {            // effective formant centers
       if (!formantOn[i]) continue;
       const x = xOf(tract.F[i]);
-      g.strokeStyle = "rgba(255,179,71,0.5)"; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, base); g.stroke();
+      c.strokeStyle = "rgba(255,179,71,0.5)"; c.beginPath(); c.moveTo(x, 0); c.lineTo(x, base); c.stroke();
     }
-    g.beginPath();
+    c.beginPath();
     for (let x = 0; x < W; x++) {
       const f = Math.pow(10, lmin + x / W * lspan);
       const v = freqBuf[Math.min(bins - 1, Math.round(f / nyq * bins))] / 255;
-      const y = base - v * (base - 4);
-      x ? g.lineTo(x, y) : g.moveTo(x, y);
+      const y = base - v * (base - 3);
+      x ? c.lineTo(x, y) : c.moveTo(x, y);
     }
-    g.strokeStyle = "#ff8a2e"; g.lineWidth = 1.5; g.stroke();
-    g.lineTo(W, base); g.lineTo(0, base); g.closePath(); g.fillStyle = "rgba(255,138,46,0.16)"; g.fill();
+    c.strokeStyle = "#ff8a2e"; c.lineWidth = 1.4; c.stroke();
+    c.lineTo(W, base); c.lineTo(0, base); c.closePath(); c.fillStyle = "rgba(255,138,46,0.16)"; c.fill();
   }
 
   // ---------- meta ----------
@@ -1279,6 +1335,7 @@
   }
 
   function drawAll() {
+    fitCanvases();
     drawRails();
     drawChart();
     drawReadout();
@@ -1341,14 +1398,19 @@
 
   // ---------- figure sliders ----------
   for (const d of FIGURE_DEFS) {
+    const wrap = document.createElement("div");
+    wrap.className = "u";                       // DEV-ONLY: annotation host
+    wrap.dataset.n = "fig-" + d.id;             // DEV-ONLY
     const row = document.createElement("div");
     row.className = "fig";
     row.innerHTML =
       `<span class="nm">${d.nm}</span>` +
+      `<span class="e lo">${d.lo}</span>` +
       `<input type="range" min="0" max="1" step="0.01" value="${d.def}" id="fig-${d.id}">` +
-      `<span class="val" id="figv-${d.id}"></span>` +
-      `<span class="ends">${d.lo}<span>${d.hi}</span></span>`;
-    document.getElementById("figs-" + d.col).appendChild(row);
+      `<span class="e hi">${d.hi}</span>` +
+      `<span class="val"></span>`;
+    wrap.appendChild(row);
+    document.getElementById("figs-" + d.col).appendChild(wrap);
     const input = row.querySelector("input");
     figInputs[d.id] = input;
     figVals[d.id] = row.querySelector(".val");
@@ -1367,7 +1429,6 @@
 
   // ---------- quality fixtures ----------
   const presetsEl = document.getElementById("presets");
-  presetsEl.innerHTML = `<span style="color:var(--muted);font-size:12px;font-weight:600;margin-right:2px">Qualities</span>`;
   for (const name of Object.keys(QUALITIES)) {
     const b = document.createElement("button");
     b.className = "wave";
@@ -1390,33 +1451,28 @@
   const f3El = document.getElementById("f3t"), f3ValEl = document.getElementById("f3val");
   const fcEl = document.getElementById("fcluster"), fcValEl = document.getElementById("fcval");
   const bwEl = document.getElementById("bwtrim"), bwValEl = document.getElementById("bwval");
-  const eeValEl = document.getElementById("eeval");
+  const eeValEl = document.getElementById("eeval"), volValEl = document.getElementById("volval");
+  const fundValEl = document.getElementById("fundv");
   const onsetEl = document.getElementById("onset");
 
   function updateSideLabels() {
-    vibValEl.textContent = vibCents <= 0 ? "off" : `±${vibCents}¢ @ ${VIB_RATE}Hz`;
-    f3ValEl.textContent = `${Math.round(vowel.F3)} Hz` + (tract.w3 < 1 ? " · rhotic" : "");
-    fcValEl.textContent = `${singer.Fcluster} Hz`;
+    vibValEl.textContent = vibCents <= 0 ? "off" : `±${vibCents}¢`;
+    f3ValEl.textContent = `${Math.round(vowel.F3)}${tract.w3 < 1 ? " ʳ" : ""}`;
+    fcValEl.textContent = `${singer.Fcluster}`;
     bwValEl.textContent = `×${singer.bwTrim.toFixed(2)}`;
-    eeValEl.textContent = `→ ${eeEffective().toFixed(2)}`;
+    eeValEl.textContent = `→${eeEffective().toFixed(2)}`;
+    volValEl.textContent = parseFloat(volEl.value).toFixed(2);
+    fundValEl.textContent = "";
   }
 
-  f3El.addEventListener("input", () => {
-    vowel.F3 = parseFloat(f3El.value);
-    apply();
-  });
-  fcEl.addEventListener("input", () => {
-    singer.Fcluster = parseFloat(fcEl.value);
-    apply();
-  });
-  bwEl.addEventListener("input", () => {
-    singer.bwTrim = parseFloat(bwEl.value);
-    apply();
-  });
+  f3El.addEventListener("input", () => { vowel.F3 = parseFloat(f3El.value); apply(); });
+  fcEl.addEventListener("input", () => { singer.Fcluster = parseFloat(fcEl.value); apply(); });
+  bwEl.addEventListener("input", () => { singer.bwTrim = parseFloat(bwEl.value); apply(); });
   onsetEl.addEventListener("change", () => { onsetType = onsetEl.value; });
   eeEl.addEventListener("input", () => apply());
   volEl.addEventListener("input", () => {
     if (playing && ctx) master.gain.setTargetAtTime(parseFloat(volEl.value), ctx.currentTime, 0.01);
+    updateSideLabels();
   });
   vibEl.addEventListener("input", () => {
     vibCents = parseFloat(vibEl.value);
@@ -1435,8 +1491,140 @@
     apply();
   });
 
+  window.addEventListener("resize", () => scheduleDraw());
+
+  //#region dev-notes
+  // ============================================================================================
+  // DEV-ONLY — temporary review scaffolding. Delete this whole region, the <style id="dev-only">
+  // block and the <header class="bar"> element to get the app back. Nothing outside this region
+  // reads DEV_NOTES, the .u wrappers or the injected badges.
+  //
+  // One entry per interactive or plotted element: what it is, and how it is actually implemented
+  // — which state it writes, which function consumes it, and where it lands in the audio graph
+  // or on a canvas.
+  // ============================================================================================
+  const DEV_NOTES = [
+    ["fund", "Fundamental f₀",
+     "A plain <select> filled at load with MIDI 36–84 in 12-TET (this app is not the just-intonation one — quartet.html is). Its value is the frequency in Hz as a string, and it is read with parseFloat all over the drawing code rather than cached, because f₀ is an input to almost everything. Changing it calls apply(), which matters more than it looks: OQ drift is a function of log2(f0/220), so the note you pick changes the *source* through sourceFromFigures, not just the oscillator frequency. rebuildSource() then re-solves the LF waveform and hands the oscillator a new PeriodicWave, because the harmonic count and the ta/T ratio both depend on f₀."],
+    ["ee", "Eₑ — excitation strength",
+     "Not an Estill figure: Estill treats loudness as orthogonal to quality, so this lives in the non-figure namespace. The LF waveform is always generated with Eₑ normalized to exactly 1 (E(te) = −1), and this slider is applied downstream as the gain of the srcGain node. That keeps the numerical solve independent of level. The readout shows Eₑ → effective, where effective = Eₑ × (1 + 0.7·twang) — the twang bonus is multiplied in here, so narrowing the AES really does get louder for the same glottal effort."],
+    ["vol", "Output level",
+     "The master GainNode, last thing before ctx.destination and the analyser tap. Deliberately separate from Eₑ: Eₑ is a model parameter that changes the sound, this is a listening-comfort knob that does not. Also written every 110 ms by tickHuman() with ±4% shimmer, which is why it is set with setTargetAtTime rather than assigned."],
+    ["play", "Start / Stop",
+     "start() builds a fresh OscillatorNode each time (Web Audio oscillators are one-shot), gives it the LF PeriodicWave, and connects it into the persistent graph: osc → srcGain → nasalPole → nasalZero → nasalTrim → sourceBus → five bandpass branches → formantMix → master. It then schedules the onset envelope on srcGain.gain. stop() mirrors the onset time constant on the way down and kills the oscillator ~120 ms later. The AudioContext itself is created lazily in ensureCtx() on this click — it must be a user gesture, and requestPlaybackSession() is called first so iOS's ringer switch does not mute the page."],
+    ["vib", "Vibrato depth",
+     "A single always-running sine OscillatorNode (vibLFO at 5.5 Hz) through a GainNode whose gain *is* the depth in cents, wired to the voiced oscillator's detune AudioParam. Detune is in cents, so the gain value is the amplitude directly — no conversion. It is reconnected in start() because each Start creates a new oscillator. Not an Estill figure; it is stacked on top of the ±4 cent random jitter that tickHuman writes."],
+    ["bwtrim", "Bandwidth trim ×",
+     "A global multiplier on all five formant bandwidths, applied at the very end of tractFromFigures as B.map(b => b * singer.bwTrim). Bandwidths are otherwise voice-type constants ([50, 70, 110, 170, 250] Hz) with only two modulations: nasality widens B1, and twang narrows B3–B5. This knob is a lab control with no Estill correspondence — it exists because sharpness vs. dullness of the resonances is worth being able to sweep independently."],
+    ["waves", "Source waveform",
+     "\"LF voice\" is the real model. The other four are Web Audio's built-in oscillator types, kept as a reference: they bypass the formant bank entirely (syncFilters zeroes every branch gain and opens dryGain) and collapse the nasal pole/zero pair onto each other so it cancels. They are here for A/B — hearing a saw through the same output stage tells you how much of what you hear is the source and how much is the tract."],
+    ["meta", "Status line",
+     "Rendered by updateMeta() on every draw pass. The harmonic count is floor(min(20 kHz, Nyquist) / f₀) — the number of partials the PeriodicWave actually carries, which is why it drops as you go up in pitch. It prints the *live* OQ including any drift and any glottal-onset dip, so it can disagree with the body-cover slider, which is the point."],
+    ["presets", "Quality fixtures",
+     "The six Estill voice qualities, and they are test fixtures rather than presets: each button does nothing but Object.assign a set of figure values and re-run the same apply() path any slider uses. There is no quality-specific code anywhere in the file. Belt is the load-bearing one — if it needed its own branch to sound like Belt, cricoid tilt would be wired wrongly. Falsetto is disabled because stiff folds need incomplete closure, a DC flow offset and an aspiration channel, none of which exist here."],
+    ["fig-body_cover", "Body–cover (thick ↔ thin)",
+     "Vocal fold thickness. Maps to OQ = lerp(0.45, 0.68) and Rk = lerp(0.25, 0.45) in sourceFromFigures, and deliberately does NOT touch Ra — that axis is reserved for thyroid tilt, and keeping them apart is the whole reason this model exposes {OQ, Rk, Ra} instead of Fant's single Rd. Thick folds give a short open phase and abrupt shutoff (H1−H2 near 0 dB); thin folds give H1−H2 around +8 dB once tilt is added. Watch panel 1: the first two harmonics change relative height while the slope of the rest stays put."],
+    ["fig-thyroid_tilt", "Thyroid tilt (vertical ↔ tilted)",
+     "Anterior rotation of the thyroid cartilage, which lengthens and thins the folds and smooths the closure. Sole target: Ra = lerp(0.004, 0.075), i.e. the return phase's duration as a fraction of the period. Since ta = Ra/f₀, the spectral tilt knee at 1/(2π·ta) always lands at about 2.1·f₀ at full tilt, whatever the pitch. In a real larynx tilt also raises OQ; that coupling is suppressed here on purpose, and the test suite asserts it stays suppressed. Perceptually this is cry or sob."],
+    ["fig-cricoid_tilt", "Cricoid tilt (vertical ↔ tilted)",
+     "The one figure that is not a parameter. Untrained voices thin out as they ascend — OQ drifts up with pitch — and cricoid tilt is permission to hold OQ low at height. It is implemented as a constraint relaxation: drift = max(0, 0.15·log2(f₀/220)·(1 − cricoid_tilt)), added to the OQ that body-cover set. At f₀ = 220 Hz this slider does literally nothing; move the fundamental up an octave and it does everything. That is what makes Belt emerge from thick folds + high larynx + narrow AES at pitch rather than being dialed in."],
+    ["fig-larynx_height", "Larynx height (low ↔ high)",
+     "A global tract-length scale, s = 1 + 0.12·(2·h − 1), so 0.88 to 1.12. Applied at full weight to F1 and F2 and half weight to F3/F4/F5, because the epilarynx tube's length changes less than the whole tract's. Modeled as pure length: it ignores the hypopharynx widening that a low larynx also produces, so low-larynx settings come out slightly thin — the spec suggests compensating with a touch of twang if that bothers you. Visible on the resonance rails as every bar sliding away from its ring."],
+    ["fig-twang", "AES / twang (wide ↔ narrow)",
+     "The aryepiglottic sphincter, and the most valuable figure in the set. Narrowing it decouples the epilarynx tube so it resonates on its own near 3 kHz, and F3, F4 and F5 all converge on that — three moderate bandpass peaks in one band summing to one large one. Implemented as a linked triple in tractFromFigures: each of F3/F4/F5 lerps toward the cluster target while its bandwidth narrows to 0.6×. Two details matter. F1 and F2 are untouched, which is why the singer's formant survives vowel changes. And it also multiplies Eₑ by (1 + 0.7·twang) — about +4.6 dB — hardcoded because a one-way source→filter chain cannot derive the inertive loading that causes it."],
+    ["fig-velum", "Velum (raised ↔ lowered)",
+     "Nasality, done as a coincident pole/zero pair that separates rather than as bandwidth widening. Two Web Audio `peaking` biquads sit in series ahead of the formant bank, one at +9 dB and one at −9 dB; RBJ peaking sections with gain A and 1/A at the same frequency and Q are exact inverses, so at velum 0 they multiply to unity and the path is a true bypass — no click, no residual color. Raising the slider walks the zero from 270 Hz up to 450 Hz while the pole stays at 270, opening a real notch next to F1. B1 also widens to 2.4× (nasal coupling genuinely damps) but that is the consequence, not the cue. Continuity matters here for a pedagogical reason: velum has three positions and mid is a real trained option."],
+    ["fig-lip_protrusion", "Lip protrusion (spread ↔ protruded)",
+     "Rounding the lips lengthens the tract and lowers every formant — something the (F1, F2) vowel pair cannot express on its own. Scale s = 1 − 0.05·p, multiplied into the same length term as larynx height but weighted down to 0.4 on F1, which is dominated by the back cavity. Not in the quality fixture table, so the preset buttons deliberately leave it wherever you put it."],
+    ["onset", "Onset / offset type",
+     "Envelope timing on Eₑ, applied in start() and mirrored in stop(). Glottal is a 3 ms attack with a ×1.25 overshoot; simultaneous is 25 ms with no overshoot. Glottal additionally depresses OQ by 0.1 and relaxes it over 30 ms — that transient pressedness is the audible part of a hard attack. Because a PeriodicWave cannot be automated, the dip is stepped in five setTimeouts that each re-solve the LF waveform; under the attack ramp the steps are inaudible. Aspirate is disabled: it needs a noise channel, which is the single smallest thing you could add to this file if you wanted breathiness."],
+    ["fcluster", "AES cluster target",
+     "Where twang pulls F3/F4/F5 to. A voice-type constant rather than a per-note parameter — part of the singer object alongside F4/F5 neutrals and the bandwidth table — but exposed here because 2.9 kHz is a male ballpark and the right value differs per voice. F3 aims 200 Hz below it, F4 50 Hz above, F5 350 Hz above, so the cluster has width rather than being a single spike. Shown as the dashed blue line on the resonance rails, with opacity tracking the twang amount."],
+    ["readout", "Derived source parameters",
+     "Everything the figures actually resolved to, recomputed each frame by drawReadout() from a fresh lfShape() solve. OQ shows base + drift separately so you can see cricoid tilt working. Two cells go orange as warnings: Ra clamps when it will not fit inside the return window (ε has no root unless Ra < 1−OQ, so a wide-open glottis caps reachable tilt), and Rd flags configurations outside natural-speech statistics — Rd is computed only as a diagnostic and is never an input, because collapsing {OQ, Rk, Ra} onto it would re-impose exactly the covariance a trained voice can break."],
+    ["chart", "Vowel chart (F1 × F2)",
+     "An SVG redrawn from scratch on every pass as an innerHTML string — no D3, no retained nodes. Laid out in IPA orientation: F1 down the vertical axis (close to open), F2 right-to-left (front to back). The grey dots are Hillenbrand et al. 1995 adult-male means; clicking one snaps F1, F2 *and* F3, dragging anywhere sets F1/F2 only and leaves F3 alone. It writes the `vowel` object, which is the articulatory target — everything the figures do to it happens afterwards in tractFromFigures."],
+    ["f3t", "F3 target (rhoticity)",
+     "F3 is a vowel target here, not a twang output, because formant numbering is ordinal — resonances are numbered by frequency, not identity. An American /r/ pulls F3 down to about 1570 Hz via a front-cavity resonance that has nothing to do with the epilarynx. The pull() weight exempts an F3 held that low from the twang cluster, so a fully twanged rhotic ends up with a two-member cluster and measurably less ring. That is correct behavior, not a limitation: it is exactly why choral and barbershop practice de-rhoticize sustained vowels and defer the /r/ to the release."],
+    ["plot", "Resonance rails",
+     "Five log-frequency rails, one per formant, drawn as an SVG string. On each: a hollow ring at the raw target (what you set), a shaded bar spanning ±B/2 at the effective frequency (what the biquad is actually tuned to), and a dotted line between them when the figures have moved it. Dragging the ring writes vowel.F1/F2/F3 for the first three and singer.F4/F5 for the last two — targets stay raw precisely so the handle does not snap away from the pointer by the length scale. The F1–F5 buttons mute individual branches, which is the fastest way to hear what one resonance is contributing."],
+    ["srcSpec", "Panel 1 — source spectrum",
+     "The magnitude of the harmonic table that is handed to the PeriodicWave, normalized so H1 = 0 dB. Not a measurement: it is |FFT of one LF period|, the same array the oscillator is playing. Three things are legible here. The green line is the glottal formant at Rg·f₀, a genuine low-frequency resonant bump in the source that scales with pitch. The blue line is the tilt knee at 1/(2π·ta), where the asymptotic slope breaks from −6 to −12 dB/oct. And H1 vs H2 is where body-cover shows up. Note the slope is −6, not −12: this is the flow *derivative*, so lip radiation is already in it."],
+    ["tractSpec", "Panel 2 — tract transfer function",
+     "The filter response with no source, computed by tractMag() from RBJ cookbook coefficients built with the same frequency and Q that Web Audio's biquads were given — so this is the response of the actual chain, sample rate warping included, not an idealization. The five bandpass branches are summed as complex values with signs [+, −, +, +, +] before the magnitude is taken, because sign matters in a parallel bank: F1/F2 alternate so their shared valley does not notch, while F3/F4/F5 share a sign so the twang cluster adds instead of cancelling. The nasal pole/zero pair multiplies on top."],
+    ["outSpec", "Panel 3 — radiated spectrum",
+     "Panel 1 plus panel 2, added in dB, harmonic by harmonic. All three panels use the same dB-per-pixel scale so that relationship is visible rather than merely asserted — that is the whole reason for stacking them. The green envelope is the tract curve from panel 2 shifted to sit with the harmonics. This is where formant tuning becomes obvious: move the fundamental until a harmonic lands on a formant peak and watch the level jump."],
+    ["lfWave", "Flow derivative, one period",
+     "The waveform itself, plotted straight from lfSample() rather than from the analyser. Markers: tp is the flow peak and the derivative's zero crossing, te is the excitation instant where the derivative reaches −Eₑ, and +ta is the return-phase time constant. The shape is the model's two pieces — an exponentially-scaled sine for the open phase, an exponential recovery for the return — with α solved so net flow over the cycle is zero and ε solved from the return-phase area constraint, both by bisection at parameter-change time."],
+    ["scope", "Radiated pressure",
+     "A real analyser tap on the final mix, before the hardware's ±1 clamp, so the dashed lines are true clipping thresholds. Worth staring at: the trace is a decaying oscillation that gets retriggered at every glottal closure, which makes the impulse-response character of the tract obvious and makes clear that closure — not opening — is what excites it. The peak reading in the panel header turns amber above 0.85 and red at 1.0."],
+    ["spectrum", "Measured spectrum",
+     "getByteFrequencyData off the same analyser, log-frequency, 4096-point FFT with 0.5 smoothing. This is the reality check on panel 3: they should broadly agree, and where they do not, something in the model plot is lying. The amber vertical marks are the effective formant centers, so you can see whether the resonances landed where tractFromFigures said they would."],
+  ];
+
+  // The notes are prose, not markup — anything angle-bracketed in them (a `<select>`, say) is
+  // meant to read literally, so escape before it goes through innerHTML.
+  const esc = t => t.replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const noteBy = new Map(DEV_NOTES.map(([k, title, body], i) =>
+    [k, { i: i + 1, title: esc(title), body: esc(body) }]));
+  const noteOut = document.getElementById("noteout");
+  const modeBtn = document.getElementById("notemode");
+  const stepBtn = document.getElementById("notestep");
+  const MODES = ["hover", "inline", "off"];
+  let modeIdx = 0, stepIdx = -1;
+
+  const units = [...document.querySelectorAll(".u[data-n]")];
+  for (const u of units) {
+    const n = noteBy.get(u.dataset.n);
+    if (!n) continue;
+    const badge = document.createElement("span");
+    badge.className = "badge";
+    badge.textContent = n.i;
+    u.appendChild(badge);
+    const inline = document.createElement("div");
+    inline.className = "inline";
+    inline.innerHTML = `<b>${n.i} · ${n.title}</b> — ${n.body}`;
+    u.appendChild(inline);
+    u.addEventListener("pointerenter", () => showNote(u.dataset.n));
+  }
+
+  const DEFAULT_NOTE =
+    `<span class="who">Temporary dev layout.</span> Controls on the left, everything the model ` +
+    `draws on the right, sized to fit one screen. Hover any numbered element to read how it is ` +
+    `implemented; <b>Notes</b> switches to printing all ${DEV_NOTES.length} descriptions inline ` +
+    `(the columns then scroll), and <b>walk through</b> steps them one at a time.`;
+
+  function showNote(key) {
+    const n = noteBy.get(key);
+    noteOut.innerHTML = n
+      ? `<span class="idx">${n.i}</span> <span class="who">${n.title}</span> — ${n.body}`
+      : DEFAULT_NOTE;
+  }
+  function setMode(i) {
+    modeIdx = (i + MODES.length) % MODES.length;
+    document.body.classList.toggle("notes-inline", MODES[modeIdx] === "inline");
+    document.body.classList.toggle("notes-off", MODES[modeIdx] === "off");
+    modeBtn.textContent = "Notes: " + MODES[modeIdx];
+    scheduleDraw();                       // canvas slots changed size in inline mode
+  }
+  modeBtn.addEventListener("click", () => setMode(modeIdx + 1));
+  stepBtn.addEventListener("click", () => {
+    stepIdx = (stepIdx + 1) % DEV_NOTES.length;
+    const key = DEV_NOTES[stepIdx][0];
+    showNote(key);
+    const u = units.find(x => x.dataset.n === key);
+    if (u) {
+      u.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      u.style.outline = "2px solid #ffb347";
+      setTimeout(() => { u.style.outline = ""; }, 1400);
+    }
+  });
+  noteOut.innerHTML = DEFAULT_NOTE;
+  //#endregion dev-notes
+
   syncFigureInputs();
   recompute();
+  fitCanvases();
   drawAll();
 })();
 </script>
