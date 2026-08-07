@@ -41,7 +41,7 @@
   .app{height:100%; display:grid; grid-template-rows:auto minmax(0,1fr); gap:5px; padding:5px 7px 6px}
   .cols{
     display:grid; min-height:0; gap:6px;
-    grid-template-columns:428px minmax(0,1fr) minmax(0,1fr);
+    grid-template-columns:396px minmax(0,1fr) minmax(0,1fr);
     grid-template-rows:auto minmax(0,1fr);
     grid-template-areas:"ctl rails rails" "ctl specA specB";
   }
@@ -87,7 +87,7 @@
   .meta b{color:var(--ink);font-weight:700}
 
   /* ---- transport / misc control rows ---- */
-  .dial{width:152px;height:auto;display:block;cursor:grab;touch-action:none}
+  .dial{width:132px;height:auto;display:block;cursor:grab;touch-action:none}
   .dial:active{cursor:grabbing}
   .dial text{user-select:none;-webkit-user-select:none}
   .ctlrow{display:flex;align-items:center;gap:5px;min-width:0}
@@ -121,7 +121,10 @@
   .plot canvas{flex:1 1 0; min-height:0; width:100%; display:block; background:#120c06;
     border-radius:2px; box-shadow:inset 0 1px 5px rgba(0,0,0,.6), inset 0 0 0 1px #0e0904}
   .cap{font-size:9px;color:var(--muted);line-height:1.2}
-  #chart{max-width:224px;margin:0 auto}
+  /* the chart is sized by the height its panel has left over, not by a fixed aspect: its box
+     fills the slot and preserveAspectRatio letterboxes whichever axis is slack */
+  .chartbox{flex:1 1 0; min-height:0; display:flex}
+  #chart{flex:1 1 0; min-height:0; width:100%; height:100%}
 
   /* DEV-ONLY: direct source-shape controls, a strip under the rails */
   .lfrow{display:flex;gap:9px;align-items:center}
@@ -225,9 +228,9 @@
         <div class="u" data-n="readout"><div class="readout" id="readout"></div></div>
       </div>
 
-      <div class="panel">
-        <div class="u" data-n="chart">
-          <svg id="chart" class="screen" viewBox="0 0 380 150" preserveAspectRatio="xMidYMid meet"></svg>
+      <div class="panel grow">
+        <div class="u chartbox" data-n="chart">
+          <svg id="chart" class="screen" viewBox="0 0 380 210" preserveAspectRatio="xMidYMid meet"></svg>
         </div>
         <div class="u ctlrow" data-n="f3t"><label for="f3t" class="wide">F3 (r-coloring)</label>
           <input id="f3t" type="range" min="1400" max="3200" step="10" value="2500">
@@ -306,6 +309,18 @@
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const lerp = (a, b, t) => a + (b - a) * t;
   //#endregion math-utils
+
+  // Pointer position in an SVG's own viewBox coordinates. Going through getScreenCTM rather than
+  // scaling the bounding rect is what makes this correct when preserveAspectRatio letterboxes —
+  // which the vowel chart's box does, now that its height comes from whatever the column has
+  // left rather than from the viewBox's aspect.
+  function svgPoint(svg, clientX, clientY) {
+    const m = svg.getScreenCTM();
+    if (!m) return { x: 0, y: 0 };
+    const pt = svg.createSVGPoint();
+    pt.x = clientX; pt.y = clientY;
+    return pt.matrixTransform(m.inverse());
+  }
 
   //#region lf-source
   // Liljencrants–Fant glottal source, generating the flow *derivative* dU/dt.
@@ -596,7 +611,7 @@
   const f0Now = () => midiToFreq(pitchMidi) * Math.pow(2, bendCents / 1200);
 
   const dialSvg = document.getElementById("fund");
-  const DVB = 340, DCX = 170, DCY = 170;
+  const DCX = 170, DCY = 170;
   const R_NOTE = 152, R_OUT_HI = 138, R_OUT_LO = 100, R_INN_HI = 95, R_INN_LO = 48,
         R_CENT = 78, R_CORE = 44;
   const DP = (ang, r) => [DCX + r * Math.sin(ang * Math.PI / 180), DCY - r * Math.cos(ang * Math.PI / 180)];
@@ -642,8 +657,8 @@
   // pointer interaction: pick a wheel by grab radius, then drag
   let dialDrag = null;
   function polarAt(e) {
-    const r = dialSvg.getBoundingClientRect();
-    const x = (e.clientX - r.left) / r.width * DVB - DCX, y = (e.clientY - r.top) / r.height * DVB - DCY;
+    const p = svgPoint(dialSvg, e.clientX, e.clientY);
+    const x = p.x - DCX, y = p.y - DCY;
     return { ang: Math.atan2(x, -y) * 180 / Math.PI, rad: Math.hypot(x, y) };
   }
   function commitPitch(m) {
@@ -681,6 +696,7 @@
   window.addEventListener("pointerup", () => { dialDrag = null; });
   window.addEventListener("pointercancel", () => { dialDrag = null; });
   window.__setMidi = m => commitPitch(m);          // DEV-ONLY: test hook for the browser check
+  window.vowelPeek = () => vowel;                  // DEV-ONLY: test hook
 
   // ---------- figure state ----------
   const FIGURE_DEFS = [
@@ -741,7 +757,7 @@
   }
 
   // ---------- geometry / frequency scale (log) ----------
-  const VBW = 760, X0 = 70, X1 = 730;
+  const X0 = 70, X1 = 730;
   const FMIN = 55, FMAX = 9000;
   const RAIL_CY = { 0: 170, 1: 136, 2: 102, 3: 68, 4: 34 }; // red bottom -> blue top
   const AXIS_Y = 205, LABEL_Y = 219;
@@ -750,15 +766,11 @@
   const xToFreq = x => FMIN * Math.exp((Math.max(X0, Math.min(X1, x)) - X0) / (X1 - X0) * logR);
 
   const svg = document.getElementById("plot");
-  const clientXToFreq = clientX => {
-    const r = svg.getBoundingClientRect();
-    return xToFreq((clientX - r.left) / r.width * VBW);
-  };
+  const clientXToFreq = clientX => xToFreq(svgPoint(svg, clientX, 0).x);
 
   // ---------- vowel chart (F1 vertical, F2 horizontal — IPA orientation) ----------
   const chartSvg = document.getElementById("chart");
-  const CVBW = 380, CVBH = 150;
-  const CX0 = 44, CX1 = 358, CY0 = 10, CY1 = 128; // plot box
+  const CX0 = 46, CX1 = 356, CY0 = 14, CY1 = 182; // plot box
   const F1LO = 250, F1HI = 900;   // top -> bottom (close -> open)
   const F2HI = 2400, F2LO = 700;  // left -> right (front -> back)
   const cxOfF2 = f2 => CX0 + (F2HI - clamp(f2, F2LO, F2HI)) / (F2HI - F2LO) * (CX1 - CX0);
@@ -789,26 +801,26 @@
     for (const t of [2200,1800,1400,1000]) {
       const x = cxOfF2(t);
       s += `<line x1="${x}" y1="${CY0}" x2="${x}" y2="${CY1}" stroke="#2c2010" stroke-width="1"/>`;
-      s += `<text x="${x}" y="${CY1+12}" fill="${GRAY_TXT}" font-size="10" text-anchor="middle">${t}</text>`;
+      s += `<text x="${x}" y="${CY1+13}" fill="${GRAY_TXT}" font-size="11" text-anchor="middle">${t}</text>`;
     }
     for (const t of [300,400,500,600,700,800]) {
       const y = cyOfF1(t);
       s += `<line x1="${CX0}" y1="${y}" x2="${CX1}" y2="${y}" stroke="#2c2010" stroke-width="1"/>`;
-      s += `<text x="${CX0-4}" y="${y+3}" fill="${GRAY_TXT}" font-size="10" text-anchor="end">${t}</text>`;
+      s += `<text x="${CX0-4}" y="${y+4}" fill="${GRAY_TXT}" font-size="11" text-anchor="end">${t}</text>`;
     }
-    s += `<text x="${(CX0+CX1)/2}" y="${CY0-5}" fill="#ab8c57" font-size="10" text-anchor="middle">F2 — front ← → back</text>`;
-    s += `<text transform="translate(11,${(CY0+CY1)/2}) rotate(-90)" fill="#ab8c57" font-size="10" text-anchor="middle">F1 — close ↑ open ↓</text>`;
+    s += `<text x="${(CX0+CX1)/2}" y="${CY0-4}" fill="#ab8c57" font-size="11" text-anchor="middle">F2 — front ← → back</text>`;
+    s += `<text transform="translate(12,${(CY0+CY1)/2}) rotate(-90)" fill="#ab8c57" font-size="11" text-anchor="middle">F1 — close ↑ open ↓</text>`;
 
     for (const v of VOWELS) {
       const cx = cxOfF2(v.f2), cy = cyOfF1(v.f1);
       s += `<g data-vowel="1" data-f1="${v.f1}" data-f2="${v.f2}" data-f3="${v.f3}" style="cursor:pointer">`;
-      s += `<circle cx="${cx}" cy="${cy}" r="3" fill="#9c8154"><title>${v.ipa} — ${v.word} (F1 ${v.f1}, F2 ${v.f2}, F3 ${v.f3})</title></circle>`;
-      s += `<text x="${cx+5}" y="${cy+4}" fill="#d8c39a" font-size="12" font-weight="600">${v.ipa}</text></g>`;
+      s += `<circle cx="${cx}" cy="${cy}" r="3.5" fill="#9c8154"><title>${v.ipa} — ${v.word} (F1 ${v.f1}, F2 ${v.f2}, F3 ${v.f3})</title></circle>`;
+      s += `<text x="${cx+6}" y="${cy+5}" fill="#d8c39a" font-size="14" font-weight="600">${v.ipa}</text></g>`;
     }
 
     const px = cxOfF2(vowel.F2), py = cyOfF1(vowel.F1);
-    s += `<circle cx="${px}" cy="${py}" r="7" fill="#ffb347" fill-opacity="0.25" stroke="#ffb347" stroke-width="2"/>`;
-    s += `<circle cx="${px}" cy="${py}" r="2.5" fill="#ffb347"/>`;
+    s += `<circle cx="${px}" cy="${py}" r="8" fill="#ffb347" fill-opacity="0.25" stroke="#ffb347" stroke-width="2"/>`;
+    s += `<circle cx="${px}" cy="${py}" r="3" fill="#ffb347"/>`;
 
     chartSvg.innerHTML = s;
   }
@@ -1426,9 +1438,7 @@
   // ---------- vowel-chart interaction ----------
   let chartDrag = false;
   function setFromChart(clientX, clientY) {
-    const r = chartSvg.getBoundingClientRect();
-    const x = (clientX - r.left) / r.width * CVBW;
-    const y = (clientY - r.top) / r.height * CVBH;
+    const { x, y } = svgPoint(chartSvg, clientX, clientY);
     vowel.F2 = clamp(F2HI - (x - CX0) / (CX1 - CX0) * (F2HI - F2LO), RAILS[1].min, RAILS[1].max);
     vowel.F1 = clamp(F1LO + (y - CY0) / (CY1 - CY0) * (F1HI - F1LO), RAILS[0].min, RAILS[0].max);
     apply();
