@@ -14,9 +14,11 @@
     1. delete the  <style id="dev-only">  block
     2. delete the  <header class="bar">   element
     3. delete the  //#region dev-notes    block in the script (the DEV_NOTES table + wiring)
-    4. unwrap the  <div class="u" data-n="…">  wrappers — they are pure containers, nothing
+    4. delete the  <div class="lfrow">  strip under the rails, its wiring near the other
+       controls, and the `if (lfManual)` branch in recompute() — the manual LF sliders
+    5. unwrap the  <div class="u" data-n="…">  wrappers — they are pure containers, nothing
        in the app reads them
-    5. restore a document-flow layout: drop `.app`/`.cols`/`.col` and let `.panel` stack
+    6. restore a document-flow layout: drop `.app`/`.cols`/`.col` and let `.panel` stack
   The synthesis model, the audio graph and every drawing routine are untouched by any of it.
   ============================================================================================
 -->
@@ -119,6 +121,17 @@
   .plot canvas{flex:1 1 0; min-height:0; width:100%; display:block; background:#120c06;
     border-radius:2px; box-shadow:inset 0 1px 5px rgba(0,0,0,.6), inset 0 0 0 1px #0e0904}
   .cap{font-size:9px;color:var(--muted);line-height:1.2}
+
+  /* DEV-ONLY: direct LF shape controls, a strip under the rails */
+  .lfrow{display:flex;gap:9px;align-items:center}
+  .lfu{display:flex;gap:4px;align-items:center;flex:1 1 0;min-width:0}
+  .lfu.mode{flex:0 0 auto}
+  .lfu > label{flex:0 0 auto;white-space:nowrap}
+  .lfu > input[type=range]{flex:1 1 auto;min-width:0}
+  .lfu > .v{flex:0 0 42px;text-align:right;font-size:9.5px;color:var(--ink);
+    font-variant-numeric:tabular-nums}
+  .lfu.mode label{display:flex;gap:3px;align-items:center;cursor:pointer;color:var(--ink);font-weight:700}
+  #figs-source.overridden{opacity:.4}
 </style>
 
 <style id="dev-only">
@@ -133,21 +146,25 @@
   .bar button{appearance:none;cursor:pointer;font-family:inherit;font-weight:700;font-size:9.5px;
     background:#3a2a13;color:#e7d8b7;border:1px solid #5a4324;border-radius:3px;padding:2px 7px}
   .bar button:hover{background:#4a361a}
-  #noteout{height:3.4em;overflow-y:auto;font-size:9.5px;line-height:1.4;color:#cdb383;
+  #noteout{height:2.6em;overflow-y:auto;font-size:10px;line-height:1.35;color:#cdb383;
     border-top:1px solid #3a2a13;padding-top:2px}
   #noteout .who{color:#ffb347;font-weight:700}
   #noteout .idx{color:#5b9cf2;font-weight:700}
+  #noteout .pin{color:#ffb347;font-weight:700}
 
   /* every annotated element is wrapped in .u; the badge is injected by script */
   .u{position:relative; padding-right:13px}
   .u.plot{padding-right:0}
   .u > .badge{
-    position:absolute; top:0; right:0; z-index:5; pointer-events:none;
-    font-size:8px; font-weight:800; line-height:1; padding:1px 3px; border-radius:2px;
+    position:absolute; top:0; right:0; z-index:5; cursor:pointer;
+    font-size:8px; font-weight:800; line-height:1; padding:1px 4px; border-radius:2px;
     background:rgba(91,156,242,.85); color:#08111f; opacity:.55;
   }
   .u:hover > .badge{opacity:1; background:#ffb347; color:#2a1400}
   .u:hover{outline:1px dashed rgba(255,179,71,.75); outline-offset:1px; border-radius:2px}
+  /* a pinned note stays put while you drag something else around */
+  .u.pinned > .badge{opacity:1; background:#e26a10; color:#fff2e0; box-shadow:0 0 0 1px #2a1400}
+  .u.pinned{outline:1.5px solid var(--accent); outline-offset:1px; border-radius:2px}
   body.notes-off .u > .badge{display:none}
   body.notes-off .u:hover{outline:none}
 
@@ -251,6 +268,20 @@
           <span class="note">ring = raw target · bar = after twang &amp; tract-length scaling</span></div>
         <div class="u" data-n="plot">
           <svg id="plot" class="screen" viewBox="0 0 760 236" preserveAspectRatio="xMidYMid meet"></svg>
+        </div>
+        <!-- DEV-ONLY: the LF shape parameters, exposed directly -->
+        <div class="lfrow">
+          <div class="u lfu mode" data-n="lfmode">
+            <label><input type="checkbox" id="lfmanual"> Manual LF</label></div>
+          <div class="u lfu" data-n="lf-OQ"><label for="lf-OQ">OQ</label>
+            <input id="lf-OQ" type="range" min="0.35" max="0.95" step="0.001" value="0.45">
+            <span class="v" id="lf-OQv"></span></div>
+          <div class="u lfu" data-n="lf-Rk"><label for="lf-Rk">Rk</label>
+            <input id="lf-Rk" type="range" min="0.15" max="0.60" step="0.001" value="0.25">
+            <span class="v" id="lf-Rkv"></span></div>
+          <div class="u lfu" data-n="lf-Ra"><label for="lf-Ra">Ra</label>
+            <input id="lf-Ra" type="range" min="0.001" max="0.12" step="0.0002" value="0.004">
+            <span class="v" id="lf-Rav"></span></div>
         </div>
       </div>
     </div>
@@ -601,6 +632,12 @@
   let onsetType = "simultaneous";
   let oqDip = 0;                      // transient OQ depression during a glottal onset
 
+  // DEV-ONLY: hand control of {OQ, Rk, Ra} to the sliders under the rails. While it is off the
+  // sliders track whatever the figures resolved to, so you can watch where a figure puts them
+  // and then grab it from there.
+  let lfManual = false;
+  const lfOverride = { OQ: 0.45, Rk: 0.25, Ra: 0.004 };
+
   // vowel target: F1/F2 come from the chart, F3 from its own slider (it carries rhoticity)
   const vowel = { F1: 500, F2: 1500, F3: 2500 };
 
@@ -624,6 +661,13 @@
     const f0 = parseFloat(fundEl.value);
     src = sourceFromFigures(fig, f0);
     src.OQ = clamp(src.OQ - oqDip, 0.35, 0.95);
+    if (lfManual) {                                   // DEV-ONLY override
+      src.OQ = clamp(lfOverride.OQ - oqDip, 0.35, 0.95);
+      src.Rk = lfOverride.Rk;
+      src.Ra = lfOverride.Ra;
+    } else {
+      lfOverride.OQ = src.OQ; lfOverride.Rk = src.Rk; lfOverride.Ra = src.Ra;
+    }
     tract = tractFromFigures(fig, vowel, singer);
     return f0;
   }
@@ -1214,7 +1258,8 @@
     const p = lfShape(f0, src.OQ, src.Rk, src.Ra);
     const rd = rdDiagnostic(src.Ra);
     const cells = [
-      ["OQ", src.OQ.toFixed(3), src.drift > 0.001 ? `${src.OQbase.toFixed(2)} + drift ${src.drift.toFixed(3)}` : "held at base"],
+      ["OQ", src.OQ.toFixed(3), lfManual ? "manual" :
+        (src.drift > 0.001 ? `${src.OQbase.toFixed(2)} + drift ${src.drift.toFixed(3)}` : "held at base")],
       ["Rk", src.Rk.toFixed(3), ""],
       ["Ra", src.Ra.toFixed(4), p.taClamped ? "clamped: Ra ≥ 1−OQ" : ""],
       ["Rg", p.Rg.toFixed(2), ""],
@@ -1342,6 +1387,7 @@
     drawModelSpectra();
     updateMeta();
     updateSideLabels();
+    syncLfSliders();          // DEV-ONLY
   }
 
   // ---------- interaction ----------
@@ -1491,6 +1537,33 @@
     apply();
   });
 
+  // DEV-ONLY: manual LF shape sliders
+  const lfManualEl = document.getElementById("lfmanual");
+  const LF_KEYS = ["OQ", "Rk", "Ra"];
+  const lfInputs = {}, lfVals = {};
+  for (const k of LF_KEYS) {
+    lfInputs[k] = document.getElementById("lf-" + k);
+    lfVals[k] = document.getElementById("lf-" + k + "v");
+    lfInputs[k].addEventListener("input", () => {
+      lfOverride[k] = parseFloat(lfInputs[k].value);
+      if (!lfManual) setLfManual(true);              // grabbing a slider takes the wheel
+      else apply();
+    });
+  }
+  function setLfManual(on) {
+    lfManual = on;
+    lfManualEl.checked = on;
+    document.getElementById("figs-source").classList.toggle("overridden", on);
+    apply();
+  }
+  lfManualEl.addEventListener("change", () => setLfManual(lfManualEl.checked));
+  function syncLfSliders() {
+    for (const k of LF_KEYS) {
+      if (!lfManual) lfInputs[k].value = String(lfOverride[k]);
+      lfVals[k].textContent = k === "Ra" ? lfOverride[k].toFixed(4) : lfOverride[k].toFixed(3);
+    }
+  }
+
   window.addEventListener("resize", () => scheduleDraw());
 
   //#region dev-notes
@@ -1505,61 +1578,72 @@
   // ============================================================================================
   const DEV_NOTES = [
     ["fund", "Fundamental f₀",
-     "A plain <select> filled at load with MIDI 36–84 in 12-TET (this app is not the just-intonation one — quartet.html is). Its value is the frequency in Hz as a string, and it is read with parseFloat all over the drawing code rather than cached, because f₀ is an input to almost everything. Changing it calls apply(), which matters more than it looks: OQ drift is a function of log2(f0/220), so the note you pick changes the *source* through sourceFromFigures, not just the oscillator frequency. rebuildSource() then re-solves the LF waveform and hands the oscillator a new PeriodicWave, because the harmonic count and the ta/T ratio both depend on f₀."],
+     "The note. Changing it re-solves the LF waveform, not just the oscillator frequency — OQ drift, the harmonic count and ta/T all depend on f₀."],
     ["ee", "Eₑ — excitation strength",
-     "Not an Estill figure: Estill treats loudness as orthogonal to quality, so this lives in the non-figure namespace. The LF waveform is always generated with Eₑ normalized to exactly 1 (E(te) = −1), and this slider is applied downstream as the gain of the srcGain node. That keeps the numerical solve independent of level. The readout shows Eₑ → effective, where effective = Eₑ × (1 + 0.7·twang) — the twang bonus is multiplied in here, so narrowing the AES really does get louder for the same glottal effort."],
+     "Loudness. The LF waveform is always built with Eₑ = 1; this is applied after it, as the gain of the srcGain node. Twang multiplies it by up to 1.7."],
     ["vol", "Output level",
-     "The master GainNode, last thing before ctx.destination and the analyser tap. Deliberately separate from Eₑ: Eₑ is a model parameter that changes the sound, this is a listening-comfort knob that does not. Also written every 110 ms by tickHuman() with ±4% shimmer, which is why it is set with setTargetAtTime rather than assigned."],
+     "Master gain, the last node before the speakers. A listening level only — unlike Eₑ it changes nothing about the model."],
     ["play", "Start / Stop",
-     "start() builds a fresh OscillatorNode each time (Web Audio oscillators are one-shot), gives it the LF PeriodicWave, and connects it into the persistent graph: osc → srcGain → nasalPole → nasalZero → nasalTrim → sourceBus → five bandpass branches → formantMix → master. It then schedules the onset envelope on srcGain.gain. stop() mirrors the onset time constant on the way down and kills the oscillator ~120 ms later. The AudioContext itself is created lazily in ensureCtx() on this click — it must be a user gesture, and requestPlaybackSession() is called first so iOS's ringer switch does not mute the page."],
+     "Builds a fresh oscillator (Web Audio's are one-shot), loads the LF wave, starts the onset envelope. Also where the AudioContext is created, since that needs a click."],
     ["vib", "Vibrato depth",
-     "A single always-running sine OscillatorNode (vibLFO at 5.5 Hz) through a GainNode whose gain *is* the depth in cents, wired to the voiced oscillator's detune AudioParam. Detune is in cents, so the gain value is the amplitude directly — no conversion. It is reconnected in start() because each Start creates a new oscillator. Not an Estill figure; it is stacked on top of the ±4 cent random jitter that tickHuman writes."],
+     "A 5.5 Hz sine oscillator into the voice's detune. Detune is in cents, so the gain value is the depth directly. Not an Estill figure."],
     ["bwtrim", "Bandwidth trim ×",
-     "A global multiplier on all five formant bandwidths, applied at the very end of tractFromFigures as B.map(b => b * singer.bwTrim). Bandwidths are otherwise voice-type constants ([50, 70, 110, 170, 250] Hz) with only two modulations: nasality widens B1, and twang narrows B3–B5. This knob is a lab control with no Estill correspondence — it exists because sharpness vs. dullness of the resonances is worth being able to sweep independently."],
+     "Scales all five formant bandwidths. They are otherwise fixed constants — only nasality (B1) and twang (B3–B5) move them. A lab knob, no Estill meaning."],
     ["waves", "Source waveform",
-     "\"LF voice\" is the real model. The other four are Web Audio's built-in oscillator types, kept as a reference: they bypass the formant bank entirely (syncFilters zeroes every branch gain and opens dryGain) and collapse the nasal pole/zero pair onto each other so it cancels. They are here for A/B — hearing a saw through the same output stage tells you how much of what you hear is the source and how much is the tract."],
+     "\"LF voice\" is the model. The other four are plain oscillators with the tract bypassed — useful for hearing what is the source and what is the filter."],
     ["meta", "Status line",
-     "Rendered by updateMeta() on every draw pass. The harmonic count is floor(min(20 kHz, Nyquist) / f₀) — the number of partials the PeriodicWave actually carries, which is why it drops as you go up in pitch. It prints the *live* OQ including any drift and any glottal-onset dip, so it can disagree with the body-cover slider, which is the point."],
+     "The OQ shown here includes pitch drift and any onset dip, so it can disagree with the body-cover slider. That is the point."],
     ["presets", "Quality fixtures",
-     "The six Estill voice qualities, and they are test fixtures rather than presets: each button does nothing but Object.assign a set of figure values and re-run the same apply() path any slider uses. There is no quality-specific code anywhere in the file. Belt is the load-bearing one — if it needed its own branch to sound like Belt, cricoid tilt would be wired wrongly. Falsetto is disabled because stiff folds need incomplete closure, a DC flow offset and an aspiration channel, none of which exist here."],
+     "The six Estill qualities. Each button only assigns figure values — there is no quality-specific code anywhere. Belt is the test case."],
+
     ["fig-body_cover", "Body–cover (thick ↔ thin)",
-     "Vocal fold thickness. Maps to OQ = lerp(0.45, 0.68) and Rk = lerp(0.25, 0.45) in sourceFromFigures, and deliberately does NOT touch Ra — that axis is reserved for thyroid tilt, and keeping them apart is the whole reason this model exposes {OQ, Rk, Ra} instead of Fant's single Rd. Thick folds give a short open phase and abrupt shutoff (H1−H2 near 0 dB); thin folds give H1−H2 around +8 dB once tilt is added. Watch panel 1: the first two harmonics change relative height while the slope of the rest stays put."],
+     "Fold thickness. Sets OQ 0.45→0.68 and Rk 0.25→0.45, and deliberately leaves Ra alone. In panel 1: H1 vs H2 moves, the slope does not."],
     ["fig-thyroid_tilt", "Thyroid tilt (vertical ↔ tilted)",
-     "Anterior rotation of the thyroid cartilage, which lengthens and thins the folds and smooths the closure. Sole target: Ra = lerp(0.004, 0.075), i.e. the return phase's duration as a fraction of the period. Since ta = Ra/f₀, the spectral tilt knee at 1/(2π·ta) always lands at about 2.1·f₀ at full tilt, whatever the pitch. In a real larynx tilt also raises OQ; that coupling is suppressed here on purpose, and the test suite asserts it stays suppressed. Perceptually this is cry or sob."],
+     "Smoother fold closure, darker sound. Sets Ra 0.004→0.075 and nothing else. At full tilt the spectral knee sits near 2·f₀ at any pitch. This is \"cry\"."],
     ["fig-cricoid_tilt", "Cricoid tilt (vertical ↔ tilted)",
-     "The one figure that is not a parameter. Untrained voices thin out as they ascend — OQ drifts up with pitch — and cricoid tilt is permission to hold OQ low at height. It is implemented as a constraint relaxation: drift = max(0, 0.15·log2(f₀/220)·(1 − cricoid_tilt)), added to the OQ that body-cover set. At f₀ = 220 Hz this slider does literally nothing; move the fundamental up an octave and it does everything. That is what makes Belt emerge from thick folds + high larynx + narrow AES at pitch rather than being dialed in."],
+     "Not a parameter — permission to hold OQ low at high pitch. Untrained voices thin out as they ascend; this cancels that drift. At f₀ = 220 it does nothing; an octave up it does everything."],
     ["fig-larynx_height", "Larynx height (low ↔ high)",
-     "A global tract-length scale, s = 1 + 0.12·(2·h − 1), so 0.88 to 1.12. Applied at full weight to F1 and F2 and half weight to F3/F4/F5, because the epilarynx tube's length changes less than the whole tract's. Modeled as pure length: it ignores the hypopharynx widening that a low larynx also produces, so low-larynx settings come out slightly thin — the spec suggests compensating with a touch of twang if that bothers you. Visible on the resonance rails as every bar sliding away from its ring."],
+     "Tract length, 0.88–1.12×. Full weight on F1/F2, half on F3–F5, since the epilarynx changes length less. On the rails every bar slides away from its ring."],
     ["fig-twang", "AES / twang (wide ↔ narrow)",
-     "The aryepiglottic sphincter, and the most valuable figure in the set. Narrowing it decouples the epilarynx tube so it resonates on its own near 3 kHz, and F3, F4 and F5 all converge on that — three moderate bandpass peaks in one band summing to one large one. Implemented as a linked triple in tractFromFigures: each of F3/F4/F5 lerps toward the cluster target while its bandwidth narrows to 0.6×. Two details matter. F1 and F2 are untouched, which is why the singer's formant survives vowel changes. And it also multiplies Eₑ by (1 + 0.7·twang) — about +4.6 dB — hardcoded because a one-way source→filter chain cannot derive the inertive loading that causes it."],
+     "Narrows the top of the larynx. F3/F4/F5 converge near 3 kHz and sum into one big peak — the singer's formant. F1/F2 are untouched, so it survives vowel changes, and it adds ~4.6 dB to Eₑ."],
     ["fig-velum", "Velum (raised ↔ lowered)",
-     "Nasality, done as a coincident pole/zero pair that separates rather than as bandwidth widening. Two Web Audio `peaking` biquads sit in series ahead of the formant bank, one at +9 dB and one at −9 dB; RBJ peaking sections with gain A and 1/A at the same frequency and Q are exact inverses, so at velum 0 they multiply to unity and the path is a true bypass — no click, no residual color. Raising the slider walks the zero from 270 Hz up to 450 Hz while the pole stays at 270, opening a real notch next to F1. B1 also widens to 2.4× (nasal coupling genuinely damps) but that is the consequence, not the cue. Continuity matters here for a pedagogical reason: velum has three positions and mid is a real trained option."],
+     "Nasality. Two peaking filters at +9 and −9 dB start on the same frequency and cancel exactly. Raising this walks the −9 dB one up to 450 Hz, opening a notch next to F1."],
     ["fig-lip_protrusion", "Lip protrusion (spread ↔ protruded)",
-     "Rounding the lips lengthens the tract and lowers every formant — something the (F1, F2) vowel pair cannot express on its own. Scale s = 1 − 0.05·p, multiplied into the same length term as larynx height but weighted down to 0.4 on F1, which is dominated by the back cavity. Not in the quality fixture table, so the preset buttons deliberately leave it wherever you put it."],
+     "Rounding lengthens the tract and drops every formant by up to 5% — something F1/F2 alone cannot express. Weighted down on F1. Not in the quality presets."],
     ["onset", "Onset / offset type",
-     "Envelope timing on Eₑ, applied in start() and mirrored in stop(). Glottal is a 3 ms attack with a ×1.25 overshoot; simultaneous is 25 ms with no overshoot. Glottal additionally depresses OQ by 0.1 and relaxes it over 30 ms — that transient pressedness is the audible part of a hard attack. Because a PeriodicWave cannot be automated, the dip is stepped in five setTimeouts that each re-solve the LF waveform; under the attack ramp the steps are inaudible. Aspirate is disabled: it needs a noise channel, which is the single smallest thing you could add to this file if you wanted breathiness."],
+     "Attack shape. Glottal: 3 ms, a 1.25× overshoot, and a briefly pressed OQ. Simultaneous: 25 ms, no overshoot. Aspirate would need a noise channel, which does not exist here."],
     ["fcluster", "AES cluster target",
-     "Where twang pulls F3/F4/F5 to. A voice-type constant rather than a per-note parameter — part of the singer object alongside F4/F5 neutrals and the bandwidth table — but exposed here because 2.9 kHz is a male ballpark and the right value differs per voice. F3 aims 200 Hz below it, F4 50 Hz above, F5 350 Hz above, so the cluster has width rather than being a single spike. Shown as the dashed blue line on the resonance rails, with opacity tracking the twang amount."],
+     "Where twang pulls F3/F4/F5 to. A per-singer constant; 2.9 kHz is a male ballpark. It is the dashed blue line on the rails."],
     ["readout", "Derived source parameters",
-     "Everything the figures actually resolved to, recomputed each frame by drawReadout() from a fresh lfShape() solve. OQ shows base + drift separately so you can see cricoid tilt working. Two cells go orange as warnings: Ra clamps when it will not fit inside the return window (ε has no root unless Ra < 1−OQ, so a wide-open glottis caps reachable tilt), and Rd flags configurations outside natural-speech statistics — Rd is computed only as a diagnostic and is never an input, because collapsing {OQ, Rk, Ra} onto it would re-impose exactly the covariance a trained voice can break."],
+     "What the figures resolved to, re-solved every frame. Orange means a warning: Ra clamps when it will not fit the return phase, and Rd flags settings outside natural speech."],
     ["chart", "Vowel chart (F1 × F2)",
-     "An SVG redrawn from scratch on every pass as an innerHTML string — no D3, no retained nodes. Laid out in IPA orientation: F1 down the vertical axis (close to open), F2 right-to-left (front to back). The grey dots are Hillenbrand et al. 1995 adult-male means; clicking one snaps F1, F2 *and* F3, dragging anywhere sets F1/F2 only and leaves F3 alone. It writes the `vowel` object, which is the articulatory target — everything the figures do to it happens afterwards in tractFromFigures."],
+     "IPA orientation — F1 downward, F2 right to left. Grey dots are Hillenbrand 1995 male means. Clicking one sets F1, F2 and F3; dragging sets F1/F2 only."],
     ["f3t", "F3 target (rhoticity)",
-     "F3 is a vowel target here, not a twang output, because formant numbering is ordinal — resonances are numbered by frequency, not identity. An American /r/ pulls F3 down to about 1570 Hz via a front-cavity resonance that has nothing to do with the epilarynx. The pull() weight exempts an F3 held that low from the twang cluster, so a fully twanged rhotic ends up with a two-member cluster and measurably less ring. That is correct behavior, not a limitation: it is exactly why choral and barbershop practice de-rhoticize sustained vowels and defer the /r/ to the release."],
+     "F3 belongs to the vowel, not to twang. An American /r/ drops it to ~1570 Hz, which exempts it from the cluster, so rhotics ring less — which is why choirs de-rhoticize."],
+
+    ["lfmode", "Manual LF override",
+     "Temporary. The three sliders normally follow whatever the figures worked out; touching one freezes them so you can drive the waveform directly. The source figures grey out while it is on."],
+    ["lf-OQ", "OQ — open quotient",
+     "The fraction of each cycle the glottis is open, so te lands at exactly OQ·T. Low = pressed and buzzy, high = thin. Body-cover and pitch drift both end up here."],
+    ["lf-Rk", "Rk — pulse skew",
+     "How lopsided the open phase is. Low = the flow peak comes late and shutoff is abrupt. Along with OQ it sets the glottal formant at Rg·f₀, the bump in panel 1."],
+    ["lf-Ra", "Ra — return time",
+     "How long closure takes, as a fraction of the period. This is the spectral tilt: the knee sits at 1/(2π·ta). Push it up and watch panel 1 fold over. It clamps if it will not fit under (1 − OQ)."],
+
     ["plot", "Resonance rails",
-     "Five log-frequency rails, one per formant, drawn as an SVG string. On each: a hollow ring at the raw target (what you set), a shaded bar spanning ±B/2 at the effective frequency (what the biquad is actually tuned to), and a dotted line between them when the figures have moved it. Dragging the ring writes vowel.F1/F2/F3 for the first three and singer.F4/F5 for the last two — targets stay raw precisely so the handle does not snap away from the pointer by the length scale. The F1–F5 buttons mute individual branches, which is the fastest way to hear what one resonance is contributing."],
+     "Five log-frequency rails. Ring = what you set, bar = where the figures put it (width = bandwidth), dots = the displacement. The F1–F5 buttons mute one resonance at a time."],
     ["srcSpec", "Panel 1 — source spectrum",
-     "The magnitude of the harmonic table that is handed to the PeriodicWave, normalized so H1 = 0 dB. Not a measurement: it is |FFT of one LF period|, the same array the oscillator is playing. Three things are legible here. The green line is the glottal formant at Rg·f₀, a genuine low-frequency resonant bump in the source that scales with pitch. The blue line is the tilt knee at 1/(2π·ta), where the asymptotic slope breaks from −6 to −12 dB/oct. And H1 vs H2 is where body-cover shows up. Note the slope is −6, not −12: this is the flow *derivative*, so lip radiation is already in it."],
+     "The harmonics actually being played, normalised to H1 = 0 dB. Green = glottal formant, blue = tilt knee. The slope is −6 dB/oct, not −12, because this is the flow derivative."],
     ["tractSpec", "Panel 2 — tract transfer function",
-     "The filter response with no source, computed by tractMag() from RBJ cookbook coefficients built with the same frequency and Q that Web Audio's biquads were given — so this is the response of the actual chain, sample rate warping included, not an idealization. The five bandpass branches are summed as complex values with signs [+, −, +, +, +] before the magnitude is taken, because sign matters in a parallel bank: F1/F2 alternate so their shared valley does not notch, while F3/F4/F5 share a sign so the twang cluster adds instead of cancelling. The nasal pole/zero pair multiplies on top."],
+     "The filter alone, computed from the same coefficients Web Audio is running. The five bandpasses sum with signs [+,−,+,+,+] so the twang cluster adds instead of cancelling."],
     ["outSpec", "Panel 3 — radiated spectrum",
-     "Panel 1 plus panel 2, added in dB, harmonic by harmonic. All three panels use the same dB-per-pixel scale so that relationship is visible rather than merely asserted — that is the whole reason for stacking them. The green envelope is the tract curve from panel 2 shifted to sit with the harmonics. This is where formant tuning becomes obvious: move the fundamental until a harmonic lands on a formant peak and watch the level jump."],
+     "Panel 1 + panel 2, added in dB. All three share a dB-per-pixel scale so that is visible rather than merely claimed. Move f₀ until a harmonic hits a formant and watch it jump."],
     ["lfWave", "Flow derivative, one period",
-     "The waveform itself, plotted straight from lfSample() rather than from the analyser. Markers: tp is the flow peak and the derivative's zero crossing, te is the excitation instant where the derivative reaches −Eₑ, and +ta is the return-phase time constant. The shape is the model's two pieces — an exponentially-scaled sine for the open phase, an exponential recovery for the return — with α solved so net flow over the cycle is zero and ε solved from the return-phase area constraint, both by bisection at parameter-change time."],
+     "The waveform itself. tp = flow peak, te = closure and the instant the tract is struck, +ta = how fast it recovers. The LF sliders show up here first."],
     ["scope", "Radiated pressure",
-     "A real analyser tap on the final mix, before the hardware's ±1 clamp, so the dashed lines are true clipping thresholds. Worth staring at: the trace is a decaying oscillation that gets retriggered at every glottal closure, which makes the impulse-response character of the tract obvious and makes clear that closure — not opening — is what excites it. The peak reading in the panel header turns amber above 0.85 and red at 1.0."],
+     "A real tap on the output. The trace is formant ringing retriggered at every glottal closure — closure, not opening, is what excites the tract."],
     ["spectrum", "Measured spectrum",
-     "getByteFrequencyData off the same analyser, log-frequency, 4096-point FFT with 0.5 smoothing. This is the reality check on panel 3: they should broadly agree, and where they do not, something in the model plot is lying. The amber vertical marks are the effective formant centers, so you can see whether the resonances landed where tractFromFigures said they would."],
+     "Real FFT of the output, and the reality check on panel 3: where they disagree, the model plot is lying. Amber marks are the effective formant centres."],
   ];
 
   // The notes are prose, not markup — anything angle-bracketed in them (a `<select>`, say) is
@@ -1574,30 +1658,46 @@
   let modeIdx = 0, stepIdx = -1;
 
   const units = [...document.querySelectorAll(".u[data-n]")];
+  let pinned = null, hovered = null;
   for (const u of units) {
     const n = noteBy.get(u.dataset.n);
     if (!n) continue;
     const badge = document.createElement("span");
     badge.className = "badge";
     badge.textContent = n.i;
+    badge.title = "click to pin this note";
+    badge.addEventListener("pointerdown", e => e.stopPropagation());
+    badge.addEventListener("click", e => { e.stopPropagation(); e.preventDefault(); togglePin(u.dataset.n); });
     u.appendChild(badge);
     const inline = document.createElement("div");
     inline.className = "inline";
     inline.innerHTML = `<b>${n.i} · ${n.title}</b> — ${n.body}`;
     u.appendChild(inline);
-    u.addEventListener("pointerenter", () => showNote(u.dataset.n));
+    u.addEventListener("pointerenter", () => { hovered = u.dataset.n; if (!pinned) showNote(hovered); });
   }
+
+  // Pinning exists so a note can be read while both hands are busy somewhere else — dragging a
+  // slider on the far side of the page would otherwise sweep the pointer over a dozen elements
+  // and replace the text before you got to it.
+  function togglePin(key) {
+    pinned = pinned === key ? null : key;
+    for (const u of units) u.classList.toggle("pinned", u.dataset.n === pinned);
+    showNote(pinned || hovered);
+  }
+  window.addEventListener("keydown", e => { if (e.key === "Escape" && pinned) togglePin(pinned); });
 
   const DEFAULT_NOTE =
     `<span class="who">Temporary dev layout.</span> Controls on the left, everything the model ` +
     `draws on the right, sized to fit one screen. Hover any numbered element to read how it is ` +
     `implemented; <b>Notes</b> switches to printing all ${DEV_NOTES.length} descriptions inline ` +
-    `(the columns then scroll), and <b>walk through</b> steps them one at a time.`;
+    `(the columns then scroll), or <b>click a number</b> to pin its note so it stays put while ` +
+    `you drag something else. <b>walk through</b> steps them in order.`;
 
   function showNote(key) {
     const n = noteBy.get(key);
     noteOut.innerHTML = n
-      ? `<span class="idx">${n.i}</span> <span class="who">${n.title}</span> — ${n.body}`
+      ? `<span class="idx">${n.i}</span> <span class="who">${n.title}</span> — ${n.body}` +
+        (pinned === key ? ` <span class="pin">pinned · click ${n.i} again or press Esc</span>` : "")
       : DEFAULT_NOTE;
   }
   function setMode(i) {
@@ -1611,6 +1711,8 @@
   stepBtn.addEventListener("click", () => {
     stepIdx = (stepIdx + 1) % DEV_NOTES.length;
     const key = DEV_NOTES[stepIdx][0];
+    pinned = key;
+    for (const u of units) u.classList.toggle("pinned", u.dataset.n === pinned);
     showNote(key);
     const u = units.find(x => x.dataset.n === key);
     if (u) {
