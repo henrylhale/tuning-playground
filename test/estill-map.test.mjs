@@ -15,7 +15,7 @@ const { sourceFromFigures, tractFromFigures, pull, QUALITIES } = loadRegion(
   'voice-synth.html',
 );
 
-const SINGER = { F4: 3500, F5: 4500, Fcluster: 2900, bwTrim: 1, B: [50, 70, 110, 170, 250] };
+const SINGER = { F4: 3500, F5: 4500, Fcluster: 2900, B: [50, 70, 110, 170, 250] };
 const NEUTRAL = { body_cover: 0, thyroid_tilt: 0, larynx_height: 0.5, twang: 0, velum: 0, lip_protrusion: 0 };
 const SCHWA = { F1: 500, F2: 1500, F3: 2500 };
 const RHOTIC = { F1: 474, F2: 1379, F3: 1571 };          // /ɝ/, "heard"
@@ -187,11 +187,18 @@ test('Ftarget stays the raw request, whatever the figures do to it', () => {
   for (let i = 0; i < 5; i++) assert.notEqual(t.F[i], t.Ftarget[i], `F${i + 1} should have moved`);
 });
 
-test('bandwidth trim scales every formant and nothing else', () => {
-  const one = tract({}), two = tractFromFigures(figs({}), SCHWA, Object.assign({}, SINGER, { bwTrim: 2 }));
-  for (let i = 0; i < 5; i++) {
-    assert.ok(Math.abs(two.B[i] / one.B[i] - 2) < 1e-9);
-    assert.ok(Math.abs(two.F[i] - one.F[i]) < 1e-9);
+test('bandwidths are singer constants, moved only by nasality and twang', () => {
+  // With every figure neutral the bandwidths must be exactly the voice-type table. Only two
+  // things are allowed to modulate them anywhere: the velum widens B1, and twang narrows the
+  // cluster members. B2 in particular has no modulator at all and must never move.
+  assert.deepEqual([...tract({}).B], SINGER.B);
+  for (const over of [{ velum: 1 }, { twang: 1 }, { larynx_height: 1 }, { lip_protrusion: 1 },
+                      { body_cover: 1 }, { thyroid_tilt: 1 }]) {
+    assert.equal(tract(over).B[1], SINGER.B[1], `B2 moved under ${JSON.stringify(over)}`);
+  }
+  // Larynx height and lip protrusion move centres, so they must leave every bandwidth alone.
+  for (const over of [{ larynx_height: 0 }, { larynx_height: 1 }, { lip_protrusion: 1 }]) {
+    assert.deepEqual([...tract(over).B], SINGER.B, `bandwidths moved under ${JSON.stringify(over)}`);
   }
 });
 
