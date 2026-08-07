@@ -5,11 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Source-filter model with Estill figures — Voice Synth</title>
 <!--
-  ============================================================================================
-  TEMPORARY DEV LAYOUT — the fit-to-screen grid is review scaffolding, not the app's own shape.
-  To restore a document-flow layout, drop `.app` / `.cols` / `.col` and let `.panel` stack.
-  Everything else — the model, the audio graph, every drawing routine — is the real thing.
-  ============================================================================================
+  The layout is deliberately fit-to-screen: `.app` / `.cols` / `.col` size everything to the
+  viewport so the whole instrument is visible at once, and the plots are redrawn at whatever
+  size they end up rather than scaled. To go back to a document flow, drop those three and let
+  `.panel` stack.
 -->
 <style>
   :root{
@@ -137,8 +136,6 @@
   .bar{background:#241a0c;color:#d8c39a;border:1px solid #0e0904;border-radius:4px;padding:5px 9px}
   .bar .top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .bar h1{font-size:11px;font-weight:800;margin:0;letter-spacing:1.2px;text-transform:uppercase;color:#ffb347}
-  .bar .tag{font-size:8.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;
-    background:#8a2f12;color:#ffd9b0;border-radius:2px;padding:1px 5px}
 </style>
 </head>
 <body>
@@ -148,7 +145,6 @@
   <header class="bar">
     <div class="top">
       <h1>Source-filter model with Estill figures</h1>
-      <span class="tag">dev layout · temporary</span>
     </div>
   </header>
 
