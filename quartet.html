@@ -67,8 +67,8 @@
 
   /* voicing lattice: a vertical pitch axis you SPELL on. Every chord tone across the reasonable
      octaves is a peg (hollow dot + grayed function label) = a place to drop a voice. The four voices
-     sit on four pegs; drag a coloured dot to another peg to re-spell. Two voices may double one pitch
-     → their dots are drawn tangent. Same 3-column grid for every row (parts | dot(s) | function/key/
+     sit on four pegs; drag a coloured dot to another peg to re-spell. Any voices may share one pitch
+     → their dots are drawn tangent in a row. Same 3-column grid for every row (parts | dot(s) | function/key/
      note) so pegs and voices align on the center line. */
   /* the lattice fills the full height of its column (which stretches to the canvas), and .latinner
      spans it, so the whole pitch range always runs top-to-bottom the same regardless of chord */
@@ -1105,7 +1105,7 @@
   const LAT_MLO=31, LAT_MHI=81, LAT_PAD_PCT=3;
   const midiOf = f => 69 + 12*Math.log2(f/440);
   const latY = f => LAT_PAD_PCT + (LAT_MHI - midiOf(f))/(LAT_MHI-LAT_MLO)*(100-2*LAT_PAD_PCT);
-  const MAX_PER_PITCH = 2;                                  // at most two voices may double one pitch
+  const MAX_PER_PITCH = 4;                                  // any number of the four voices may share one pitch
   const fkey = f => f.toFixed(2);                           // group voices/pegs that share a pitch
 
   // every chord tone at every octave inside the window = the set of places a voice can be dragged to.
@@ -1148,7 +1148,7 @@
       inner.appendChild(row);
     });
 
-    // voices: one row per occupied pitch. A doubled pitch shows both parts + tangent dots + one label.
+    // voices: one row per occupied pitch. A shared pitch shows every part + a row of tangent dots + one label.
     occ.forEach((ks,key)=>{
       const rep=state.voicing[ks[0]];
       const ratio=CHORDS[state.chordIdx].r[rep.tone], role=ITV[ratio]||ratio, col=toneColor(role);
@@ -1171,7 +1171,8 @@
 
   // ---- drag a voice dot onto a peg (the only voicing edit) -------------------------------------
   // The dragged dot keeps its part; dropping sets that part's chord tone + octave to the target peg,
-  // so its function (and colour) update. A pitch already holding MAX_PER_PITCH other voices is refused.
+  // so its function (and colour) update. A pitch already holding MAX_PER_PITCH voices is refused (never
+  // triggers with 4 voices, since a dragged one leaves at most 3 others — i.e. all four may stack).
   function nearestPeg(clientY){
     const r=latState.inner.getBoundingClientRect();          // maps a peg's % position to a screen Y
     let best=null, bd=Infinity;
