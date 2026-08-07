@@ -40,7 +40,7 @@
   .cols{
     display:grid; min-height:0; gap:6px;
     grid-template-columns:396px minmax(0,1fr) minmax(0,1fr);
-    grid-template-rows:minmax(0,4fr) minmax(0,5fr);
+    grid-template-rows:minmax(0,5fr) minmax(0,4fr);
     grid-template-areas:"ctl rails rails" "ctl specA specB";
   }
   .area-ctl{grid-area:ctl} .area-rails{grid-area:rails}
@@ -237,31 +237,13 @@
       <div class="panel grow">
         <div class="u plot" data-n="filter">
           <canvas id="tractSpec"></canvas>
-          <div class="cap">Filter response &amp; resonances</div>
+          <div class="cap">Source → filter → output</div>
         </div>
       </div>
     </div>
 
-    <!-- ====================== BOTTOM RIGHT A: model spectra ====================== -->
+    <!-- ============================ BOTTOM RIGHT: waveforms ============================ -->
     <div class="col area-specA">
-      <div class="panel grow">
-        <div class="u plot" data-n="srcSpec">
-          <canvas id="srcSpec"></canvas>
-          <div class="cap">Source spectrum</div>
-        </div>
-        <div class="u plot" data-n="outSpec">
-          <canvas id="outSpec"></canvas>
-          <div class="cap">Output spectrum</div>
-        </div>
-        <div class="u plot" data-n="spectrum">
-          <canvas id="spectrum"></canvas>
-          <div class="cap">Measured spectrum</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ================== BOTTOM RIGHT B: waveform + measured ================== -->
-    <div class="col area-specB">
       <div class="panel grow">
         <div class="u plot" data-n="lfWave">
           <canvas id="lfWave"></canvas>
@@ -270,6 +252,15 @@
         <div class="u plot" data-n="scope">
           <canvas id="scope"></canvas>
           <div class="cap">Output waveform <span id="cliplbl" style="float:right">level —</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col area-specB">
+      <div class="panel grow">
+        <div class="u plot" data-n="spectrum">
+          <canvas id="spectrum"></canvas>
+          <div class="cap">Measured spectrum</div>
         </div>
       </div>
     </div>
@@ -980,10 +971,9 @@
   // fixed aspect ratio. Each canvas takes its backing store from its measured CSS box times the
   // device pixel ratio, and every draw routine works in CSS pixels read off the element — so a
   // shorter window means shorter plots, never squashed text.
-  const srcCv = document.getElementById("srcSpec"), tractCv = document.getElementById("tractSpec");
-  const outCv = document.getElementById("outSpec"), lfCv = document.getElementById("lfWave");
+  const tractCv = document.getElementById("tractSpec"), lfCv = document.getElementById("lfWave");
   const scopeCv = document.getElementById("scope"), spectrumCv = document.getElementById("spectrum");
-  const CANVASES = [srcCv, tractCv, outCv, lfCv, scopeCv, spectrumCv];
+  const CANVASES = [tractCv, lfCv, scopeCv, spectrumCv];
 
   function fitCanvases() {
     const dpr = window.devicePixelRatio || 1;
@@ -996,7 +986,8 @@
   }
 
   // ---------- model spectra (computed, not measured) ----------
-  const SPEC_FMIN = 50, SPEC_FMAX = 10000, SPEC_SPAN = 78;   // dB shown per panel
+  const SPEC_FMIN = 50, SPEC_FMAX = 10000, SPEC_SPAN = 108;  // dB window of the master pane
+  const MASTER_TOP = 24;
   const LOGMIN = Math.log10(SPEC_FMIN), LOGSPAN = Math.log10(SPEC_FMAX) - LOGMIN;
   const geomOf = cv => ({ W: cv.clientWidth, H: cv.clientHeight, L: 34, R: 6, T: 5, B: 13 });
   const gx = (g, f) => g.L + (Math.log10(clamp(f, SPEC_FMIN, SPEC_FMAX)) - LOGMIN) / LOGSPAN * (g.W - g.L - g.R);
@@ -1042,17 +1033,18 @@
     return Math.hypot(re, im) * Math.hypot(p.re, p.im) * Math.hypot(z.re, z.im) * tract.gainCorrection;
   }
 
-  function stems(c, g, top, f0, n, valueAt) {
-    c.strokeStyle = "#ff8a2e"; c.fillStyle = "#ffb347";
+  function stems(c, g, top, f0, n, valueAt, col, alpha, dot) {
+    c.strokeStyle = col; c.fillStyle = col; c.lineWidth = 1;
     for (let k = 1; k <= n; k++) {
       const f = k * f0; if (f > SPEC_FMAX) break;
       const x = gx(g, f), y = gy(g, valueAt(k), top);
       if (y > g.H - g.B) continue;
-      c.globalAlpha = 0.7;
+      c.globalAlpha = alpha;
       c.beginPath(); c.moveTo(x, g.H - g.B); c.lineTo(x, y); c.stroke();
-      c.globalAlpha = 1;
-      c.fillRect(x - 1, y - 1, 2, 2);
+      c.globalAlpha = Math.min(1, alpha + 0.35);
+      c.fillRect(x - dot / 2, y - dot / 2, dot, dot);
     }
+    c.globalAlpha = 1;
   }
 
   function envelope(c, g, top, style, valueAt) {
@@ -1072,36 +1064,7 @@
     const h = lfHarmonics(p, nMax);
     const mag = k => Math.hypot(h.real[k], h.imag[k]);
     const h1 = dB(mag(1));
-
-    // --- panel 1: source ---
-    let c = srcCv.getContext("2d"), g = geomOf(srcCv);
-    specFrame(c, g, 6);
-    for (const [f, col, lbl] of [[p.Rg * f0, "#5dd28f", "Rg·f₀"], [1 / (2 * Math.PI * p.ta), "#5b9cf2", "1/2πta"]]) {
-      if (f < SPEC_FMIN || f > SPEC_FMAX) continue;
-      const x = gx(g, f);
-      c.strokeStyle = col; c.globalAlpha = 0.45;
-      c.beginPath(); c.moveTo(x, g.T); c.lineTo(x, g.H - g.B); c.stroke();
-      c.globalAlpha = 1; c.fillStyle = col; c.font = "8px sans-serif";
-      const flip = x > g.W - g.R - 34;                  // the knee runs off the right edge at low Ra
-      c.textAlign = flip ? "right" : "left";
-      c.fillText(lbl, x + (flip ? -2 : 2), g.H - g.B - 2);
-    }
-    stems(c, g, 6, f0, h.n, k => dB(mag(k)) - h1);
-
-    drawFilter(sr, f0);
-
-    // --- panel 3: output = panel 1 + panel 2, in dB ---
-    c = outCv.getContext("2d"); g = geomOf(outCv);
-    const out = new Float64Array(h.n + 1);
-    let peak = -1e9;
-    for (let k = 1; k <= h.n; k++) {
-      out[k] = dB(mag(k)) + dB(tractMag(k * f0, sr));
-      if (k * f0 <= SPEC_FMAX && out[k] > peak) peak = out[k];
-    }
-    specFrame(c, g, 4, "");
-    envelope(c, g, 4, "rgba(93,210,143,0.45)", f => dB(tractMag(f, sr)) + h1 - peak + 4);
-    stems(c, g, 4, f0, h.n, k => out[k] - peak + 4);
-
+    drawMaster(sr, f0, p, h, k => dB(mag(k)) - h1);
     drawLfPeriod(p);
   }
 
@@ -1109,13 +1072,37 @@
   // same log-frequency positions — where each of the five resonances actually sits. Separating
   // them meant that reading a peak and finding out which formant it was were different glances.
   const STRIP = 34;                          // height of the resonance strip, in CSS px
-  function drawFilter(sr, f0) {
+  let formantDots = [];                      // where the peak markers landed, for hit-testing
+  let hoverF = -1;
+
+  function drawMaster(sr, f0, p, h, srcDb) {
     const c = tractCv.getContext("2d"), g0 = geomOf(tractCv);
     const g = Object.assign({}, g0, { B: g0.B + STRIP });   // curve stops above the strip
     const yTop = g.H - g.B, yBot = g0.H - g0.B;             // strip bounds
+    const T = MASTER_TOP;
+    const outDb = k => srcDb(k) + dB(tractMag(k * f0, sr));
 
-    specFrame(c, g, 24, "");
-    envelope(c, g, 24, "#5dd28f", f => dB(tractMag(f, sr)));
+    specFrame(c, g, T, "");
+
+    // The whole chain on one dB axis, so output = source + filter is a vertical distance rather
+    // than a claim: pale stems are the source harmonics with H1 at 0 dB, the green curve is the
+    // filter's gain at that frequency, and the bright stems are their sum.
+    stems(c, g, T, f0, h.n, srcDb, "#ffd9a8", 0.30, 2);
+    envelope(c, g, T, "#5dd28f", f => dB(tractMag(f, sr)));
+    stems(c, g, T, f0, h.n, outDb, "#ff8a2e", 0.62, 2.6);
+
+    // source landmarks: the glottal formant, and where the spectral tilt breaks
+    c.font = "8px sans-serif";
+    for (const [f, col, lbl] of [[p.Rg * f0, "#5dd28f", "Rg·f₀"], [1 / (2 * Math.PI * p.ta), "#5b9cf2", "1/2πta"]]) {
+      if (f < SPEC_FMIN || f > SPEC_FMAX) continue;
+      const x = gx(g, f);
+      c.strokeStyle = col; c.globalAlpha = 0.3; c.setLineDash([1, 3]);
+      c.beginPath(); c.moveTo(x, g.T); c.lineTo(x, yTop); c.stroke();
+      c.setLineDash([]); c.globalAlpha = 1; c.fillStyle = col;
+      const flip = x > g.W - g.R - 34;
+      c.textAlign = flip ? "right" : "left";
+      c.fillText(lbl, x + (flip ? -2 : 2), yTop - 2);
+    }
 
     // f0, so you can see which harmonic is sitting on which resonance
     const xf = gx(g, f0);
@@ -1151,6 +1138,7 @@
     c.beginPath(); c.moveTo(g.L, yTop); c.lineTo(g.W - g.R, yTop); c.stroke();
 
     const yBar = yTop + 15;
+    formantDots = [];
     for (let i = 4; i >= 0; i--) {
       const col = COLORS[i], F = tract.F[i], Ft = tract.Ftarget[i], B = tract.B[i];
       const x = gx(g, F), xt = gx(g, Ft);
@@ -1158,11 +1146,14 @@
 
       // a dropline from the peak it is responsible for, down into the strip
       c.strokeStyle = col; c.globalAlpha = 0.32; c.lineWidth = 1;
-      const yPeak = clamp(gy(g, dB(tractMag(F, sr)), 24), g.T, yTop);
+      const yPeak = clamp(gy(g, dB(tractMag(F, sr)), T), g.T, yTop);
       c.beginPath(); c.moveTo(x, yPeak); c.lineTo(x, yBar); c.stroke();
       c.globalAlpha = 1;
       c.fillStyle = col;
-      c.beginPath(); c.arc(x, yPeak, 2.4, 0, 7); c.fill();
+      const hot = hoverF === i;
+      c.beginPath(); c.arc(x, yPeak, hot ? 4.5 : 3, 0, 7); c.fill();
+      if (hot) { c.strokeStyle = "#fff2e0"; c.lineWidth = 1.2; c.stroke(); }
+      formantDots.push({ i, x, y: yPeak });
 
       // bandwidth span, then the centre
       c.strokeStyle = col; c.globalAlpha = 0.45; c.lineWidth = 5;
@@ -1179,12 +1170,45 @@
       c.lineWidth = 1.6;
       c.beginPath(); c.arc(xt, yBar, 3.4, 0, 7); c.stroke();
 
-      // label, alternating side so a formed cluster does not overprint itself
-      c.font = "8px sans-serif"; c.textAlign = "center"; c.fillStyle = col;
-      c.fillText(`F${i + 1} ${Math.round(F)}`, x, i % 2 ? yBar + 15 : yBar - 9);
+      // just the number — the frequency is one hover away, on the curve
+      c.font = "8.5px sans-serif"; c.textAlign = "center"; c.fillStyle = col;
+      c.fillText(`F${i + 1}`, x, i % 2 ? yBar + 15 : yBar - 9);
     }
     c.lineWidth = 1;
+
+    // hovering a peak names it, where the peak actually is
+    const d = formantDots.find(q => q.i === hoverF);
+    if (d) {
+      const txt = `F${d.i + 1} · ${Math.round(tract.F[d.i])} Hz · B ${Math.round(tract.B[d.i])}`;
+      c.font = "10px sans-serif"; c.textAlign = "center";
+      const w = c.measureText(txt).width + 12;
+      const bx = clamp(d.x, g.L + w / 2, g.W - g.R - w / 2);
+      const by = Math.max(g.T + 17, d.y - 9);
+      c.fillStyle = "rgba(14,9,4,0.94)"; c.strokeStyle = COLORS[d.i]; c.lineWidth = 1;
+      c.beginPath(); c.rect(bx - w / 2, by - 14, w, 16); c.fill(); c.stroke();
+      c.fillStyle = COLORS[d.i]; c.fillText(txt, bx, by - 2.5);
+    }
   }
+
+  // Hit-tested against the dots the last draw recorded, so the target is wherever the peak ended
+  // up rather than wherever the formant nominally is.
+  tractCv.addEventListener("pointermove", e => {
+    const r = tractCv.getBoundingClientRect();
+    const px = e.clientX - r.left, py = e.clientY - r.top;
+    let best = -1, bestD = 13;
+    for (const d of formantDots) {
+      const dist = Math.hypot(d.x - px, d.y - py);
+      if (dist < bestD) { bestD = dist; best = d.i; }
+    }
+    if (best !== hoverF) {
+      hoverF = best;
+      tractCv.style.cursor = best >= 0 ? "pointer" : "default";
+      scheduleDraw();
+    }
+  });
+  tractCv.addEventListener("pointerleave", () => {
+    if (hoverF >= 0) { hoverF = -1; tractCv.style.cursor = "default"; scheduleDraw(); }
+  });
 
   function drawLfPeriod(p) {
     const c = lfCv.getContext("2d"), W = lfCv.clientWidth, H = lfCv.clientHeight;
@@ -1461,12 +1485,8 @@
     ["absent", "Not modeled",
      "Of the thirteen figures: five modeled, two half-modeled, two collapsed into the vowel target, four set aside. Each omission is an assumption that buys the orthogonality the rest of the model rests on — on screen so that a missing effect reads as a known limit, not a bug."],
 
-    ["srcSpec", "Panel 1 — source spectrum",
-     "The harmonics actually being played, normalised to H1 = 0 dB. Green = glottal formant, blue = tilt knee. The slope is −6 dB/oct, not −12, because this is the flow derivative."],
-    ["filter", "Filter response & resonances",
-     "The tract in both readings at once. The curve is |H(f)| computed from the same coefficients Web Audio is running — five bandpasses summed with signs [+,−,+,+,+], so the twang cluster adds instead of cancelling — and the strip below it says where each resonance sits: bar = effective centre with its bandwidth, ring = the raw target, dotted line = what the figures did to it. The two used to be separate panes, which meant reading a peak and finding out which formant it was were different glances."],
-    ["outSpec", "Panel 3 — radiated spectrum",
-     "Panel 1 + panel 2, added in dB. All three share a dB-per-pixel scale so that is visible rather than merely claimed. Move f₀ until a harmonic hits a formant and watch it jump."],
+    ["filter", "Source → filter → output",
+     "The whole chain on one dB axis. Pale stems are the source harmonics with H1 at 0 dB; the green curve is the filter's gain at that frequency, computed from the same coefficients Web Audio is running; the bright stems are their sum — so output = source + filter is a vertical distance you can read off rather than a claim. The strip underneath says where each resonance sits: bar = effective centre with its bandwidth, ring = the raw target, dotted line = what the figures did in between, with a dropline from each peak to its marker. Hover a peak for its frequency and bandwidth."],
     ["lfWave", "Flow derivative, one period",
      "The waveform itself. tp = flow peak, te = closure and the instant the tract is struck, +ta = how fast it recovers. The shape sliders show up here first."],
     ["scope", "Radiated pressure",
