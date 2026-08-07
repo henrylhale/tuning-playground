@@ -14,11 +14,9 @@
     1. delete the  <style id="dev-only">  block
     2. delete the  <header class="bar">   element
     3. delete the  //#region dev-notes    block in the script (the DEV_NOTES table + wiring)
-    4. delete the  <div class="lfrow">  strip under the rails, its wiring near the other
-       controls, and the `if (lfManual)` branch in recompute() — the manual source sliders
-    5. unwrap the  <div class="u" data-n="…">  wrappers — they are pure containers, nothing
+    4. unwrap the  <div class="u" data-n="…">  wrappers — they are pure containers, nothing
        in the app reads them
-    6. restore a document-flow layout: drop `.app`/`.cols`/`.col` and let `.panel` stack
+    5. restore a document-flow layout: drop `.app`/`.cols`/`.col` and let `.panel` stack
   The synthesis model, the audio graph and every drawing routine are untouched by any of it.
   ============================================================================================
 -->
@@ -42,7 +40,7 @@
   .cols{
     display:grid; min-height:0; gap:6px;
     grid-template-columns:396px minmax(0,1fr) minmax(0,1fr);
-    grid-template-rows:auto minmax(0,1fr);
+    grid-template-rows:minmax(0,4fr) minmax(0,5fr);
     grid-template-areas:"ctl rails rails" "ctl specA specB";
   }
   .area-ctl{grid-area:ctl} .area-rails{grid-area:rails}
@@ -129,16 +127,6 @@
   .readoutcol{flex:0 0 150px; min-height:0; display:flex}
   #chart{flex:1 1 0; min-height:0; width:100%; height:100%}
 
-  /* DEV-ONLY: direct source-shape controls, a strip under the rails */
-  .lfrow{display:flex;gap:9px;align-items:center}
-  .lfu{display:flex;gap:4px;align-items:center;flex:1 1 0;min-width:0}
-  .lfu.mode{flex:0 0 auto}
-  .lfu > label{flex:0 0 auto;white-space:nowrap}
-  .lfu > input[type=range]{flex:1 1 auto;min-width:0}
-  .lfu > .v{flex:0 0 42px;text-align:right;font-size:9.5px;color:var(--ink);
-    font-variant-numeric:tabular-nums}
-  .lfu.mode label{display:flex;gap:3px;align-items:center;cursor:pointer;color:var(--ink);font-weight:700}
-  #figs-source.overridden{opacity:.4}
 
   /* what the model leaves out — greyed, and deliberately always on screen */
   .absent{display:grid;grid-template-columns:1fr 1fr;gap:0 10px;margin-top:1px}
@@ -244,26 +232,12 @@
 
     </div>
 
-    <!-- ============================ TOP RIGHT: rails ============================ -->
+    <!-- ============ TOP RIGHT: the tract, as a response curve and as resonances ============ -->
     <div class="col area-rails">
-      <div class="panel">
-        <div class="ptitle"><span>Resonances</span></div>
-        <div class="u" data-n="plot">
-          <svg id="plot" class="screen" viewBox="0 0 760 236" preserveAspectRatio="xMidYMid meet"></svg>
-        </div>
-        <!-- DEV-ONLY: the source shape parameters, exposed directly -->
-        <div class="lfrow">
-          <div class="u lfu mode" data-n="lfmode">
-            <label><input type="checkbox" id="lfmanual"> Manual source</label></div>
-          <div class="u lfu" data-n="lf-OQ"><label for="lf-OQ">OQ</label>
-            <input id="lf-OQ" type="range" min="0.35" max="0.95" step="0.001" value="0.45">
-            <span class="v" id="lf-OQv"></span></div>
-          <div class="u lfu" data-n="lf-Rk"><label for="lf-Rk">Rk</label>
-            <input id="lf-Rk" type="range" min="0.15" max="0.60" step="0.001" value="0.25">
-            <span class="v" id="lf-Rkv"></span></div>
-          <div class="u lfu" data-n="lf-Ra"><label for="lf-Ra">Ra</label>
-            <input id="lf-Ra" type="range" min="0.001" max="0.12" step="0.0002" value="0.004">
-            <span class="v" id="lf-Rav"></span></div>
+      <div class="panel grow">
+        <div class="u plot" data-n="filter">
+          <canvas id="tractSpec"></canvas>
+          <div class="cap">Filter response &amp; resonances</div>
         </div>
       </div>
     </div>
@@ -275,13 +249,13 @@
           <canvas id="srcSpec"></canvas>
           <div class="cap">Source spectrum</div>
         </div>
-        <div class="u plot" data-n="tractSpec">
-          <canvas id="tractSpec"></canvas>
-          <div class="cap">Filter</div>
-        </div>
         <div class="u plot" data-n="outSpec">
           <canvas id="outSpec"></canvas>
           <div class="cap">Output spectrum</div>
+        </div>
+        <div class="u plot" data-n="spectrum">
+          <canvas id="spectrum"></canvas>
+          <div class="cap">Measured spectrum</div>
         </div>
       </div>
     </div>
@@ -296,10 +270,6 @@
         <div class="u plot" data-n="scope">
           <canvas id="scope"></canvas>
           <div class="cap">Output waveform <span id="cliplbl" style="float:right">level —</span></div>
-        </div>
-        <div class="u plot" data-n="spectrum">
-          <canvas id="spectrum"></canvas>
-          <div class="cap">Measured spectrum</div>
         </div>
       </div>
     </div>
@@ -716,18 +686,12 @@
   const figInputs = {}, figVals = {};
   for (const d of FIGURE_DEFS) fig[d.id] = d.def;
 
-  // DEV-ONLY: hand control of {OQ, Rk, Ra} to the sliders under the rails. While it is off the
-  // sliders track whatever the figures resolved to, so you can watch where a figure puts them
-  // and then grab it from there.
-  let lfManual = false;
-  const lfOverride = { OQ: 0.45, Rk: 0.25, Ra: 0.004 };
-
   // vowel target: F1/F2 come from the chart, F3 from its own slider (it carries rhoticity)
   const vowel = { F1: 500, F2: 1500, F3: 2500 };
 
   // ---------- formant display state ----------  index 0 = red (bottom) ... 4 = blue (top)
   const COLORS = ["#e5484d", "#f2870a", "#f5cf3d", "#5dd28f", "#5b9cf2"];
-  const GRAY = "#6e5a3a", GRAY_TXT = "#a98a55";
+  const GRAY_TXT = "#a98a55";
   // Drag ranges for each rail. F1–F3 move the vowel target; F4/F5 move the singer's neutrals.
   // Only F1–F3 are draggable. F4 and F5 are the fourth and fifth quarter-wavelength resonances
   // of the same tube as the rest — the 500/1500/2500/3500/4500 neutral series is that tube — so
@@ -735,14 +699,13 @@
   // moves them is tract length, which is larynx_height's job, and twang, which pulls them into
   // the cluster. Giving them a grab handle implied a parity with the vowel formants that does
   // not exist.
-  const RAILS = [
-    { min: 250,  max: 900,  set: v => vowel.F1 = v },
-    { min: 700,  max: 2400, set: v => vowel.F2 = v },
-    { min: 1400, max: 3200, set: v => vowel.F3 = v },
-    { min: 2800, max: 4600 },
-    { min: 3600, max: 5800 },
+  // Clamps only — none of these are dragged any more. F1/F2 come from the vowel chart, F3 from
+  // the r-coloring slider, and F4/F5 are the same tube's higher resonances.
+  const F_LIMITS = [
+    { min: 250,  max: 900  },
+    { min: 700,  max: 2400 },
+    { min: 1400, max: 3200 },
   ];
-  const formantOn = [true, true, true, true, true];
 
   // Derived every frame from the figures; `tract` is the single source of truth for the filters.
   let src = null, tract = null;
@@ -750,28 +713,9 @@
   function recompute() {
     const f0 = f0Now();
     src = sourceFromFigures(fig, f0);
-    if (lfManual) {                                   // DEV-ONLY override
-      src.OQ = clamp(lfOverride.OQ, 0.35, 0.95);
-      src.Rk = lfOverride.Rk;
-      src.Ra = lfOverride.Ra;
-    } else {
-      lfOverride.OQ = src.OQ; lfOverride.Rk = src.Rk; lfOverride.Ra = src.Ra;
-    }
     tract = tractFromFigures(fig, vowel, singer);
     return f0;
   }
-
-  // ---------- geometry / frequency scale (log) ----------
-  const X0 = 70, X1 = 730;
-  const FMIN = 55, FMAX = 9000;
-  const RAIL_CY = { 0: 170, 1: 136, 2: 102, 3: 68, 4: 34 }; // red bottom -> blue top
-  const AXIS_Y = 205, LABEL_Y = 219;
-  const logR = Math.log(FMAX / FMIN);
-  const freqToX = f => X0 + Math.log(Math.max(FMIN, Math.min(FMAX, f)) / FMIN) / logR * (X1 - X0);
-  const xToFreq = x => FMIN * Math.exp((Math.max(X0, Math.min(X1, x)) - X0) / (X1 - X0) * logR);
-
-  const svg = document.getElementById("plot");
-  const clientXToFreq = clientX => xToFreq(svgPoint(svg, clientX, 0).x);
 
   // ---------- vowel chart (F1 vertical, F2 horizontal — IPA orientation) ----------
   const chartSvg = document.getElementById("chart");
@@ -830,77 +774,13 @@
     chartSvg.innerHTML = s;
   }
 
-  // ---------- resonance rails ----------
-  const fmtHz = v => v >= 1000 ? (v / 1000).toFixed(v % 1000 === 0 ? 0 : 1) + "k" : String(Math.round(v));
-
-  function drawRails() {
-    let s = "";
-    s += `<line x1="${X0}" y1="${AXIS_Y}" x2="${X1}" y2="${AXIS_Y}" stroke="#5a4324" stroke-width="1.5"/>`;
-    for (const t of [100,200,300,500,700,1000,2000,3000,5000,8000]) {
-      const x = freqToX(t);
-      s += `<line x1="${x}" y1="${AXIS_Y-3}" x2="${x}" y2="${AXIS_Y+3}" stroke="#6b5128" stroke-width="1"/>`;
-      s += `<text x="${x}" y="${LABEL_Y}" fill="${GRAY_TXT}" font-size="10" text-anchor="middle">${fmtHz(t)}</text>`;
-    }
-    s += `<text x="${X1}" y="${LABEL_Y+12}" fill="${GRAY_TXT}" font-size="9" text-anchor="end">Hz (log)</text>`;
-
-    const f0 = f0Now();
-    const xf = freqToX(f0);
-    s += `<line x1="${xf}" y1="22" x2="${xf}" y2="${AXIS_Y}" stroke="#ffb347" stroke-opacity="0.18" stroke-width="1" stroke-dasharray="3 4"/>`;
-    s += `<circle cx="${xf}" cy="${AXIS_Y}" r="4" fill="#ffb347" stroke="#2a1400" stroke-width="1"/>`;
-    s += `<text x="${xf}" y="${AXIS_Y-7}" fill="#ffb347" font-size="10" text-anchor="middle">f₀</text>`;
-
-    // AES cluster target — where twang is pulling F3/F4/F5
-    if (fig.twang > 0.02) {
-      const xc = freqToX(singer.Fcluster);
-      s += `<line x1="${xc}" y1="14" x2="${xc}" y2="${RAIL_CY[0]+16}" stroke="#5b9cf2" stroke-opacity="${0.15+0.35*fig.twang}" stroke-width="1" stroke-dasharray="2 5"/>`;
-      s += `<text x="${xc}" y="11" fill="#5b9cf2" fill-opacity="${0.4+0.6*fig.twang}" font-size="9.5" text-anchor="middle">AES cluster</text>`;
-    }
-
-    for (let i = RAILS.length - 1; i >= 0; i--) {
-      const cy = RAIL_CY[i], on = formantOn[i];
-      const F = tract.F[i], Ft = tract.Ftarget[i], B = tract.B[i];
-      const col = on ? COLORS[i] : GRAY;
-      const txt = on ? COLORS[i] : GRAY_TXT;
-      const lx = freqToX(F - B / 2), mx = freqToX(F), rx = freqToX(F + B / 2), tx = freqToX(Ft);
-
-      const grab = !!RAILS[i].set;
-      if (grab) {
-        s += `<line x1="${freqToX(RAILS[i].min)}" y1="${cy+12}" x2="${freqToX(RAILS[i].max)}" y2="${cy+12}" stroke="${col}" stroke-opacity="0.25" stroke-width="1.2" stroke-dasharray="2 3"/>`;
-      }
-
-      s += `<g data-toggle="1" data-i="${i}" style="cursor:pointer">`;
-      s += `<rect x="8" y="${cy-11}" width="38" height="22" rx="6" fill="${on ? col : '#241a0c'}" stroke="${col}" stroke-width="1.2"/>`;
-      s += `<text x="27" y="${cy+4}" fill="${on ? '#120c06' : txt}" font-size="11" font-weight="700" text-anchor="middle">F${i+1}</text></g>`;
-
-      // target → effective displacement (twang pull + tract-length scaling)
-      if (Math.abs(tx - mx) > 1.5) {
-        s += `<line x1="${tx}" y1="${cy}" x2="${mx}" y2="${cy}" stroke="${col}" stroke-opacity="0.5" stroke-width="1" stroke-dasharray="2 2"/>`;
-      }
-      s += `<line x1="${lx}" y1="${cy}" x2="${rx}" y2="${cy}" stroke="${col}" stroke-opacity="0.45" stroke-width="6" stroke-linecap="round"/>`;
-      s += `<line x1="${lx}" y1="${cy-8}" x2="${lx}" y2="${cy+8}" stroke="${col}" stroke-width="1.6"/>`;
-      s += `<line x1="${rx}" y1="${cy-8}" x2="${rx}" y2="${cy+8}" stroke="${col}" stroke-width="1.6"/>`;
-      s += `<line x1="${mx}" y1="${cy-13}" x2="${mx}" y2="${cy+13}" stroke="${col}" stroke-width="2"/>`;
-      // filled ring with a grab cursor where you can drag; a bare tick where the value is derived
-      s += grab
-        ? `<circle cx="${tx}" cy="${cy-15}" r="5.5" fill="#120c06" stroke="${col}" stroke-width="1.8" style="cursor:ew-resize"/>`
-        : `<line x1="${tx}" y1="${cy-19}" x2="${tx}" y2="${cy-11}" stroke="${col}" stroke-opacity="0.7" stroke-width="1.8"/>`;
-
-      const shifted = Math.abs(Ft - F) > 2;
-      s += `<text x="${X1}" y="${cy-14}" fill="${txt}" font-size="10" text-anchor="end">` +
-           `${shifted ? Math.round(Ft) + "→" : ""}F=${Math.round(F)}  B=${Math.round(B)}</text>`;
-      if (grab) s += `<rect data-handle="1" data-i="${i}" x="${tx-10}" y="${cy-23}" width="20" height="40" fill="transparent" style="cursor:ew-resize"/>`;
-    }
-
-    svg.innerHTML = s;
-  }
-
   // ---------- audio ----------
   const HEARING_TOP = 20000;
   let ctx = null, osc = null, master = null, playing = false;
   let analyser = null, scopeRAF = null, timeBuf = null, freqBuf = null;
   // source-filter graph nodes
   let srcGain = null, nasalPole = null, nasalZero = null, nasalTrim = null;
-  let sourceBus = null, formantMix = null, dryGain = null;
+  let sourceBus = null, formantMix = null;
   let humanTimer = null;
   const bp = [], fg = [];                 // per-formant bandpass + gain nodes
   // The parallel bank sums branches, so relative sign matters. F1/F2 alternate (Klatt's trick for
@@ -908,10 +788,6 @@
   // so that when twang collapses them onto one frequency they *add* instead of cancelling.
   const FORMANT_SIGN = [1, -1, 1, 1, 1];
   const FORMANT_LEVEL = 0.8;
-  // The unfiltered source is far hotter than anything the bandpass bank puts out (its energy is
-  // a narrow spike, not a resonance), so the bypass is padded to land in the same ballpark —
-  // otherwise switching every formant off jumps ~20 dB and clips.
-  const DRY_LEVEL = 0.12;
   // A fixed trim, deliberately not a per-vowel loudness fixup: twang's Ee bonus and the source's
   // own level changes are findings, not artifacts to be normalized away. Chosen so that the
   // loudest configuration in the space (a tilted, twanged voice whose F1 lands on f0) just
@@ -975,7 +851,7 @@
       sourceBus = ctx.createGain();
       sourceBus.gain.value = 1;
       nasalTrim.connect(sourceBus);
-      for (let i = 0; i < RAILS.length; i++) {
+      for (let i = 0; i < 5; i++) {
         const f = ctx.createBiquadFilter();
         f.type = "bandpass";
         const filterGain = ctx.createGain();
@@ -986,14 +862,6 @@
         bp[i] = f; fg[i] = filterGain;
       }
 
-      // dry bypass: lets the raw source through when no formant is active, so "all formants
-      // off" passes the source rather than muting it — which is how you hear the LF waveform
-      // itself, with no tract in the way.
-      dryGain = ctx.createGain();
-      dryGain.gain.value = 0;
-      sourceBus.connect(dryGain);
-      dryGain.connect(formantMix);
-
       syncFilters();
     }
     if (ctx.state === "suspended") ctx.resume();
@@ -1003,12 +871,11 @@
   function syncFilters() {
     if (!ctx) return;
     const now = ctx.currentTime;
-    for (let i = 0; i < RAILS.length; i++) {
+    for (let i = 0; i < 5; i++) {
       bp[i].frequency.setTargetAtTime(tract.F[i], now, 0.02);
       bp[i].Q.setTargetAtTime(tract.F[i] / tract.B[i], now, 0.02);
-      fg[i].gain.setTargetAtTime(formantOn[i] ? FORMANT_SIGN[i] * FORMANT_LEVEL : 0, now, 0.02);
+      fg[i].gain.setTargetAtTime(FORMANT_SIGN[i] * FORMANT_LEVEL, now, 0.02);
     }
-    dryGain.gain.setTargetAtTime(formantOn.some(Boolean) ? 0 : DRY_LEVEL, now, 0.02);
 
     const n = tract.nasal;
     nasalPole.frequency.setTargetAtTime(n.FNP, now, 0.02);
@@ -1163,15 +1030,12 @@
   function tractMag(f, sr) {
     const w = 2 * Math.PI * f / sr;
     if (w >= Math.PI) return 0;
-    let re = 0, im = 0, any = false;
+    let re = 0, im = 0;
     for (let i = 0; i < 5; i++) {
-      if (!formantOn[i]) continue;
-      any = true;
       const r = biquadResp(bandpassCoefs(tract.F[i], tract.F[i] / tract.B[i], sr), w);
       const s = FORMANT_SIGN[i] * FORMANT_LEVEL;
       re += s * r.re; im += s * r.im;
     }
-    if (!any) { re = DRY_LEVEL; im = 0; }        // the bypass, so the plot follows what you hear
     const n = tract.nasal;
     const p = biquadResp(peakingCoefs(n.FNP, n.Q, n.dB, sr), w);
     const z = biquadResp(peakingCoefs(n.FNZ, n.Q, -n.dB, sr), w);
@@ -1224,20 +1088,7 @@
     }
     stems(c, g, 6, f0, h.n, k => dB(mag(k)) - h1);
 
-    // --- panel 2: tract ---
-    c = tractCv.getContext("2d"); g = geomOf(tractCv);
-    specFrame(c, g, 24, "");
-    envelope(c, g, 24, "#5dd28f", f => dB(tractMag(f, sr)));
-    if (tract.nasal.FNZ - tract.nasal.FNP > 2) {        // markers only once the pair has separated
-      c.font = "8px sans-serif"; c.textAlign = "center";
-      for (const [f, col, lbl] of [[tract.nasal.FNP, "#f5cf3d", "pole"], [tract.nasal.FNZ, "#e5484d", "zero"]]) {
-        const x = gx(g, f);
-        c.strokeStyle = col; c.globalAlpha = 0.5;
-        c.beginPath(); c.moveTo(x, g.T); c.lineTo(x, g.H - g.B); c.stroke();
-        c.globalAlpha = 1; c.fillStyle = col;
-        c.fillText(lbl, x, g.T + 8);
-      }
-    }
+    drawFilter(sr, f0);
 
     // --- panel 3: output = panel 1 + panel 2, in dB ---
     c = outCv.getContext("2d"); g = geomOf(outCv);
@@ -1252,6 +1103,87 @@
     stems(c, g, 4, f0, h.n, k => out[k] - peak + 4);
 
     drawLfPeriod(p);
+  }
+
+  // The tract read two ways in one frame: |H(f)| as a curve, and — on a strip under it, at the
+  // same log-frequency positions — where each of the five resonances actually sits. Separating
+  // them meant that reading a peak and finding out which formant it was were different glances.
+  const STRIP = 34;                          // height of the resonance strip, in CSS px
+  function drawFilter(sr, f0) {
+    const c = tractCv.getContext("2d"), g0 = geomOf(tractCv);
+    const g = Object.assign({}, g0, { B: g0.B + STRIP });   // curve stops above the strip
+    const yTop = g.H - g.B, yBot = g0.H - g0.B;             // strip bounds
+
+    specFrame(c, g, 24, "");
+    envelope(c, g, 24, "#5dd28f", f => dB(tractMag(f, sr)));
+
+    // f0, so you can see which harmonic is sitting on which resonance
+    const xf = gx(g, f0);
+    c.strokeStyle = "#ffb347"; c.globalAlpha = 0.28; c.setLineDash([3, 4]);
+    c.beginPath(); c.moveTo(xf, g.T); c.lineTo(xf, yBot); c.stroke();
+    c.setLineDash([]); c.globalAlpha = 1;
+    c.fillStyle = "#ffb347"; c.font = "9px sans-serif"; c.textAlign = "center";
+    c.fillText("f₀", xf, g.T + 8);
+
+    // where twang is pulling F3/F4/F5
+    if (fig.twang > 0.02) {
+      const xc = gx(g, singer.Fcluster);
+      c.strokeStyle = "#5b9cf2"; c.globalAlpha = 0.2 + 0.5 * fig.twang; c.setLineDash([2, 5]);
+      c.beginPath(); c.moveTo(xc, g.T); c.lineTo(xc, yBot); c.stroke();
+      c.setLineDash([]); c.fillStyle = "#5b9cf2"; c.font = "8px sans-serif";
+      c.fillText("AES cluster", xc, g.T + 17);
+      c.globalAlpha = 1;
+    }
+
+    if (tract.nasal.FNZ - tract.nasal.FNP > 2) {        // markers only once the pair has separated
+      c.font = "8px sans-serif"; c.textAlign = "center";
+      for (const [f, col, lbl] of [[tract.nasal.FNP, "#f5cf3d", "pole"], [tract.nasal.FNZ, "#e5484d", "zero"]]) {
+        const x = gx(g, f);
+        c.strokeStyle = col; c.globalAlpha = 0.5;
+        c.beginPath(); c.moveTo(x, g.T); c.lineTo(x, yTop); c.stroke();
+        c.globalAlpha = 1; c.fillStyle = col;
+        c.fillText(lbl, x, g.T + 8);
+      }
+    }
+
+    // --- the resonances, on the same x axis as the curve above them ---
+    c.strokeStyle = "#3a2a13"; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(g.L, yTop); c.lineTo(g.W - g.R, yTop); c.stroke();
+
+    const yBar = yTop + 15;
+    for (let i = 4; i >= 0; i--) {
+      const col = COLORS[i], F = tract.F[i], Ft = tract.Ftarget[i], B = tract.B[i];
+      const x = gx(g, F), xt = gx(g, Ft);
+      const lo = gx(g, Math.max(SPEC_FMIN, F - B / 2)), hi = gx(g, F + B / 2);
+
+      // a dropline from the peak it is responsible for, down into the strip
+      c.strokeStyle = col; c.globalAlpha = 0.32; c.lineWidth = 1;
+      const yPeak = clamp(gy(g, dB(tractMag(F, sr)), 24), g.T, yTop);
+      c.beginPath(); c.moveTo(x, yPeak); c.lineTo(x, yBar); c.stroke();
+      c.globalAlpha = 1;
+      c.fillStyle = col;
+      c.beginPath(); c.arc(x, yPeak, 2.4, 0, 7); c.fill();
+
+      // bandwidth span, then the centre
+      c.strokeStyle = col; c.globalAlpha = 0.45; c.lineWidth = 5;
+      c.beginPath(); c.moveTo(lo, yBar); c.lineTo(hi, yBar); c.stroke();
+      c.globalAlpha = 1; c.lineWidth = 2;
+      c.beginPath(); c.moveTo(x, yBar - 6); c.lineTo(x, yBar + 6); c.stroke();
+
+      // the raw target, and what the figures did to it
+      if (Math.abs(xt - x) > 1.5) {
+        c.globalAlpha = 0.55; c.lineWidth = 1; c.setLineDash([2, 2]);
+        c.beginPath(); c.moveTo(xt, yBar); c.lineTo(x, yBar); c.stroke();
+        c.setLineDash([]); c.globalAlpha = 1;
+      }
+      c.lineWidth = 1.6;
+      c.beginPath(); c.arc(xt, yBar, 3.4, 0, 7); c.stroke();
+
+      // label, alternating side so a formed cluster does not overprint itself
+      c.font = "8px sans-serif"; c.textAlign = "center"; c.fillStyle = col;
+      c.fillText(`F${i + 1} ${Math.round(F)}`, x, i % 2 ? yBar + 15 : yBar - 9);
+    }
+    c.lineWidth = 1;
   }
 
   function drawLfPeriod(p) {
@@ -1296,7 +1228,7 @@
     const p = lfShape(f0, src.OQ, src.Rk, src.Ra);
     const rd = rdDiagnostic(src.Ra);
     const cells = [
-      ["OQ", src.OQ.toFixed(3), lfManual ? "manual" : "pitch-invariant"],
+      ["OQ", src.OQ.toFixed(3), "pitch-invariant"],
       ["Rk", src.Rk.toFixed(3), ""],
       ["Ra", src.Ra.toFixed(4), p.taClamped ? "clamped: Ra ≥ 1−OQ" : ""],
       ["Rg", p.Rg.toFixed(2), ""],
@@ -1305,7 +1237,7 @@
       ["tp / te", `${(p.tp * 1000).toFixed(2)}/${(p.te * 1000).toFixed(2)} ms`, ""],
       ["Eₑ", eeEffective().toFixed(2), `${EE_NOMINAL} × twang, +${(20 * Math.log10(tract.eeBonus)).toFixed(1)} dB`],
       ["Rd diag", rd.toFixed(2), rd < 0.3 || rd > 2.7 ? "outside speech stats" : ""],
-      ["cluster", `${(formantOn[2] ? tract.w3 : 0) > 0.5 ? 3 : 2} members`, tract.w3 < 1 ? "F3 held low by /r/" : ""],
+      ["cluster", `${tract.w3 > 0.5 ? 3 : 2} members`, tract.w3 < 1 ? "F3 held low by /r/" : ""],
     ];
     readoutEl.innerHTML = cells.map(([k, v, note]) =>
       `<div class="${/clamped|outside/.test(note) ? "warn" : ""}">${k} <b>${v}</b>` +
@@ -1369,7 +1301,6 @@
       c.fillText(f >= 1000 ? (f / 1000) + "k" : f, x, H - 2);
     }
     for (let i = 0; i < 5; i++) {                                     // effective formant centers
-      if (!formantOn[i]) continue;
       const x = xOf(tract.F[i]);
       c.strokeStyle = "rgba(255,179,71,0.5)"; c.beginPath(); c.moveTo(x, 0); c.lineTo(x, base); c.stroke();
     }
@@ -1405,55 +1336,27 @@
   function drawAll() {
     fitCanvases();
     drawDial();
-    drawRails();
     drawChart();
     drawReadout();
     drawModelSpectra();
     updateSideLabels();
-    syncLfSliders();          // DEV-ONLY
   }
 
   // ---------- interaction ----------
-  let drag = null;
-  svg.addEventListener("pointerdown", e => {
-    const tog = e.target.closest("[data-toggle]");
-    if (tog) {
-      const i = +tog.dataset.i;
-      formantOn[i] = !formantOn[i];
-      apply();
-      return;
-    }
-    const h = e.target.closest("[data-handle]");
-    if (!h) return;
-    drag = +h.dataset.i;
-    e.preventDefault();
-  });
-  window.addEventListener("pointermove", e => {
-    if (drag !== null) {
-      const r = RAILS[drag];
-      r.set(clamp(clientXToFreq(e.clientX), r.min, r.max));
-      if (drag === 2) f3El.value = String(Math.round(vowel.F3));
-      apply();
-    } else if (chartDrag) {
-      setFromChart(e.clientX, e.clientY);
-    }
-  });
-  window.addEventListener("pointerup", () => { drag = null; chartDrag = false; });
-
   // ---------- vowel-chart interaction ----------
   let chartDrag = false;
   function setFromChart(clientX, clientY) {
     const { x, y } = svgPoint(chartSvg, clientX, clientY);
-    vowel.F2 = clamp(F2HI - (x - CX0) / (CX1 - CX0) * (F2HI - F2LO), RAILS[1].min, RAILS[1].max);
-    vowel.F1 = clamp(F1LO + (y - CY0) / (CY1 - CY0) * (F1HI - F1LO), RAILS[0].min, RAILS[0].max);
+    vowel.F2 = clamp(F2HI - (x - CX0) / (CX1 - CX0) * (F2HI - F2LO), F_LIMITS[1].min, F_LIMITS[1].max);
+    vowel.F1 = clamp(F1LO + (y - CY0) / (CY1 - CY0) * (F1HI - F1LO), F_LIMITS[0].min, F_LIMITS[0].max);
     apply();
   }
   chartSvg.addEventListener("pointerdown", e => {
     const v = e.target.closest("[data-vowel]");
     if (v) {
-      vowel.F1 = clamp(+v.dataset.f1, RAILS[0].min, RAILS[0].max);
-      vowel.F2 = clamp(+v.dataset.f2, RAILS[1].min, RAILS[1].max);
-      vowel.F3 = clamp(+v.dataset.f3, RAILS[2].min, RAILS[2].max);
+      vowel.F1 = clamp(+v.dataset.f1, F_LIMITS[0].min, F_LIMITS[0].max);
+      vowel.F2 = clamp(+v.dataset.f2, F_LIMITS[1].min, F_LIMITS[1].max);
+      vowel.F3 = clamp(+v.dataset.f3, F_LIMITS[2].min, F_LIMITS[2].max);
       f3El.value = String(Math.round(vowel.F3));
       apply();
     } else {
@@ -1514,33 +1417,6 @@
 
   playBtn.addEventListener("click", () => playing ? stop() : start());
 
-  // DEV-ONLY: manual source-shape sliders
-  const lfManualEl = document.getElementById("lfmanual");
-  const LF_KEYS = ["OQ", "Rk", "Ra"];
-  const lfInputs = {}, lfVals = {};
-  for (const k of LF_KEYS) {
-    lfInputs[k] = document.getElementById("lf-" + k);
-    lfVals[k] = document.getElementById("lf-" + k + "v");
-    lfInputs[k].addEventListener("input", () => {
-      lfOverride[k] = parseFloat(lfInputs[k].value);
-      if (!lfManual) setLfManual(true);              // grabbing a slider takes the wheel
-      else apply();
-    });
-  }
-  function setLfManual(on) {
-    lfManual = on;
-    lfManualEl.checked = on;
-    document.getElementById("figs-source").classList.toggle("overridden", on);
-    apply();
-  }
-  lfManualEl.addEventListener("change", () => setLfManual(lfManualEl.checked));
-  function syncLfSliders() {
-    for (const k of LF_KEYS) {
-      if (!lfManual) lfInputs[k].value = String(lfOverride[k]);
-      lfVals[k].textContent = k === "Ra" ? lfOverride[k].toFixed(4) : lfOverride[k].toFixed(3);
-    }
-  }
-
   window.addEventListener("resize", () => scheduleDraw());
 
   //#region dev-notes
@@ -1584,21 +1460,11 @@
 
     ["absent", "Not modeled",
      "Of the thirteen figures: five modeled, two half-modeled, two collapsed into the vowel target, four set aside. Each omission is an assumption that buys the orthogonality the rest of the model rests on — on screen so that a missing effect reads as a known limit, not a bug."],
-    ["lfmode", "Manual source override",
-     "Temporary. The three sliders normally follow whatever the figures worked out; touching one freezes them so you can drive the waveform directly. The source figures grey out while it is on."],
-    ["lf-OQ", "OQ — open quotient",
-     "The fraction of each cycle the glottis is open, so te lands at exactly OQ·T. Low = pressed and buzzy, high = thin. Body-cover and pitch drift both end up here."],
-    ["lf-Rk", "Rk — pulse skew",
-     "How lopsided the open phase is. Low = the flow peak comes late and shutoff is abrupt. Along with OQ it sets the glottal formant at Rg·f₀, the bump in panel 1."],
-    ["lf-Ra", "Ra — return time",
-     "How long closure takes, as a fraction of the period. This is the spectral tilt: the knee sits at 1/(2π·ta). Push it up and watch panel 1 fold over. It clamps if it will not fit under (1 − OQ)."],
 
-    ["plot", "Resonance rails",
-     "Five log-frequency rails. Ring = what you set, bar = where the figures put it (width = bandwidth), dots = the displacement. F1–F3 have grab rings because they are articulatory; F4 and F5 get a bare tick, since they are the same tube's higher resonances and only tract length and twang move them. The F1–F5 buttons mute one resonance at a time."],
     ["srcSpec", "Panel 1 — source spectrum",
      "The harmonics actually being played, normalised to H1 = 0 dB. Green = glottal formant, blue = tilt knee. The slope is −6 dB/oct, not −12, because this is the flow derivative."],
-    ["tractSpec", "Panel 2 — tract transfer function",
-     "The filter alone, computed from the same coefficients Web Audio is running. The five bandpasses sum with signs [+,−,+,+,+] so the twang cluster adds instead of cancelling."],
+    ["filter", "Filter response & resonances",
+     "The tract in both readings at once. The curve is |H(f)| computed from the same coefficients Web Audio is running — five bandpasses summed with signs [+,−,+,+,+], so the twang cluster adds instead of cancelling — and the strip below it says where each resonance sits: bar = effective centre with its bandwidth, ring = the raw target, dotted line = what the figures did to it. The two used to be separate panes, which meant reading a peak and finding out which formant it was were different glances."],
     ["outSpec", "Panel 3 — radiated spectrum",
      "Panel 1 + panel 2, added in dB. All three share a dB-per-pixel scale so that is visible rather than merely claimed. Move f₀ until a harmonic hits a formant and watch it jump."],
     ["lfWave", "Flow derivative, one period",
