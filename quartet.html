@@ -203,9 +203,11 @@
   .vstrip .vhd{display:flex;align-items:center;gap:8px}
   .vstrip .nm{font-weight:700;text-transform:capitalize;font-size:11px;min-width:34px}
   .vstrip .vinfo{flex:1;min-width:0;font-size:10px;color:#c9b78f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  /* the four timbre params share one row as equal columns (label / slider / value stacked), so they
-     stay on a single row from ~280px phones up to desktop instead of wrapping when space is tight */
+  /* timbre params share a row as equal columns (label / slider / value stacked) */
   .vstrip .params{display:flex;gap:6px}
+  /* the six Estill figures: three per line at strip widths, six across when there's room */
+  .vstrip .figrow{flex-wrap:wrap;row-gap:4px}
+  .vstrip .figrow .vparam{flex:1 1 30%;min-width:56px}
   .vparam{flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:1px}
   .vparam label{font-size:9px;color:#a98a55;letter-spacing:.3px;text-align:center}
   .vparam input[type=range]{width:100%;min-width:0;max-width:none;vertical-align:middle}
@@ -324,7 +326,12 @@
 <script>
 (() => {
   // ============================================================ shared helpers
+  //#region math-utils — the two the voice-model regions below depend on, in their own region so a
+  // test can load `['math-utils','lf-source']` out of this file the same way it does out of
+  // voice-synth.html.
   const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+  const lerp = (a,b,t)=>a+(b-a)*t;
+  //#endregion math-utils
   const rval = s => { const [n,d]=s.split("/").map(Number); return n/d; };
   const octRed = v => { while(v>=2)v/=2; while(v<1)v*=2; return v; };
   const gcd = (a,b)=>{ a=Math.abs(a); b=Math.abs(b); while(b){ [a,b]=[b,a%b]; } return a; };
@@ -346,8 +353,15 @@
   // stays the single source of truth. Snapshots are the atom of a sequence slot; persistence is the
   // sequence JSON document (see the sequencer section). A version field + normalizeSnapshot filling
   // any omitted field (and dropping extras) is what keeps older/newer saved documents loadable.
-  const SCHEMA_VERSION = 1;
+  // v2 replaced the per-voice timbre pair {bri, nas} — falloff exponent and bandwidth fraction of
+  // the old 1/n^e source — with the six Estill figures, which is not a remapping: there is no
+  // brightness in the new model to carry a v1 value into. A v1 document therefore loads with
+  // default figures (normalizeSnapshot drops fields it doesn't know) and everything else intact.
+  const SCHEMA_VERSION = 2;
   const VOICE_MODES = ["voice","sine","sawtooth","triangle","square"];
+  // The per-voice figure keys, in wire order. Kept short because they repeat four times per slot
+  // and a sequence is base64'd into a URL.
+  const FIG_KEYS = ["bc","tt","lh","vel","lip","tw"];
 
   function defaultSnapshot(d){
     return {
@@ -388,13 +402,16 @@
       voices: D.voices.map((dv,i) => {
         const rv = Array.isArray(raw.voices) ? raw.voices[i] : null;
         if(!rv || typeof rv !== "object") return {...dv};
-        return {
-          bri: _num(rv.bri, dv.bri), nas: _num(rv.nas, dv.nas), f3: _num(rv.f3, dv.f3),
+        const out = {
+          f3: _num(rv.f3, dv.f3),
           lvl: _num(rv.lvl, dv.lvl), bend: _num(rv.bend, dv.bend),
           mode: VOICE_MODES.includes(rv.mode) ? rv.mode : dv.mode,
           mute: _bool(rv.mute, dv.mute),
           f1: _num(rv.f1, dv.f1), f2: _num(rv.f2, dv.f2),
         };
+        // figures are all 0..1, so they can be clamped here rather than by whatever reads them
+        for(const k of FIG_KEYS) out[k] = Math.max(0, Math.min(1, _num(rv[k], dv[k])));
+        return out;
       }),
     };
   }
@@ -579,14 +596,14 @@
   const VOICE_NAMES = ["bass","bari","lead","tenor"];             // L→R = synths 1..4
   const VOICE_TAGS  = ["Bs","Br","L","T"];                        // short tags for the vowel-chart dots
   const GRAY_TXT="#a98a55";
-  // F1/F2 move per voice (vowel chart); F3 is the global "color"; F4/F5 are fixed
-  const DEFAULT_FORMANTS = [
-    {F:500, min:250, max:900, fixed:false, on:true},
-    {F:1500,min:700, max:2300,fixed:false, on:true},
-    {F:2500,min:1800,max:3000,fixed:false, on:true},
-    {F:3500,min:3500,max:3500,fixed:true,  on:true},
-    {F:4500,min:4500,max:4500,fixed:true,  on:true},
-  ];
+  // Per voice the user sets a *vowel target*, not a formant: F1/F2 from the vowel chart, F3 from its
+  // own slider (F3 carries rhoticity, which is why it is articulatory and can be held out of the
+  // twang cluster). The resonances that actually reach the filter bank are derived from the target
+  // by tractFromFigures — larynx height, lip protrusion and twang all move them — so there is no
+  // stored formant array any more, and F4/F5 have no per-voice existence at all: they are the
+  // fourth and fifth quarter-wavelength resonances of the same tube, and come from `singer`.
+  const VOWEL_RANGE = { F1:[250,900], F2:[700,2300], F3:[1800,3000] };
+  const DEFAULT_VOWEL = { F1:500, F2:1500, F3:2500 };
 
   const CVBW=380,CVBH=300,CX0=46,CX1=356,CY0=18,CY1=250;
   const F1LO=250,F1HI=900,F2HI=2400,F2LO=700;
@@ -620,22 +637,313 @@
     moveAll:true,            // default ON: sliders + vowel-chart drags gang across all four voices
                              // (mute/solo are always per-voice — this only governs *moving* things)
   };
-  const DEFAULT_SRCEXP=1.2, DEFAULT_BWFRAC=0.06;
-  // typical ranges for the per-voice falloff × bandwidth pads (axes limited to realistic values)
-  const TYP_F0=0.8, TYP_F1=1.8, TYP_B0=0.04, TYP_B1=0.09;
-  const PADW=170, PADH=120, PPX0=18, PPX1=162, PPY0=8, PPY1=98;
-  const padX=s=>PPX0+(s-TYP_F0)/(TYP_F1-TYP_F0)*(PPX1-PPX0);
-  const padY=b=>PPY1-(b-TYP_B0)/(TYP_B1-TYP_B0)*(PPY1-PPY0);
-  const bwOf = (fm,bwFrac) => Math.max(60, fm.F*bwFrac);
+  // The six Estill figures a voice carries. Order is the order they appear in each strip; `wire`
+  // is the short key the save format uses and must stay in step with FIG_KEYS in the snapshot
+  // region (which is DOM-free and so can't reach this table).
+  const FIGURE_DEFS = [
+    { id:"body_cover",     wire:"bc",  lab:"cover", def:0.0, hint:"thick → thin"     },
+    { id:"thyroid_tilt",   wire:"tt",  lab:"tilt",  def:0.0, hint:"vertical → tilted"},
+    { id:"larynx_height",  wire:"lh",  lab:"laryn", def:0.5, hint:"low → high"       },
+    { id:"velum",          wire:"vel", lab:"velum", def:0.0, hint:"raised → lowered" },
+    { id:"lip_protrusion", wire:"lip", lab:"lips",  def:0.0, hint:"spread → protruded"},
+    { id:"twang",          wire:"tw",  lab:"twang", def:0.2, hint:"wide → narrow AES"},
+  ];
+  const defaultFigures = () => Object.fromEntries(FIGURE_DEFS.map(d=>[d.id,d.def]));
   const HEARING_TOP=20000;
   const VIB_RATE=5.5, FORMANT_LEVEL=0.8;   // jitter (random pitch) & shimmer (random amplitude) are in state
-  // Pinned master gain (no user slider). Gain-staged from an offline-render sweep of the actual graph:
-  // the worst-case four-voice peak at per-voice max (0 dB) is ~2.17 at unity master, so 0.36 keeps it
-  // to ~-2 dBFS (never clips), while one voice at the slider's -48 dB floor lands ~-65 dBFS (the
-  // quietest still-audible level at full system volume). Per-voice level range is set to match.
-  const MASTER_GAIN=0.36;
+  // The parallel bank sums branches, so relative sign matters: F1/F2 alternate, F3/F4/F5 share a
+  // sign so that when twang collapses them onto one frequency they add instead of cancelling.
+  const FORMANT_SIGN=[1,-1,1,1,1];
+  // Per-voice trim on the summed formant bank. Deliberately NOT a per-vowel loudness normalizer:
+  // the level a configuration comes out at is a finding, not an artifact — twang's Ee bonus is the
+  // whole reason twang is worth having, and normalizing it away would erase it. Same value as
+  // voice-synth.html, so a single quartet voice matches the single-voice instrument.
+  const OUTPUT_TRIM=5.5;
+  // Fixed nominal glottal drive. Effort is not a control anywhere in this model; twang is the only
+  // figure that moves Ee (see tract.eeBonus), so loudness is a consequence of the figures.
+  const EE_NOMINAL=0.6;
+  // Pinned master gain (no user slider), re-staged for the LF source — and it had to drop about
+  // 8 dB, which is worth understanding rather than tuning away.
+  //
+  // The old source was normalized: normGain() held loudness constant as the vowel changed, so the
+  // loudest reachable setting was barely above the typical one and 0.36 fit everything. Nothing
+  // normalizes now, on purpose — twang buying 4.6 dB of output for no extra effort is the finding,
+  // not an artifact — so the space spans ~20 dB end to end. Measured (steady-state response of
+  // this exact node graph, swept over the figure corners × four vowels × E2–A4): a single voice
+  // peaks at 0.62 in the median configuration, 1.77 at the 95th percentile, and 5.74 in the
+  // all-figures-at-1 corner.
+  //
+  // Four voices is a genuine 4x, not a pessimistic bound: in just intonation the periods are
+  // small-integer related, so the glottal pulses really do coincide — which is the same
+  // coincidence the app exists to demonstrate. 0.14 keeps the four-voice peak inside full scale
+  // through the 95th percentile and puts the default quartet at about -13 dBFS; the extreme
+  // corners still clip at the hardware clamp, and that is the deliberate trade.
+  const MASTER_GAIN=0.14;
   // Jitter & shimmer are now global on/off toggles; these are their "on" magnitudes (0 when off).
   const JITTER_AMT=4, SHIMMER_AMT=0.04;
+
+  // ============================================================ voice model (Estill / LF)
+  // Both regions below are copied VERBATIM from voice-synth.html, which is where the model is
+  // developed and where its plots live. test/estill-parity.test.mjs asserts the two copies are
+  // byte-identical, so a change made there has to be brought here deliberately rather than
+  // letting the quartet quietly drift onto an older voice. Both are pure and DOM-free; the
+  // per-voice glue that drives them is in the audio section below.
+
+  //#region lf-source
+  // Liljencrants–Fant glottal source, generating the flow *derivative* dU/dt.
+  //
+  // Radiated pressure at the lips is proportional to d/dt of the volume flow leaving them.
+  // Differentiation and the tract filter are both LTI, so they commute and the derivative can
+  // move upstream of the filter — which means generating dU/dt here bakes lip radiation in and
+  // no separate radiation stage exists anywhere downstream. (The model this replaced used a
+  // 1/n^e harmonic stack, which is the spectrum of glottal *flow*, and never applied the
+  // derivative: it was ~6 dB/oct too dark everywhere. The old `brightness` knob was silently
+  // compensating for that, which is why it is gone rather than remapped.)
+  //
+  // One period, with Ee normalized to 1:
+  //   open   0 ≤ t ≤ te :  E(t) = E0·e^(αt)·sin(ω_g t),  ω_g = π/tp
+  //   return te ≤ t ≤ tc:  E(t) = −(1/(ε·ta))·[e^(−ε(t−te)) − e^(−ε(tc−te))]
+  // α is solved so net flow over the cycle is zero; ε from the return-phase area constraint.
+  // Both are numerical solves done once per parameter change, never per sample.
+
+  // Timing landmarks from {f0, OQ, Rk, Ra}. Note te lands at exactly OQ·T:
+  //   te = tp(1+Rk), tp = 1/(2·Rg·f0), Rg = (1+Rk)/(2·OQ)  ⟹  te = OQ/f0.
+  function lfTiming(f0, OQ, Rk, Ra) {
+    const T = 1 / f0;
+    const Rg = (1 + Rk) / (2 * OQ);
+    const tp = 1 / (2 * Rg * f0);
+    const te = tp * (1 + Rk);
+    const Ta = T - te;                       // the window the return phase has to finish in
+    // ε only has a root when ta fits inside that window, i.e. Ra < 1−OQ. A high open quotient
+    // therefore caps how much spectral tilt is reachable; clamp and report it rather than NaN.
+    const taWanted = Ra * T;
+    const ta = Math.min(taWanted, 0.9 * Ta);
+    return { T, Rg, tp, te, ta, tc: T, Ta, taClamped: ta < taWanted - 1e-15 };
+  }
+
+  // ε·ta = 1 − e^(−ε·Ta). f is >0 for small ε and <0 at ε = 1/ta, so the root is bracketed.
+  function solveEpsilon(ta, Ta) {
+    let lo = 1e-12, hi = 1 / ta;
+    for (let i = 0; i < 90; i++) {
+      const m = 0.5 * (lo + hi);
+      if (1 - Math.exp(-m * Ta) - m * ta > 0) lo = m; else hi = m;
+    }
+    return 0.5 * (lo + hi);
+  }
+
+  // ∫ of the return phase (always negative: the derivative climbs from −Ee back to 0).
+  function returnArea(eps, ta, Ta) {
+    const e = Math.exp(-eps * Ta);
+    return -(1 / (eps * ta)) * ((1 - e) / eps - Ta * e);
+  }
+
+  // ∫ of the open phase, with E0 folded in so the e^(αte) factors cancel and nothing overflows.
+  function openArea(a, te, wg) {
+    const s = Math.sin(wg * te), c = Math.cos(wg * te);
+    return -((a * s - wg * c) + wg * Math.exp(-a * te)) / (s * (a * a + wg * wg));
+  }
+
+  // Net flow over the cycle is zero ⟺ openArea(α) + returnArea = 0. Monotone decreasing in α
+  // over the bracket, so bisection is both simpler and more robust here than Newton.
+  function solveAlpha(te, wg, Aret) {
+    const g = a => openArea(a, te, wg) + Aret;
+    let lo = -300 / te, hi = 300 / te;
+    for (let i = 0; i < 120; i++) {
+      const m = 0.5 * (lo + hi);
+      if (g(m) > 0) lo = m; else hi = m;
+    }
+    return 0.5 * (lo + hi);
+  }
+
+  function lfShape(f0, OQ, Rk, Ra) {
+    const t = lfTiming(f0, OQ, Rk, Ra);
+    const wg = Math.PI / t.tp;
+    const eps = solveEpsilon(t.ta, t.Ta);
+    const alpha = solveAlpha(t.te, wg, returnArea(eps, t.ta, t.Ta));
+    return Object.assign(t, { wg, eps, alpha, expEpsTa: Math.exp(-eps * t.Ta), OQ, Rk, Ra });
+  }
+
+  // dU/dt at time t within one period, with Ee = 1 (so E(te) = −1 exactly).
+  function lfSample(p, t) {
+    if (t <= p.te) {
+      // Written as e^(α(t−te)) rather than E0·e^(αt) so the exponent is never positive.
+      return -Math.sin(p.wg * t) / Math.sin(p.wg * p.te) * Math.exp(p.alpha * (t - p.te));
+    }
+    return -(1 / (p.eps * p.ta)) * (Math.exp(-p.eps * (t - p.te)) - p.expEpsTa);
+  }
+
+  // Fant's single shape parameter, kept only as a readout: it says how far a configuration sits
+  // from natural-speech statistics. Deliberately NOT used as an input — collapsing {OQ, Rk, Ra}
+  // onto one axis would re-impose exactly the covariance a trained voice is able to break.
+  // Nothing on screen shows this since the status readout came out — it stays because it is a
+  // statement about the model (section 3.3: how far a configuration sits from natural-speech
+  // statistics) and the test suite is what consumes it.
+  const rdDiagnostic = Ra => (Ra * 100 + 1) / 4.8;
+
+  // --- one period → harmonic amplitudes ------------------------------------------------------
+  // The tract is a bank of IIR biquads, which argues for a time-domain source. But a sample-wise
+  // LF generator in Web Audio needs an AudioWorklet, and these apps must open from a bare file://
+  // with no module fetch. So: sample one period, FFT it, and hand the harmonics to a
+  // PeriodicWave. That is exact up to band-limiting — and band-limiting is a feature here,
+  // because the LF corner at te is sharp enough that a naive time-domain generator would alias.
+  const LF_FFT = 4096;
+  const twC = new Float64Array(LF_FFT / 2), twS = new Float64Array(LF_FFT / 2);
+  for (let i = 0; i < LF_FFT / 2; i++) {
+    twC[i] = Math.cos(-2 * Math.PI * i / LF_FFT);
+    twS[i] = Math.sin(-2 * Math.PI * i / LF_FFT);
+  }
+  function fftInPlace(re, im) {
+    const n = re.length;
+    for (let i = 1, j = 0; i < n; i++) {
+      let bit = n >> 1;
+      for (; j & bit; bit >>= 1) j ^= bit;
+      j ^= bit;
+      if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+    }
+    for (let len = 2; len <= n; len <<= 1) {
+      const half = len >> 1, step = n / len;
+      for (let i = 0; i < n; i += len) {
+        for (let k = 0, ti = 0; k < half; k++, ti += step) {
+          const cr = twC[ti], ci = twS[ti];
+          const xr = re[i + k + half], xi = im[i + k + half];
+          const vr = xr * cr - xi * ci, vi = xr * ci + xi * cr;
+          const ur = re[i + k], ui = im[i + k];
+          re[i + k] = ur + vr; im[i + k] = ui + vi;
+          re[i + k + half] = ur - vr; im[i + k + half] = ui - vi;
+        }
+      }
+    }
+  }
+
+  // Cosine/sine coefficients for harmonics 1..nMax, in PeriodicWave's {real, imag} convention.
+  const fftRe = new Float64Array(LF_FFT), fftIm = new Float64Array(LF_FFT);
+  function lfHarmonics(p, nMax) {
+    const re = fftRe, im = fftIm;
+    im.fill(0);
+    for (let i = 0; i < LF_FFT; i++) re[i] = lfSample(p, i / LF_FFT * p.T);
+    fftInPlace(re, im);
+    const n = Math.min(nMax, LF_FFT / 2 - 1);
+    const real = new Float32Array(n + 1), imag = new Float32Array(n + 1);
+    for (let k = 1; k <= n; k++) { real[k] = 2 * re[k] / LF_FFT; imag[k] = -2 * im[k] / LF_FFT; }
+    return { real, imag, n };
+  }
+  //#endregion lf-source
+
+  //#region estill-map
+  // Estill figures → signal parameters. The organizing assumption is orthogonality: the pedagogy
+  // asserts each structure is separately controllable by a trained singer, so the couplings a
+  // real larynx shows are deliberately suppressed here. Every such suppression is commented, so
+  // that a later reader does not "fix" one back in.
+
+  const PULL_FLOOR = 2200.0; // below this a resonance is articulatory and will not join the cluster
+
+  // 4.1 body_cover (0 thick → 1 thin): primarily OQ, secondarily Rk.
+  // 4.2 thyroid_tilt (0 vertical → 1 tilted): Ra alone. In a real larynx tilt also raises OQ;
+  //     that coupling is suppressed so tilt stays a pure spectral-tilt axis.
+  //
+  // 4.3 cricoid_tilt is SET ASIDE for now, so OQ is currently pitch-invariant. It was not a
+  // parameter but a constraint relaxation: untrained voices thin out as they ascend, and cricoid
+  // tilt is permission to hold OQ low at pitch. The implementation was one line —
+  //
+  //     drift = max(0, 0.15 · log2(f0 / F0_REF) · (1 − cricoid_tilt));  OQ = OQbase + drift
+  //
+  // — and the problem is F0_REF. It was a single global 220 Hz, but a reference pitch is a
+  // property of the singer, not of the piece: with max(0, …) a bass never drifted at all, so the
+  // figure was dead below A3 and the drift you measured between two voices mostly reported which
+  // part they sang. Restore it with F0_REF moved into the singer config, per part.
+  //
+  // Cost of setting it aside: Belt no longer *emerges*. It is still a reachable recipe (thick
+  // folds, high larynx, narrow AES), but the claim the spec calls the model's main correctness
+  // test — that OQ stays near 0.45 at f0 = 440 rather than drifting — is currently untestable,
+  // because nothing makes OQ depend on f0 at all.
+  function sourceFromFigures(fig, f0) {
+    const OQbase = lerp(0.45, 0.68, fig.body_cover);
+    const Rk = lerp(0.25, 0.45, fig.body_cover);
+    const Ra = lerp(0.004, 0.075, fig.thyroid_tilt);
+    return { OQbase, drift: 0, Rk, Ra, OQ: clamp(OQbase, 0.35, 0.95) };
+  }
+
+  // 4.4 onset/offset of the true vocal folds is NOT modeled — the figure is gone, both halves.
+  // It used to be envelope timing on Ee (glottal: 3 ms with a 1.25x overshoot and a briefly
+  // depressed OQ; simultaneous: 25 ms), with aspirate unreachable for want of a noise channel.
+  // Notes now start and stop on a plain fixed fade, short enough not to be heard as an attack
+  // shape at all. Nothing about the beginning or end of a note here is a claim about production.
+
+  // 5.2 Proximity weight: a resonance held low by articulation does not join the AES cluster.
+  // 1.0 for a plain vowel, 0.0 for an American /r/.
+  const pull = F => F >= PULL_FLOOR ? 1 : Math.max(0, 1 - (PULL_FLOOR - F) / 500);
+
+  // 5.1 larynx_height is a tract-length scale, at full weight on F1/F2 and half weight on the
+  //     F3/F4/F5 cluster (the epilarynx tube's length changes less than the whole tract).
+  //     Modeled as pure length: it ignores the hypopharynx widening a low larynx also produces,
+  //     so low-larynx qualities come out a little thin.
+  // 5.4 lip_protrusion lengthens the tract too — an effect (F1,F2) alone cannot express. Weighted
+  //     down on F1, which is dominated by the back cavity.
+  // 5.2 twang narrows the aryepiglottic sphincter: the epilarynx tube decouples and resonates
+  //     near 3 kHz, and F3/F4/F5 converge on it. Three moderate peaks in one band sum to one
+  //     large one, and because the epilarynx sits upstream of the tongue the peak survives vowel
+  //     changes — which is why F1, F2 and any articulatorily-held F3 must be left alone.
+  // 8.1 velum separates a permanently-present nasal pole/zero pair rather than switching filter
+  //     sections in. Continuity is required by the pedagogy, not just by DSP hygiene: velum has
+  //     three positions and mid is a real trained option.
+  function tractFromFigures(fig, vowel, singer) {
+    const sLar = 1.0 + 0.12 * (2 * fig.larynx_height - 1);   // 0.88 … 1.12
+    const sLip = 1.0 - 0.05 * fig.lip_protrusion;
+    const half = 1 + 0.5 * (sLar - 1);
+    const lipW = w => 1 + w * (sLip - 1);
+    const tw = fig.twang;
+
+    const F1 = vowel.F1 * sLar * lipW(0.4);
+    const F2 = vowel.F2 * sLar * lipW(1.0);
+    const F3a = vowel.F3 * half * sLip;        // articulatory F3 target, length-scaled
+    const F4n = singer.F4 * half * sLip;
+    const F5n = singer.F5 * half * sLip;
+    const Fc = singer.Fcluster * half * sLip;
+
+    const w3 = pull(F3a);
+    const F = [F1, F2, lerp(F3a, Fc - 200, tw * w3), lerp(F4n, Fc + 50, tw), lerp(F5n, Fc + 350, tw)];
+
+    const B = singer.B.slice();
+    B[0] = lerp(B[0], B[0] * 2.4, fig.velum);   // nasal coupling really does add damping…
+    B[2] = lerp(B[2], B[2] * 0.6, tw * w3);     // …and the cluster narrows as it forms
+    B[3] = lerp(B[3], B[3] * 0.6, tw);
+    B[4] = lerp(B[4], B[4] * 0.6, tw);
+
+    return {
+      F, B, w3,
+      // Coincident pole and zero multiply to exactly 1. Nasality is introduced by separating
+      // them, so velum = 0 is a true bypass with no click and no residual coloration.
+      nasal: { FNP: 270.0, FNZ: lerp(270.0, 450.0, fig.velum), Q: 2.7, dB: 9.0 },
+      gainCorrection: lerp(1.0, 0.85, fig.velum),
+      // Narrowing the epilarynx raises the tract's inertive reactance, so the folds swing wider
+      // for the same subglottal pressure. A one-way source→filter chain cannot derive this, so
+      // it is a hardcoded lookup standing in for physics — legitimate only under the
+      // trained-singer assumption, and the whole point of twang: loud output, cheap effort.
+      eeBonus: 1.0 + 0.7 * tw,
+    };
+  }
+
+  // Recipes, not implementations — and with the preset buttons gone, no longer reachable from
+  // the UI at all. They stay because test/estill-map.test.mjs is their real consumer: the spec
+  // calls the six qualities test fixtures rather than presets, and what they verify is that each
+  // one lands where the pedagogy says it should with no quality-specific code path anywhere. The cricoid_tilt column is gone with the figure (see above), which is what
+  // took the teeth out of the Belt fixture — it is still reachable, it just no longer has to
+  // *emerge* from anything. lip_protrusion was never in the table and is left where the user put it.
+  const QUALITIES = {
+    "Speech":    { body_cover: 0.0, thyroid_tilt: 0.0, larynx_height: 0.50, twang: 0.20, velum: 0.0 },
+    "Sob / Cry": { body_cover: 1.0, thyroid_tilt: 1.0, larynx_height: 0.15, twang: 0.10, velum: 0.0 },
+    "Twang":     { body_cover: 0.3, thyroid_tilt: 0.0, larynx_height: 0.70, twang: 1.00, velum: 0.3 },
+    "Opera":     { body_cover: 0.8, thyroid_tilt: 1.0, larynx_height: 0.15, twang: 0.80, velum: 0.0 },
+    "Belt":      { body_cover: 0.0, thyroid_tilt: 0.0, larynx_height: 0.85, twang: 0.90, velum: 0.2 },
+  };
+  //#endregion estill-map
+
+  // ---------- singer configuration (voice-type constants, not per-note parameters) ----------
+  // One shared config for all four parts: ballpark adult-male values, matching voice-synth.html.
+  // A bass and a tenor really do have different tract lengths, so per-part singer configs are the
+  // obvious next step — but larynx_height is already a per-voice tract-length scale, so the
+  // difference is reachable today by moving that figure rather than by editing a constant.
+  const singer = { F4: 3500, F5: 4500, Fcluster: 2900, B: [50, 70, 110, 170, 250] };
 
   // ============================================================ audio
   let ctx=null, masterOut=null, masterBus=null, monitorLP=null, humanTimer=null;
@@ -650,20 +958,30 @@
   let lpfT = 1;
   try{ const s=parseFloat(localStorage.getItem(LPF_LS_KEY)); if(s>=0&&s<=1) lpfT=s; }catch(_){}
   let analyser=null, scopeRAF=null, timeBuf=null, freqBuf=null;
-  const voices=[];   // each: {formants, freq, muted, level, mode, bend, srcExp, bwFrac, audio nodes..., infoEl}
+  // each: {fig, vowel, src, tract, freq, muted, soloed, level, mode, audio nodes..., infoEl}
+  // `fig` + `vowel` are what the user sets; `src` + `tract` are derived from them by recomputeVoice.
+  const voices=[];
   // Portamento for stepping between sequence slots. `stepGlide` is a transient set only for the
   // duration of a slot-step's applySnapshot() call; every other retune (dial drags, etc.) reads
   // null and keeps the snappy default. glide=0 → the pre-existing instant behavior.
   let stepGlide = null;
   const retuneTau = () => (stepGlide != null && stepGlide > 0) ? stepGlide/3 : 0.04;
 
-  function computeWave(f0,srcExp){
-    const top=Math.min(HEARING_TOP, ctx.sampleRate/2);
-    const N=Math.max(1,Math.floor(top/f0));
-    const real=new Float32Array(N+1), imag=new Float32Array(N+1);
-    for(let n=1;n<=N;n++) imag[n]=Math.pow(n,-srcExp);
-    return ctx.createPeriodicWave(real,imag);
+  // One period of the LF flow derivative, FFT'd into a PeriodicWave. Lip radiation is baked in
+  // (the source generates dU/dt, not U), so nothing downstream differentiates. disableNormalization
+  // is required: the whole point is that Ee and the source's own level are meaningful.
+  function computeWave(v){
+    const nyq=ctx.sampleRate/2;
+    const nMax=Math.max(1,Math.floor(Math.min(HEARING_TOP,nyq)/v.freq));
+    const h=lfHarmonics(lfShape(v.freq, v.src.OQ, v.src.Rk, v.src.Ra), nMax);
+    return ctx.createPeriodicWave(h.real, h.imag, {disableNormalization:true});
   }
+  // Derived state for one voice. Called before anything is pushed at the audio graph.
+  function recomputeVoice(v){
+    v.src   = sourceFromFigures(v.fig, v.freq);
+    v.tract = tractFromFigures(v.fig, v.vowel, singer);
+  }
+  const eeOf = v => EE_NOMINAL * v.tract.eeBonus;
   //#region audio-session — PURE, DOM-FREE: iOS silent-switch policy. Node-testable
   // (test/audio-session.test.mjs slices this region out of the HTML and evals it.)
   //
@@ -704,81 +1022,75 @@
       analyser=ctx.createAnalyser(); analyser.fftSize=4096; analyser.smoothingTimeConstant=0.5; masterOut.connect(analyser);
       masterBus=ctx.createGain(); masterBus.gain.value=1; masterBus.connect(masterOut);
 
+      // Per voice:  osc → srcGain(Ee) → nasal pole → nasal zero → nasalTrim → sourceBus
+      //                 → 5 parallel bandpasses → formantMix(OUTPUT_TRIM) → voiceGain → masterBus
       voices.forEach(v=>{
+        // Ee lives on its own node so twang's excitation bonus and the note fade both act on the
+        // drive strength rather than on the output level.
+        v.srcGain=ctx.createGain(); v.srcGain.gain.value=1;
+        // Nasal pole/zero pair, in series ahead of the bank. Both are `peaking` sections: RBJ
+        // peaking with gain A and 1/A at the same frequency and Q are exact inverses, so with the
+        // velum raised they collapse to unity — velum = 0 is a true bypass, not a near-bypass.
+        v.nasalPole=ctx.createBiquadFilter(); v.nasalPole.type="peaking";
+        v.nasalZero=ctx.createBiquadFilter(); v.nasalZero.type="peaking";
+        v.nasalTrim=ctx.createGain(); v.nasalTrim.gain.value=1;
+        v.srcGain.connect(v.nasalPole); v.nasalPole.connect(v.nasalZero); v.nasalZero.connect(v.nasalTrim);
         v.sourceBus=ctx.createGain(); v.sourceBus.gain.value=1;
-        v.formantMix=ctx.createGain(); v.formantMix.gain.value=1;
+        v.nasalTrim.connect(v.sourceBus);
+        v.formantMix=ctx.createGain(); v.formantMix.gain.value=OUTPUT_TRIM;
         v.voiceGain=ctx.createGain(); v.voiceGain.gain.value=0;
         v.formantMix.connect(v.voiceGain); v.voiceGain.connect(masterBus);
         v.bp=[]; v.fg=[];
-        for(let i=0;i<v.formants.length;i++){
+        for(let i=0;i<5;i++){
           const f=ctx.createBiquadFilter(); f.type="bandpass";
           const g=ctx.createGain(); g.gain.value=0;
           v.sourceBus.connect(f); f.connect(g); g.connect(v.formantMix);
           v.bp[i]=f; v.fg[i]=g;
         }
-        // dry bypass: pass the raw buzz when this voice has all formants off
-        v.dryGain=ctx.createGain(); v.dryGain.gain.value=0;
-        v.sourceBus.connect(v.dryGain); v.dryGain.connect(v.formantMix);
         v.vibLFO=ctx.createOscillator(); v.vibLFO.type="sine";
         v.vibLFO.frequency.value=VIB_RATE*(0.96+0.08*Math.random()); // slight per-voice detune of vibrato
         v.vibDepth=ctx.createGain(); v.vibDepth.gain.value=state.vibCents;
         v.vibLFO.connect(v.vibDepth); v.vibLFO.start();
-        syncFormants(v);
+        syncVoice(v);
       });
     }
     if(ctx.state==="suspended") ctx.resume();
   }
 
-  function syncFormants(v){
+  // Push one voice's derived tract at its filter chain. Cheap enough (no FFT) to call on every
+  // pointermove; the source rebuild, which does solve + FFT, goes through scheduleSource instead.
+  function syncVoice(v){
+    recomputeVoice(v);
     if(!ctx||!v.bp) return;
-    const now=ctx.currentTime;
-    for(let i=0;i<v.formants.length;i++){
-      const fm=v.formants[i], B=bwOf(fm,v.bwFrac);
-      v.bp[i].frequency.setTargetAtTime(fm.F,now,0.02);
-      v.bp[i].Q.setTargetAtTime(fm.F/B,now,0.02);
-      const sign=(i%2===0)?1:-1;
-      const active = v.mode==="voice" && fm.on;   // basic waveforms bypass the formant bank
-      v.fg[i].gain.setTargetAtTime(active?sign*FORMANT_LEVEL:0,now,0.02);
+    const now=ctx.currentTime, t=v.tract;
+    for(let i=0;i<5;i++){
+      v.bp[i].frequency.setTargetAtTime(t.F[i],now,0.02);
+      v.bp[i].Q.setTargetAtTime(t.F[i]/t.B[i],now,0.02);
+      v.fg[i].gain.setTargetAtTime(FORMANT_SIGN[i]*FORMANT_LEVEL,now,0.02);
     }
-    const anyOn = v.mode==="voice" && v.formants.some(f=>f.on);
-    v.dryGain.gain.setTargetAtTime(anyOn?0:1,now,0.02);
-    v.formantMix.gain.setTargetAtTime(normGain(v),now,0.03);  // keep loudness steady across vowels
+    const n=t.nasal;
+    v.nasalPole.frequency.setTargetAtTime(n.FNP,now,0.02);
+    v.nasalPole.Q.setTargetAtTime(n.Q,now,0.02);
+    v.nasalPole.gain.setTargetAtTime(n.dB,now,0.02);
+    v.nasalZero.frequency.setTargetAtTime(n.FNZ,now,0.02);
+    v.nasalZero.Q.setTargetAtTime(n.Q,now,0.02);
+    v.nasalZero.gain.setTargetAtTime(-n.dB,now,0.02);
+    v.nasalTrim.gain.setTargetAtTime(t.gainCorrection,now,0.02);
+    if(state.playing) v.srcGain.gain.setTargetAtTime(eeOf(v),now,0.03);
   }
-  // Estimated RMS power of the filtered glottal source (bandpass magnitudes summed
-  // across harmonics, phase ignored — fine for a level estimate).
-  function spectralPower(fms, f0, srcExp, bwFrac){
-    const top=Math.min(HEARING_TOP, (ctx?ctx.sampleRate:48000)/2);
-    const N=Math.max(1,Math.floor(top/f0));
-    let P=0;
-    for(let n=1;n<=N;n++){
-      const f=n*f0, A=Math.pow(n,-srcExp);
-      let H=0, any=false;
-      for(const fm of fms){
-        if(!fm.on) continue; any=true;
-        const B=Math.max(60, fm.F*bwFrac), Q=fm.F/B, r=f/fm.F;
-        const d=1-r*r, e=r/Q;
-        H+=FORMANT_LEVEL*e/Math.sqrt(d*d+e*e);
-      }
-      if(!any) H=1;                 // dry bypass passes the source flat
-      const val=A*H; P+=val*val;
+  // Rebuilding a source is a bisection solve plus a 4096-point FFT — a few hundred microseconds,
+  // times four voices. Fine once per frame while a slider is dragged, wasteful per pointer event.
+  let srcPending=null;
+  function scheduleSource(v){
+    if(!srcPending){
+      srcPending=new Set();
+      requestAnimationFrame(()=>{
+        const due=srcPending; srcPending=null;
+        if(!ctx||!state.playing) return;
+        due.forEach(w=>{ if(w.osc) w.osc.setPeriodicWave(computeWave(w)); });
+      });
     }
-    return P;
-  }
-  // intrinsic power (Σ of squared harmonic amplitudes) of each built-in waveform
-  const WAVE_POWER={sine:1, sawtooth:2/3, square:2, triangle:2/3};
-  // Compensating gain that holds loudness constant as the vowel changes,
-  // normalized to the default formant centers as the reference vowel.
-  // Plain waveforms are matched to that same reference-vowel level too.
-  function normGain(v){
-    const ref=spectralPower(DEFAULT_FORMANTS.map(f=>({F:f.F,on:true})), v.freq, v.srcExp, v.bwFrac);
-    const src = v.mode==="voice" ? spectralPower(v.formants, v.freq, v.srcExp, v.bwFrac) : (WAVE_POWER[v.mode]||1);
-    if(src<=0) return 1;
-    return Math.max(0.1, Math.min(8, Math.sqrt(ref/src)));
-  }
-  function applyOscType(v){
-    if(!v.osc) return;
-    if(v.mode==="voice") v.osc.setPeriodicWave(computeWave(v.freq,v.srcExp));
-    else v.osc.type=v.mode;
+    srcPending.add(v);
   }
 
   function tickHuman(){
@@ -795,24 +1107,26 @@
   function playAll(){
     ensureAudio();
     const now=ctx.currentTime;
+    state.playing=true;                       // set first: syncVoice reads it to arm srcGain
     voices.forEach(v=>{
+      recomputeVoice(v);
       v.osc=ctx.createOscillator();
       v.osc.frequency.value=v.freq;
-      applyOscType(v);
-      v.osc.connect(v.sourceBus);
+      v.osc.setPeriodicWave(computeWave(v));
+      v.osc.connect(v.srcGain);
       v.vibDepth.disconnect(); v.vibDepth.connect(v.osc.detune);
       v.osc.detune.setValueAtTime(-40,now);
       v.osc.detune.linearRampToValueAtTime(0,now+0.12);   // pitch-up attack settling to 0 (global bend lives in the key freq)
       v.osc.start();
+      v.srcGain.gain.setValueAtTime(eeOf(v),now);
       v.voiceGain.gain.cancelScheduledValues(now);
       v.voiceGain.gain.setValueAtTime(0,now);
       v.voiceGain.gain.linearRampToValueAtTime(isAudible(v)?v.level:0, now+0.07);
-      syncFormants(v);
+      syncVoice(v);
     });
     masterOut.gain.cancelScheduledValues(now);
     masterOut.gain.setValueAtTime(masterOut.gain.value,now);
     masterOut.gain.linearRampToValueAtTime(state.volume, now+0.07);
-    state.playing=true;
     humanTimer=setInterval(tickHuman,110);
     startScope();
     playBtn.classList.add("on"); playBtn.textContent="■ Stop";
@@ -959,9 +1273,11 @@
       const v=voices[k]; v.freq=slotFreq(slot);
       if(state.playing && v.osc){
         v.osc.frequency.setTargetAtTime(v.freq, ctx.currentTime, retuneTau());   // glide when stepping slots
-        if(v.mode==="voice") v.osc.setPeriodicWave(computeWave(v.freq,v.srcExp));
+        // The LF waveform's shape is set in *time*, so its harmonic table depends on f0 and has to
+        // be rebuilt on every retune — unlike the old 1/n^e stack, which was scale-free in f0.
+        scheduleSource(v);
       }
-      updateVoiceInfo(v); syncFormants(v);  // syncFormants re-normalizes level for the new f0
+      updateVoiceInfo(v); syncVoice(v);
     });
     state.fundHz = impliedFundamentalHz();
     drawSharedChart();
@@ -1256,26 +1572,37 @@
   const chartSvg=document.getElementById("chart");
   let activeDrag=null; // {kind:'chart'|'chartAll', ...}
   function buildVoice(k){
-    voices.push({ formants: JSON.parse(JSON.stringify(DEFAULT_FORMANTS)), freq:state.keyFreq,
-      muted:false, soloed:false, level:1, mode:"voice", srcExp:DEFAULT_SRCEXP, bwFrac:DEFAULT_BWFRAC });
+    const v={ fig:defaultFigures(), vowel:{...DEFAULT_VOWEL}, src:null, tract:null,
+      freq:state.keyFreq, muted:false, soloed:false, level:1,
+      // Inert: there is no waveform selector, and the LF source replaces the oscillator types
+      // outright. Kept only so old share links carrying `mode` still round-trip unchanged.
+      mode:"voice" };
+    recomputeVoice(v);
+    voices.push(v);
   }
 
   // per-voice slider params shown in each strip. When "move: all voices" is on, dragging one
   // shifts all four by the same delta (preserving their spread), matching the chart's behavior.
+  // The six Estill figures come first, then the vowel's F3, then level.
+  //
+  // Every figure changes the tract, and body_cover / thyroid_tilt change the glottal source too,
+  // so those two additionally schedule a wave rebuild. Nothing here special-cases a figure by
+  // name: the map from figure to signal parameter lives entirely in the estill-map region.
+  const SOURCE_FIGURES = new Set(["body_cover","thyroid_tilt"]);
   const PARAMS=[
-    {key:"bright",lab:"bri",min:TYP_F0,max:TYP_F1,step:0.01,def:DEFAULT_SRCEXP,
-      get:v=>v.srcExp, set:(v,x)=>v.srcExp=x,
-      apply:v=>{ if(ctx&&state.playing&&v.osc&&v.mode==="voice") v.osc.setPeriodicWave(computeWave(v.freq,v.srcExp)); syncFormants(v); },
-      fmt:v=>`${(-6*v.srcExp).toFixed(1)} dB/oct`},
-    {key:"nasal",lab:"nas",min:TYP_B0,max:TYP_B1,step:0.001,def:DEFAULT_BWFRAC,
-      get:v=>v.bwFrac, set:(v,x)=>v.bwFrac=x, apply:v=>syncFormants(v),
-      fmt:v=>`${Math.round(v.bwFrac*100)}% bw`},
-    {key:"f3",lab:"F3",min:1800,max:3000,step:10,def:2500,
-      get:v=>v.formants[2].F, set:(v,x)=>v.formants[2].F=x, apply:v=>syncFormants(v),
-      fmt:v=>`${Math.round(v.formants[2].F)} Hz`},
+    ...FIGURE_DEFS.map(d=>({
+      key:d.id, lab:d.lab, min:0, max:1, step:0.01, def:d.def, hint:d.hint,
+      get:v=>v.fig[d.id], set:(v,x)=>v.fig[d.id]=x,
+      apply:v=>{ syncVoice(v); if(SOURCE_FIGURES.has(d.id)) scheduleSource(v); },
+      fmt:v=>v.fig[d.id].toFixed(2)})),
+    {key:"f3",lab:"F3",min:1800,max:3000,step:10,def:DEFAULT_VOWEL.F3,
+      hint:"r-coloring: a low F3 is articulatory and stays out of the twang cluster",
+      get:v=>v.vowel.F3, set:(v,x)=>v.vowel.F3=x, apply:v=>syncVoice(v),
+      fmt:v=>`${Math.round(v.vowel.F3)} Hz`},
     // Level slider is in dB (log curve) so equal drags give equal loudness change; it spans its own
-    // full-width row. Range is gain-staged (see MASTER_GAIN): 0 dB = unity = the top, so four voices at
-    // max stay ~2 dB below clipping; -48 dB floor is ~the quietest audible level at full system volume.
+    // full-width row. 0 dB = unity = the top; see MASTER_GAIN for what four voices at unity comes
+    // to now that nothing normalizes loudness across vowels. -48 dB floor is ~the quietest audible
+    // level at full system volume.
     // v.level stays LINEAR gain (the stored quantity + wire format); only this get/set translate.
     {key:"vol",lab:"vol",min:-48,max:0,step:0.2,def:0,
       get:v=>v.level>0 ? 20*Math.log10(v.level) : -48,
@@ -1285,6 +1612,10 @@
   ];
   function applyParam(p,v,val){
     const cv=clamp(val,p.min,p.max); p.set(v,cv); p.apply(v);
+    // Every figure moves the effective resonances, so the strip's info line — which reports where
+    // the tract actually lands, not the vowel target — is stale until it is redrawn. Under the old
+    // model only the vowel chart could move it, which is why this was not needed before.
+    updateVoiceInfo(v);
     const u=v.ui[p.key];
     if(parseFloat(u.sl.value)!==cv) u.sl.value=cv;
     u.pv.textContent=p.fmt(v);
@@ -1371,15 +1702,17 @@
       const col=VOICE_COLORS[k];
       const vparamHTML = p =>
         `<span class="vparam" data-p="${p.key}"><label>${p.lab}</label>`+
-        `<input type="range" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.get(v)}" title="${p.lab} (double-click to reset)" style="accent-color:${col}">`+
+        `<input type="range" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.get(v)}" title="${p.hint ? p.hint+" — " : ""}${p.lab} (double-click to reset)" style="accent-color:${col}">`+
         `<span class="pv"></span></span>`;
-      const topRow = PARAMS.filter(p=>p.key!=="vol").map(vparamHTML).join("");
-      const volRow = vparamHTML(PARAMS.find(p=>p.key==="vol"));
+      const figRow = FIGURE_DEFS.map(d=>vparamHTML(PBYKEY[d.id])).join("");
+      const f3Row  = vparamHTML(PBYKEY.f3);
+      const volRow = vparamHTML(PBYKEY.vol);
       const row=document.createElement("div"); row.className="vstrip";
       row.innerHTML=
         `<div class="vhd"><span class="nm" style="color:${col}">${VOICE_NAMES[k]}</span>`+
         `<span class="vinfo"></span><button class="solo">solo</button><button class="mute">mute</button></div>`+
-        `<div class="params">${topRow}</div>`+
+        `<div class="params figrow">${figRow}</div>`+
+        `<div class="params volrow">${f3Row}</div>`+
         `<div class="params volrow">${volRow}</div>`;
       stripsEl.appendChild(row);
       v.infoEl=row.querySelector(".vinfo");
@@ -1402,7 +1735,10 @@
   }
   function updateVoiceInfo(v){
     if(!v.infoEl) return;
-    v.infoEl.textContent=`${Math.round(v.freq)} Hz · ${noteName(v.freq)} · F1 ${Math.round(v.formants[0].F)} F2 ${Math.round(v.formants[1].F)}`;
+    // Effective resonances, not the vowel target: larynx height and lips move them, and what this
+    // line is for is telling you where the voice actually resonates.
+    const F=v.tract.F;
+    v.infoEl.textContent=`${Math.round(v.freq)} Hz · ${noteName(v.freq)} · F1 ${Math.round(F[0])} F2 ${Math.round(F[1])} F3 ${Math.round(F[2])}`;
   }
 
   function drawSharedChart(){
@@ -1429,7 +1765,9 @@
     // voice dots: size locked to voice index (voice 1 biggest), drawn back-to-front so every dot stays grabbable
     for(let k=0;k<voices.length;k++){
       const v=voices[k];
-      const cx=cxOfF2(v.formants[1].F), cy=cyOfF1(v.formants[0].F);
+      // the dot is the vowel *target* — where you put your tongue, not where the tract lands once
+      // larynx height and lips have scaled it (the strip's info line reports that)
+      const cx=cxOfF2(v.vowel.F2), cy=cyOfF1(v.vowel.F1);
       const r=12-k*2.2, col=VOICE_COLORS[k];
       s+=`<g data-vdot="${k}" style="cursor:grab">`;
       s+=`<circle cx="${cx}" cy="${cy}" r="16" fill="none" pointer-events="all"/>`;  // generous invisible touch target
@@ -1450,9 +1788,9 @@
   }
   function setFromChart(v,clientX,clientY){
     const {f1,f2}=chartToF(clientX,clientY);
-    v.formants[0].F=clamp(f1, v.formants[0].min, v.formants[0].max);
-    v.formants[1].F=clamp(f2, v.formants[1].min, v.formants[1].max);
-    updateVoiceInfo(v); drawSharedChart(); syncFormants(v);
+    v.vowel.F1=clamp(f1, ...VOWEL_RANGE.F1);
+    v.vowel.F2=clamp(f2, ...VOWEL_RANGE.F2);
+    syncVoice(v); updateVoiceInfo(v); drawSharedChart();
     onStateEdit();
   }
   chartSvg.addEventListener("pointerdown",e=>{
@@ -1461,7 +1799,7 @@
     if(e.metaKey||e.ctrlKey||state.moveAll){
       const st=chartToF(e.clientX,e.clientY);
       activeDrag={kind:"chartAll", startF1:st.f1, startF2:st.f2,
-        base:voices.map(v=>({f1:v.formants[0].F, f2:v.formants[1].F}))};
+        base:voices.map(v=>({f1:v.vowel.F1, f2:v.vowel.F2}))};
     } else {
       activeDrag={kind:"chart", v:voices[+dot.dataset.vdot]};
     }
@@ -1475,9 +1813,9 @@
       // F1/F2 scales by the same factor, holding the chord's formant ratios constant.
       const r1=cur.f1/activeDrag.startF1, r2=cur.f2/activeDrag.startF2;
       voices.forEach((v,k)=>{
-        v.formants[0].F=clamp(activeDrag.base[k].f1*r1, v.formants[0].min, v.formants[0].max);
-        v.formants[1].F=clamp(activeDrag.base[k].f2*r2, v.formants[1].min, v.formants[1].max);
-        updateVoiceInfo(v); syncFormants(v);
+        v.vowel.F1=clamp(activeDrag.base[k].f1*r1, ...VOWEL_RANGE.F1);
+        v.vowel.F2=clamp(activeDrag.base[k].f2*r2, ...VOWEL_RANGE.F2);
+        syncVoice(v); updateVoiceInfo(v);
       });
       drawSharedChart();
       onStateEdit();
@@ -1559,9 +1897,9 @@
   // truth for defaults (appDefaults), so the codec never hard-codes app constants.
   const PBYKEY = Object.fromEntries(PARAMS.map(p => [p.key, p]));
   function appDefaults(){
-    const dv = { bri:DEFAULT_SRCEXP, nas:DEFAULT_BWFRAC, f3:2500, lvl:1, bend:0,
-                 mode:"voice", mute:false,
-                 f1:DEFAULT_FORMANTS[0].F, f2:DEFAULT_FORMANTS[1].F };
+    const dv = { f3:DEFAULT_VOWEL.F3, lvl:1, bend:0, mode:"voice", mute:false,
+                 f1:DEFAULT_VOWEL.F1, f2:DEFAULT_VOWEL.F2,
+                 ...Object.fromEntries(FIGURE_DEFS.map(d=>[d.wire,d.def])) };
     // mirrors the initial `state` values above; these are the wire-format defaults.
     return { key:220, root:0, chord:1, et:false, moveAll:true,
              vib:3, jit:4, shim:0.04, vol:MASTER_GAIN,
@@ -1575,11 +1913,12 @@
       vib: state.vibCents, jit: state.jitterCents, shim: state.shimmer, vol: state.volume,
       voicing: state.voicing.map(s => [s.tone, s.octave]),
       voices: voices.map(v => ({
-        bri:v.srcExp, nas:v.bwFrac, f3:v.formants[2].F,
+        f3:v.vowel.F3,
         // bend is global now, but the wire format has a per-voice bend float — store the global
         // in every voice so the codec is unchanged and older per-voice URLs still round-trip.
         lvl:v.level, bend:state.bendCents, mode:v.mode, mute:v.muted,
-        f1:v.formants[0].F, f2:v.formants[1].F,
+        f1:v.vowel.F1, f2:v.vowel.F2,
+        ...Object.fromEntries(FIGURE_DEFS.map(d=>[d.wire, v.fig[d.id]])),
       })),
     };
   }
@@ -1622,15 +1961,16 @@
       snap.voices.forEach((sv,k) => {
         const v = voices[k];
         v.mode = sv.mode;
-        v.formants[0].F = clamp(sv.f1, v.formants[0].min, v.formants[0].max);
-        v.formants[1].F = clamp(sv.f2, v.formants[1].min, v.formants[1].max);
-        applyParam(PBYKEY.bright, v, sv.bri);      // routed through applyParam so each value is
-        applyParam(PBYKEY.nasal,  v, sv.nas);      // clamped to its slider range and the strip UI
-        applyParam(PBYKEY.f3,     v, sv.f3);       // + readouts stay in sync
-        applyParam(PBYKEY.vol,    v, sv.lvl>0 ? 20*Math.log10(sv.lvl) : PBYKEY.vol.min);  // lvl stored linear → dB
+        v.vowel.F1 = clamp(sv.f1, ...VOWEL_RANGE.F1);
+        v.vowel.F2 = clamp(sv.f2, ...VOWEL_RANGE.F2);
+        // routed through applyParam so every value is clamped to its slider range and the strip
+        // UI + readouts stay in sync
+        for(const d of FIGURE_DEFS) applyParam(PBYKEY[d.id], v, sv[d.wire]);
+        applyParam(PBYKEY.f3,  v, sv.f3);
+        applyParam(PBYKEY.vol, v, sv.lvl>0 ? 20*Math.log10(sv.lvl) : PBYKEY.vol.min);  // lvl stored linear → dB
         v.muted = sv.mute; setMuteUI(v);
         if(ctx) v.voiceGain.gain.setTargetAtTime(isAudible(v)?v.level:0, ctx.currentTime, 0.03);
-        applyOscType(v); syncFormants(v);
+        syncVoice(v); scheduleSource(v);
       });
 
       computeAbsPcs();
@@ -1795,8 +2135,9 @@
   const BCAST_SKIP_TOP   = new Set(["v","key","root","chord","voicing","vol","moveAll","et"]);   // et/key are global, not per-chord
   const BCAST_SKIP_VOICE = new Set(["bend"]);          // bend is globally synced via the key dial
   const BCAST_RANGE = {
-    bri:[TYP_F0,TYP_F1], nas:[TYP_B0,TYP_B1], f3:[1800,3000], lvl:[Math.pow(10,-48/20),1],
+    f3:[1800,3000], lvl:[Math.pow(10,-48/20),1],
     f1:[200,1400], f2:[600,3200], vib:[0,8], jit:[0,JITTER_AMT], shim:[0,SHIMMER_AMT],
+    ...Object.fromEntries(FIGURE_DEFS.map(d=>[d.wire,[0,1]])),   // every figure is a 0..1 fraction
   };
   function bcastField(name, cur, before, after){
     if(typeof after !== "number" || typeof cur !== "number" || typeof before !== "number") return after; // absolute

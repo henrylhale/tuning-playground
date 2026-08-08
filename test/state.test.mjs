@@ -19,7 +19,8 @@ const defs = {
   key: 220, root: 0, chord: 1, et: false, moveAll: true,
   vib: 3, jit: 4, shim: 0.04, vol: 0.45,
   voices: Array.from({ length: 4 }, () => ({
-    bri: 1.2, nas: 0.06, f3: 2500, lvl: 1, bend: 0, mode: 'voice', mute: false, f1: 500, f2: 1500,
+    f3: 2500, lvl: 1, bend: 0, mode: 'voice', mute: false, f1: 500, f2: 1500,
+    bc: 0, tt: 0, lh: 0.5, vel: 0, lip: 0, tw: 0.2,
   })),
 };
 
@@ -29,10 +30,10 @@ const full = () => normalizeSnapshot({
   vib: 2.5, jit: 3.1, shim: 0.037, vol: 0.512,
   voicing: [[2, 0], [0, -1], [1, 1], [3, 0]],
   voices: [
-    { bri: 1.2000000000001, nas: 0.061, f3: 2503, lvl: 1.01, bend: 0.5, mode: 'voice',    mute: false, f1: 512.38, f2: 1487.99 },
-    { bri: 1.34, nas: 0.071, f3: 2310, lvl: 0.93, bend: 4.5, mode: 'sine',     mute: false, f1: 604.11, f2: 1801.77 },
-    { bri: 1.05, nas: 0.055, f3: 2680, lvl: 1.12, bend: -3,  mode: 'sawtooth', mute: true,  f1: 447.90, f2: 1399.02 },
-    { bri: 1.5,  nas: 0.083, f3: 2450, lvl: 0.88, bend: 2,   mode: 'triangle', mute: false, f1: 531.66, f2: 1622.50 },
+    { bc: 0.0000000001, tt: 0.31, f3: 2503, lvl: 1.01, bend: 0.5, mode: 'voice',    mute: false, f1: 512.38, f2: 1487.99 },
+    { bc: 0.34, tt: 0.71,  lh: 0.8, f3: 2310, lvl: 0.93, bend: 4.5, mode: 'sine',     mute: false, f1: 604.11, f2: 1801.77 },
+    { bc: 1.00, vel: 0.55, tw: 0.9, f3: 2680, lvl: 1.12, bend: -3,  mode: 'sawtooth', mute: true,  f1: 447.90, f2: 1399.02 },
+    { bc: 0.5,  lip: 0.83, tw: 0.0, f3: 2450, lvl: 0.88, bend: 2,   mode: 'triangle', mute: false, f1: 531.66, f2: 1622.50 },
   ],
 }, defs);
 
@@ -56,7 +57,7 @@ test('BACKWARD compat: a document missing fields fills them from defaults', () =
   assert.equal(n.chord, defs.chord);        // absent global → default
   assert.equal(n.voices.length, 4);         // always four voices
   assert.equal(n.voices[0].f1, 480);        // present per-voice field survives
-  assert.equal(n.voices[0].bri, defs.voices[0].bri);  // absent per-voice field → default
+  assert.equal(n.voices[0].tw, defs.voices[0].tw);   // absent per-voice field → default
   assert.equal(n.voices[1].mode, 'sine');
   assert.equal(n.voices[3].f2, defs.voices[3].f2);
 });
@@ -91,6 +92,28 @@ test('voicing accepts [tone,octave] pairs and {tone,octave} objects; drops inval
     { tone: 0, octave: -1 },
     { tone: 0, octave: 3 },   // missing tone → 0 (kept); 'junk' and [-5,0] (tone<0) dropped
   ]);
+});
+
+// The six Estill figures are the per-voice timbre state as of schema v2. They replaced {bri, nas}
+// — the old source's falloff exponent and bandwidth fraction — and since a figure is a 0..1
+// fraction by construction, the region clamps them rather than trusting whatever produced the file.
+test('figures are clamped into 0..1', () => {
+  const n = normalizeSnapshot({ voices: [{ bc: 1.4, tt: -0.2, lh: 0.5, tw: 'x' }] }, defs);
+  assert.equal(n.voices[0].bc, 1);
+  assert.equal(n.voices[0].tt, 0);
+  assert.equal(n.voices[0].lh, 0.5);
+  assert.equal(n.voices[0].tw, defs.voices[0].tw);   // non-numeric → default, then clamped
+});
+
+test('a v1 document loads with default figures rather than failing', () => {
+  // v1 stored {bri, nas}; there is no brightness in the LF model to map them onto, so they are
+  // dropped like any unknown field and the voice comes up on the default figure set.
+  const n = normalizeSnapshot({ v: 1, key: 261.63, voices: [{ bri: 1.5, nas: 0.083, f1: 480 }] }, defs);
+  assert.equal(n.v, SCHEMA_VERSION);
+  assert.equal(n.voices[0].f1, 480);                 // fields v1 and v2 share still survive
+  assert.ok(!('bri' in n.voices[0]));
+  assert.equal(n.voices[0].bc, defs.voices[0].bc);
+  assert.equal(n.voices[0].tw, defs.voices[0].tw);
 });
 
 test('invalid wave mode → default "voice"', () => {
