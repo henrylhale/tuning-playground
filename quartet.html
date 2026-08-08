@@ -237,6 +237,7 @@
     <div class="ctl"><label>Vibrato</label><input id="vib" type="range" min="0" max="8" step="0.5" value="3"><span id="vibval" class="val"></span></div>
     <div class="ctl"><label>Jitter</label><button id="jit" class="toggle on" title="Random per-note pitch drift (±4¢)">on</button></div>
     <div class="ctl"><label>Shimmer</label><button id="shim" class="toggle on" title="Random per-note amplitude drift (±4%)">on</button></div>
+    <div class="ctl"><label>Tone</label><input id="lpf" type="range" min="0" max="1" step="0.001" value="1" title="Lowpass on the monitor path only: rolls off the high end so the sound is easier to sit with. It is not part of the chord — the spectrum below still shows the unfiltered synth, and it is never saved into a sequence or a share link. Double-click to reset."><span id="lpfval" class="val"></span></div>
   </div>
 
   <div class="panel">
@@ -637,7 +638,17 @@
   const JITTER_AMT=4, SHIMMER_AMT=0.04;
 
   // ============================================================ audio
-  let ctx=null, masterOut=null, masterBus=null, humanTimer=null;
+  let ctx=null, masterOut=null, masterBus=null, monitorLP=null, humanTimer=null;
+
+  // ---- monitor lowpass ----
+  // A listening-comfort control, deliberately NOT part of the musical state: it sits downstream of
+  // the analyser tap, so the spectrum readout keeps showing what the model actually synthesizes,
+  // and it lives outside `state` so readSnapshot() can't carry it into a sequence or a share link.
+  // One 12 dB/oct biquad; at the top of the slider the corner sits at 20 kHz, i.e. flat to the ear.
+  const LPF_MIN=800, LPF_MAX=20000, LPF_LS_KEY="quartet.monitorLPF";
+  const lpfHzOf = t => LPF_MIN*Math.pow(LPF_MAX/LPF_MIN, t);
+  let lpfT = 1;
+  try{ const s=parseFloat(localStorage.getItem(LPF_LS_KEY)); if(s>=0&&s<=1) lpfT=s; }catch(_){}
   let analyser=null, scopeRAF=null, timeBuf=null, freqBuf=null;
   const voices=[];   // each: {formants, freq, muted, level, mode, bend, srcExp, bwFrac, audio nodes..., infoEl}
   // Portamento for stepping between sequence slots. `stepGlide` is a transient set only for the
@@ -685,7 +696,11 @@
     requestPlaybackSession(window.navigator);
     if(!ctx){
       ctx=new (window.AudioContext||window.webkitAudioContext)();
-      masterOut=ctx.createGain(); masterOut.gain.value=0; masterOut.connect(ctx.destination);
+      masterOut=ctx.createGain(); masterOut.gain.value=0;
+      monitorLP=ctx.createBiquadFilter(); monitorLP.type="lowpass"; monitorLP.Q.value=Math.SQRT1_2;
+      monitorLP.frequency.value=lpfHzOf(lpfT);
+      masterOut.connect(monitorLP); monitorLP.connect(ctx.destination);
+      // tapped ahead of the monitor lowpass, so the scope shows the synth, not the listening EQ
       analyser=ctx.createAnalyser(); analyser.fftSize=4096; analyser.smoothingTimeConstant=0.5; masterOut.connect(analyser);
       masterBus=ctx.createGain(); masterBus.gain.value=1; masterBus.connect(masterOut);
 
@@ -1487,6 +1502,26 @@
     shimBtn.classList.toggle("on",on); shimBtn.textContent=on?"on":"off";
     state.shimmer=on?SHIMMER_AMT:0; onStateEdit();
   });
+
+  // Monitor lowpass: log-mapped so the useful darkening range (1–6 kHz) gets most of the travel.
+  // No onStateEdit() — this is a property of the listener, not of the chord.
+  const lpfEl=document.getElementById("lpf"), lpfVal=document.getElementById("lpfval");
+  function lpfLab(){
+    const hz=lpfHzOf(lpfT);
+    lpfVal.textContent = lpfT>=1 ? "off" : (hz>=1000 ? `${(hz/1000).toFixed(1)} kHz` : `${Math.round(hz)} Hz`);
+  }
+  function applyLPF(){
+    if(ctx&&monitorLP) monitorLP.frequency.setTargetAtTime(lpfHzOf(lpfT),ctx.currentTime,0.02);
+    lpfLab();
+  }
+  lpfEl.value=String(lpfT);
+  lpfEl.addEventListener("input",()=>{
+    lpfT=parseFloat(lpfEl.value); applyLPF();
+    try{ localStorage.setItem(LPF_LS_KEY,String(lpfT)); }catch(_){}
+  });
+  lpfEl.addEventListener("dblclick",()=>{ lpfT=1; lpfEl.value="1"; applyLPF();
+    try{ localStorage.setItem(LPF_LS_KEY,"1"); }catch(_){} });
+  lpfLab();
 
   function lab(){
     vibVal.textContent=state.vibCents<=0?"off":`±${state.vibCents}¢`;

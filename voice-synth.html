@@ -163,6 +163,9 @@
           <div class="dialside">
             <button id="play" class="play">▶ Start</button>
             <button id="filt" class="play">Filter</button>
+            <div class="stack" title="Lowpass on the monitor path only: rolls off the high end so the sound is easier to sit with. It sits after the analyser tap, so the measured spectrum still shows the unfiltered model. Double-click to reset.">
+              <div class="hd"><label for="lpf">Tone</label><span class="v" id="lpfval"></span></div>
+              <input id="lpf" type="range" min="0" max="1" step="0.001" value="1"></div>
           </div>
         </div>
       </div>
@@ -784,7 +787,16 @@
 
   // ---------- audio ----------
   const HEARING_TOP = 20000;
-  let ctx = null, osc = null, master = null, playing = false;
+  let ctx = null, osc = null, master = null, monitorLP = null, playing = false;
+
+  // ---- monitor lowpass ----
+  // Listening comfort, not part of the model: one 12 dB/oct biquad placed downstream of the analyser
+  // tap, so the measured spectrum drawn over the modeled filter response stays a measurement of the
+  // model. At the top of the slider the corner sits at 20 kHz, i.e. flat to the ear.
+  const LPF_MIN = 800, LPF_MAX = 20000, LPF_LS_KEY = "voiceSynth.monitorLPF";
+  const lpfHzOf = t => LPF_MIN * Math.pow(LPF_MAX / LPF_MIN, t);
+  let lpfT = 1;
+  try { const s = parseFloat(localStorage.getItem(LPF_LS_KEY)); if (s >= 0 && s <= 1) lpfT = s; } catch (_) {}
   let analyser = null, scopeRAF = null, timeBuf = null, specBuf = null;
   // source-filter graph nodes
   let srcGain = null, nasalPole = null, nasalZero = null, nasalTrim = null;
@@ -837,8 +849,13 @@
 
       master = ctx.createGain();
       master.gain.value = 0;
-      master.connect(ctx.destination);
-      analyser = ctx.createAnalyser();      // taps the final mix (before the hardware ±1 clamp)
+      monitorLP = ctx.createBiquadFilter();
+      monitorLP.type = "lowpass";
+      monitorLP.Q.value = Math.SQRT1_2;
+      monitorLP.frequency.value = lpfHzOf(lpfT);
+      master.connect(monitorLP);
+      monitorLP.connect(ctx.destination);
+      analyser = ctx.createAnalyser();      // taps the final mix (before the monitor lowpass and the hardware ±1 clamp)
       analyser.fftSize = 4096;
       analyser.smoothingTimeConstant = 0.5;
       master.connect(analyser);
@@ -1470,6 +1487,28 @@
 
   f3El.addEventListener("input", () => { vowel.F3 = parseFloat(f3El.value); apply(); });
   fcEl.addEventListener("input", () => { singer.Fcluster = parseFloat(fcEl.value); apply(); });
+
+  // Monitor lowpass: log-mapped so the useful darkening range (1–6 kHz) gets most of the travel.
+  // No apply() — nothing downstream of it feeds the model or the plots.
+  const lpfEl = document.getElementById("lpf"), lpfValEl = document.getElementById("lpfval");
+  function lpfLab() {
+    const hz = lpfHzOf(lpfT);
+    lpfValEl.textContent = lpfT >= 1 ? "off" : (hz >= 1000 ? `${(hz / 1000).toFixed(1)}k` : `${Math.round(hz)}`);
+  }
+  function applyLPF() {
+    if (ctx && monitorLP) monitorLP.frequency.setTargetAtTime(lpfHzOf(lpfT), ctx.currentTime, 0.02);
+    lpfLab();
+  }
+  lpfEl.value = String(lpfT);
+  lpfEl.addEventListener("input", () => {
+    lpfT = parseFloat(lpfEl.value); applyLPF();
+    try { localStorage.setItem(LPF_LS_KEY, String(lpfT)); } catch (_) {}
+  });
+  lpfEl.addEventListener("dblclick", () => {
+    lpfT = 1; lpfEl.value = "1"; applyLPF();
+    try { localStorage.setItem(LPF_LS_KEY, "1"); } catch (_) {}
+  });
+  lpfLab();
 
   playBtn.addEventListener("click", () => playing ? stop() : start());
 
