@@ -947,6 +947,7 @@
 
   // ============================================================ audio
   let ctx=null, masterOut=null, masterBus=null, monitorLP=null, humanTimer=null;
+  let tonicOsc=null, tonicGain=null;   // reference sine on the key center — tapped from the dial's core
 
   // ---- monitor lowpass ----
   // A listening-comfort control, deliberately NOT part of the musical state: it sits downstream of
@@ -1334,10 +1335,13 @@
     }
     // inner pointer: arrow riding the wheel, aimed IN toward the core
     s+=tri(bendAng, R_INN_LO+3, R_INN_LO+18, 7, "#ffb347");
-    // core: note name of the key center + resulting Hz (note name stays put past ±50¢ — see spec)
-    s+=`<circle cx="${DCX}" cy="${DCY}" r="${R_CORE}" fill="#0e0904" stroke="#6b5128" stroke-width="1.5"/>`;
-    s+=`<text x="${DCX}" y="${DCY-3}" text-anchor="middle" font-size="26" font-weight="800" fill="#ffce87">${NOTE_NAMES[pc]}${oct}</text>`;
+    // core: note name of the key center + resulting Hz (note name stays put past ±50¢ — see spec).
+    // Tap it to sound a reference sine on the key center; lit amber = playing.
+    const lit=!!tonicOsc;
+    s+=`<circle cx="${DCX}" cy="${DCY}" r="${R_CORE}" fill="${lit?"#2a1804":"#0e0904"}" stroke="${lit?"#ffb347":"#6b5128"}" stroke-width="${lit?2.5:1.5}"/>`;
+    s+=`<text x="${DCX}" y="${DCY-3}" text-anchor="middle" font-size="26" font-weight="800" fill="${lit?"#ffd98a":"#ffce87"}">${NOTE_NAMES[pc]}${oct}</text>`;
     s+=`<text x="${DCX}" y="${DCY+18}" text-anchor="middle" font-size="12" font-weight="600" fill="#c9b78f">${fmtHz(effKey())} Hz</text>`;
+    s+=`<text x="${DCX}" y="${DCY+31}" text-anchor="middle" font-size="9" font-weight="600" fill="${lit?"#ffb347":"#7d6743"}">${lit?"♪ sounding":"tap: tone"}</text>`;
     dialSvg.innerHTML=s;
   }
 
@@ -1349,12 +1353,31 @@
   function commitKey(nm){
     nm=clamp(nm, MIDI_LO, MIDI_HI);
     if(nm!==state.keyMidi){ state.keyMidi=nm; state.keyFreq=midiToFreq(nm); applyFreqs(); renderVoicing(); syncGlobalsAcrossSlots(); }
-    drawKeyDial(); drawRootDial();   // root's note readout follows the key
+    retuneTonic(); drawKeyDial(); drawRootDial();   // root's note readout follows the key
   }
   function commitBend(c){
     c=clamp(c,-100,100);
     if(c!==state.bendCents){ state.bendCents=c; applyFreqs(); renderVoicing(); syncGlobalsAcrossSlots(); }
-    drawKeyDial(); drawRootDial();
+    retuneTonic(); drawKeyDial(); drawRootDial();
+  }
+  // tap the dial's core: toggle a plain sine drone on the current key center (a reference pitch to
+  // sing against). Independent of the synth transport — it plays even with the voices silent.
+  function retuneTonic(){ if(tonicOsc) tonicOsc.frequency.setTargetAtTime(effKey(), ctx.currentTime, 0.02); }
+  function toggleTonic(){
+    ensureAudio();
+    const now=ctx.currentTime;
+    if(tonicOsc){
+      tonicGain.gain.cancelScheduledValues(now);
+      tonicGain.gain.setValueAtTime(tonicGain.gain.value, now);
+      tonicGain.gain.linearRampToValueAtTime(0, now+0.08);
+      tonicOsc.stop(now+0.1);
+      tonicOsc=null; tonicGain=null; drawKeyDial(); return;
+    }
+    tonicGain=ctx.createGain(); tonicGain.gain.value=0; tonicGain.connect(ctx.destination);
+    tonicOsc=ctx.createOscillator(); tonicOsc.type="sine"; tonicOsc.frequency.value=effKey();
+    tonicOsc.connect(tonicGain); tonicOsc.start();
+    tonicGain.gain.linearRampToValueAtTime(0.18, now+0.05);
+    drawKeyDial();
   }
 
   // pointer interaction: pick a wheel by grab radius, then drag
@@ -1371,12 +1394,18 @@
       commitBend(dialDrag.prev);
     } else if(rad>=R_OUT_LO-2 && rad<=R_NOTE+10){
       dialDrag={wheel:"outer", last:ang, accum:0, start:state.keyMidi};
+    } else if(rad < R_INN_LO-6){
+      dialDrag={wheel:"core", x0:e.clientX, y0:e.clientY, moved:false};   // tap → toggle tonic drone
     } else return;
     try{ dialSvg.setPointerCapture(e.pointerId); }catch(_){}
     e.preventDefault();
   });
   window.addEventListener("pointermove",e=>{
     if(!dialDrag) return;
+    if(dialDrag.wheel==="core"){
+      if(Math.hypot(e.clientX-dialDrag.x0, e.clientY-dialDrag.y0)>6) dialDrag.moved=true;
+      return;
+    }
     const {ang}=polarAt(dialSvg,e);
     if(dialDrag.wheel==="inner"){
       let c=clamp(ang/1.8,-100,100);
@@ -1388,7 +1417,10 @@
       commitKey(dialDrag.start+Math.round(dialDrag.accum/30));   // 30° == one semitone snap
     }
   });
-  window.addEventListener("pointerup",()=>{ dialDrag=null; });
+  window.addEventListener("pointerup",()=>{
+    if(dialDrag && dialDrag.wheel==="core" && !dialDrag.moved) toggleTonic();
+    dialDrag=null;
+  });
   window.addEventListener("pointercancel",()=>{ dialDrag=null; });
 
   // ---- chord-root dial: a single discrete wheel (matched to the key dial), 12 scale degrees ----
